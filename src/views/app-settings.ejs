@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Launcharr · <%= app.name %> Settings</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" type="image/png" href="/icons/launcharr-icon.png" />
+  <meta name="theme-color" content="#1cc6c2" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="apple-touch-icon" href="/icons/launcharr-icon.png" />
+</head>
+<body class="dash-body <%= app.id === 'plex' ? 'plex-settings-body' : '' %>">
+  <div class="dash-frame">
+    <aside class="dash-sidebar">
+      <div class="dash-brand">
+        <span class="dash-logo">
+          <img class="nav-icon app-icon" src="/icons/launcharr-icon.png" alt="Launcharr" />
+        </span>
+        <div>
+          <div class="dash-title">Launcharr</div>
+        </div>
+      </div>
+
+      <div class="dash-nav">
+        <a class="nav-item" href="/dashboard">
+          <img class="nav-icon" src="/icons/dashboard.svg" alt="" />
+          <span class="nav-label">Dashboard</span>
+        </a>
+        <% if (navCategories && navCategories.length) { %>
+          <div class="nav-divider"></div>
+          <div class="nav-accordion">
+            <% navCategories.forEach((category) => { %>
+              <% if (category.sidebarMenu) { %>
+                <% const categoryOpen = category.apps.some((item) => item.id === app.id); %>
+                <div class="nav-accordion-item nav-accordion-item--category<%= categoryOpen ? ' open' : '' %>">
+                  <button class="nav-accordion-trigger nav-accordion-trigger--category" type="button">
+                    <img class="nav-icon" src="<%= category.icon || '/icons/category.svg' %>" alt="" onerror="this.src='/icons/category.svg'" />
+                    <span class="nav-label"><%= category.name %></span>
+                  </button>
+                  <div class="nav-accordion-panel nav-accordion-panel--category">
+                    <div class="nav-accordion nav-accordion--nested">
+                      <% category.apps.forEach((appItem) => { %>
+                        <div class="nav-accordion-item<%= appItem.id === app.id && (!((appItem.favourite || appItem.favorite)) || appItem.navFavourite) ? ' open' : '' %>">
+                          <button class="nav-accordion-trigger" type="button">
+                            <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+                            <span class="nav-label"><%= appItem.name %></span>
+                          </button>
+                          <div class="nav-accordion-panel">
+                            <% if (appItem.menuAccess.overview) { %>
+                              <a class="nav-subitem" href="/apps/<%= appItem.id %>">
+                                <img class="nav-subicon" src="/icons/overview.svg" alt="" />
+                                <span>Overview</span>
+                              </a>
+                            <% } %>
+                            <% if (appItem.menuAccess.launch) { %>
+                              <a class="nav-subitem" href="/apps/<%= appItem.id %>/launch" <%= appItem.effectiveLaunchMode === 'new-tab' ? 'target="_blank" rel="noreferrer"' : '' %>>
+                                <img class="nav-subicon" src="/icons/launch.svg" alt="" />
+                                <span>Launch</span>
+                              </a>
+                            <% } %>
+                            <% if (appItem.menuAccess.settings) { %>
+                              <a class="nav-subitem<%= appItem.id === app.id ? ' active' : '' %>" href="/apps/<%= appItem.id %>/settings">
+                                <img class="nav-subicon" src="/icons/settings.svg" alt="" />
+                                <span>App settings</span>
+                              </a>
+                            <% } %>
+                            <% if (appItem.menuAccess.overview && role === 'admin') { %>
+                              <a class="nav-subitem<%= appItem.id === app.id && page === 'activity' ? ' active' : '' %>" href="/apps/<%= appItem.id %>/activity">
+                                <img class="nav-subicon" src="/icons/activity-queue.svg" alt="" />
+                                <span>Activity</span>
+                              </a>
+                            <% } %>
+                          </div>
+                        </div>
+                      <% }) %>
+                    </div>
+                  </div>
+                </div>
+              <% } else { %>
+                <% category.apps.forEach((appItem) => { %>
+                  <div class="nav-accordion-item<%= appItem.id === app.id && (!((appItem.favourite || appItem.favorite)) || appItem.navFavourite) ? ' open' : '' %>">
+                    <button class="nav-accordion-trigger" type="button">
+                      <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+                      <span class="nav-label"><%= appItem.name %></span>
+                    </button>
+                    <div class="nav-accordion-panel">
+                      <% if (appItem.menuAccess.overview) { %>
+                        <a class="nav-subitem" href="/apps/<%= appItem.id %>">
+                          <img class="nav-subicon" src="/icons/overview.svg" alt="" />
+                          <span>Overview</span>
+                        </a>
+                      <% } %>
+                      <% if (appItem.menuAccess.launch) { %>
+                        <a class="nav-subitem" href="/apps/<%= appItem.id %>/launch" <%= appItem.effectiveLaunchMode === 'new-tab' ? 'target="_blank" rel="noreferrer"' : '' %>>
+                          <img class="nav-subicon" src="/icons/launch.svg" alt="" />
+                          <span>Launch</span>
+                        </a>
+                      <% } %>
+                      <% if (appItem.menuAccess.settings) { %>
+                        <a class="nav-subitem<%= appItem.id === app.id ? ' active' : '' %>" href="/apps/<%= appItem.id %>/settings">
+                          <img class="nav-subicon" src="/icons/settings.svg" alt="" />
+                          <span>App settings</span>
+                        </a>
+                      <% } %>
+                      <% if (appItem.menuAccess.overview && role === 'admin') { %>
+                        <a class="nav-subitem<%= appItem.id === app.id && page === 'activity' ? ' active' : '' %>" href="/apps/<%= appItem.id %>/activity">
+                          <img class="nav-subicon" src="/icons/activity-queue.svg" alt="" />
+                          <span>Activity</span>
+                        </a>
+                      <% } %>
+                    </div>
+                  </div>
+                <% }) %>
+              <% } %>
+            <% }) %>
+          </div>
+        <% } %>
+        <div class="nav-divider"></div>
+        <a class="nav-item" href="/settings">
+          <img class="nav-icon" src="/icons/settings.svg" alt="" />
+          <span class="nav-label">Settings</span>
+        </a>
+      </div>
+
+      <div class="dash-user">
+        <div class="user-pill user-pill--menu" data-user-menu role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
+          <% if (user.avatar) { %>
+            <img class="user-avatar" src="<%= user.avatar %>" alt="" />
+          <% } %>
+          <div class="user-meta">
+            <span class="role"><%= role %></span>
+            <div class="username"><%= user.username %></div>
+            <% if (user.email) { %>
+              <div class="email"><%= user.email %></div>
+            <% } %>
+          </div>
+          <span class="user-pill-caret" aria-hidden="true"></span>
+          <div class="user-menu" role="menu">
+            <a class="user-menu-item" href="/user-settings">
+              <img class="user-menu-icon" src="/icons/settings.svg" alt="" />
+              <span class="user-menu-text">User settings</span>
+            </a>
+            <% if (actualRole === 'admin') { %>
+              <a class="user-menu-item" href="/switch-view?role=<%= role === 'admin' ? 'user' : 'admin' %>">
+                <img class="user-menu-icon" src="/icons/window.svg" alt="" />
+                <span class="user-menu-text"><%= role === 'admin' ? 'Switch to user view' : 'Switch to admin view' %></span>
+              </a>
+            <% } %>
+            <div class="user-menu-divider"></div>
+            <a class="user-menu-item" href="/logout">
+              <img class="user-menu-icon" src="/icons/logout.svg" alt="" />
+              <span class="user-menu-text">Sign out</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <section class="dash-main bar-flush">
+      <% 
+        const menu = app.menu || {};
+        const overview = menu.overview || {};
+        const launch = menu.launch || {};
+        const settingsMenu = menu.settings || {};
+        const overviewItems = Array.isArray(overviewElements) ? overviewElements : [];
+        const tautulliItems = Array.isArray(tautulliCards) ? tautulliCards : [];
+        const roleKey = role === 'admin' || role === 'co-admin' ? 'admin' : 'user';
+        const hasMenu = Boolean(menu.overview || menu.launch || menu.settings);
+        const enabled = hasMenu ? Boolean(overview[roleKey] || launch[roleKey] || settingsMenu[roleKey]) : true;
+        const hasUrl = Boolean(app.localUrl || app.remoteUrl);
+        const hasToken = app.id === 'plex' ? Boolean(app.plexToken) : true;
+        const statusOk = enabled && hasUrl && hasToken;
+        const isArrSuite = String(app.category || '').toLowerCase() === 'arr suite';
+      %>
+      <div class="main-window-bar">
+        <button class="sidebar-toggle main-toggle left-toggle" type="button" aria-label="Toggle sidebar">
+          <img class="toggle-icon" src="/icons/sidebar-toggle.svg" alt="" />
+        </button>
+        <div class="main-window-title">
+          <img class="main-window-icon" src="<%= app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(app.id) ? '/icons/' + app.id + '.png' : '/icons/' + app.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+          <span class="main-window-app"><%= app.name %></span>
+          <span class="main-window-rest">| Settings</span>
+        </div>
+        <div class="main-window-spacer"></div>
+        <div class="main-window-status">
+          <span class="status-dot <%= statusOk ? 'status-dot--ok' : 'status-dot--bad' %>"></span>
+        </div>
+      </div>
+
+      <div class="dash-panel<%= app.id === 'plex' ? ' plex-settings-panel' : '' %>">
+        <div class="panel-header">
+          <h2>Connection</h2>
+          <span class="panel-sub">URLs and access tokens</span>
+        </div>
+        <form method="post" action="/apps/<%= app.id %>/settings" class="settings-form <%= app.id === 'plex' ? 'plex-settings-form' : '' %>">
+          <div class="settings-card">
+            <% if (app.id === 'plex') { %>
+              <div class="settings-card-title">App URLs</div>
+              <div class="settings-card-sub">Base URLs and credentials for local or remote access.</div>
+            <% } %>
+            <label class="field">
+              <span>Local URL</span>
+              <input type="text" name="localUrl" value="<%= app.localUrl || '' %>" placeholder="http://192.168.x.x:port" />
+            </label>
+            <label class="field">
+              <span>Remote URL</span>
+              <input type="text" name="remoteUrl" value="<%= app.remoteUrl || '' %>" placeholder="https://app.example.com" />
+            </label>
+          </div>
+          <% if (app.id === 'plex') { %>
+            <% const adminOwner = (Array.isArray(admins) && admins.length) ? admins[0] : ''; %>
+            <div class="settings-card plex-settings-card">
+              <div class="settings-card-title">Plex Access</div>
+              <div class="settings-card-sub">Uses the Local URL first, then the External URL.</div>
+              <div class="plex-settings-fields">
+                <label class="field field-with-action">
+                  <span>Plex Token</span>
+                  <div class="field-action-row">
+                    <input id="plexTokenInput" type="password" name="plexToken" value="<%= app.plexToken || '' %>" placeholder="Plex token" />
+                    <button class="icon-button" type="button" id="plexTokenToggle" aria-label="Show Plex token" data-visibility-toggle="plexTokenInput" data-visibility-state="hidden">
+                      <img src="/icons/view-off.svg" alt="" />
+                    </button>
+                  </div>
+                </label>
+                <label class="field field-with-action">
+                  <span>Plex Machine</span>
+                  <div class="field-action-row">
+                    <input id="plexMachineInput" type="password" name="plexMachine" value="<%= app.plexMachine || '' %>" placeholder="Machine identifier" />
+                    <button class="icon-button" type="button" id="plexMachineToggle" aria-label="Show Plex machine" data-visibility-toggle="plexMachineInput" data-visibility-state="hidden">
+                      <img src="/icons/view-off.svg" alt="" />
+                    </button>
+                  </div>
+                </label>
+                <label class="field">
+                  <span>Plex Admin User</span>
+                  <input id="plexAdminInput" type="text" name="plexAdminUser" value="<%= adminOwner %>" placeholder="admin@plex.tv" />
+                </label>
+                <div class="plex-settings-actions">
+                  <button class="ghost-button" type="button" id="plexRetrieveToken">Get Plex Token</button>
+                  <button class="ghost-button" type="button" id="plexRetrieveMachine">Get Plex Machine</button>
+                </div>
+              </div>
+              <div class="plex-settings-note">Tip: Local URL is preferred when set.</div>
+            </div>
+          <% } %>
+          <% if (app.id === 'tautulli' || isArrSuite) { %>
+            <div class="settings-card plex-settings-card">
+              <div class="settings-card-title"><%= app.name %> Access</div>
+              <div class="settings-card-sub">
+                <%= app.id === 'tautulli'
+                  ? 'Use the API key from Tautulli Settings → Web Interface.'
+                  : `Use the API key from ${app.name} settings.` %>
+              </div>
+              <div class="plex-settings-fields">
+                <label class="field">
+                  <span>API Key</span>
+                  <input type="password" name="apiKey" value="<%= app.apiKey || '' %>" placeholder="<%= app.name %> API key" />
+                </label>
+              </div>
+              <div class="plex-settings-note">Tip: Keep this key private.</div>
+            </div>
+          <% } %>
+          <% if (app.id === 'nzbget' || app.id === 'transmission') { %>
+            <div class="settings-card plex-settings-card">
+              <div class="settings-card-title"><%= app.name %> Access</div>
+              <div class="settings-card-sub">Credentials for local or remote access.</div>
+              <div class="plex-settings-fields">
+                <label class="field">
+                  <span>Username</span>
+                  <input type="text" name="username" value="<%= app.username || '' %>" placeholder="<%= app.name %> username" />
+                </label>
+                <label class="field">
+                  <span>Password</span>
+                  <input type="password" name="password" value="<%= app.password || '' %>" placeholder="<%= app.name %> password" />
+                </label>
+              </div>
+              <div class="plex-settings-note">Tip: Leave blank if authentication is disabled.</div>
+            </div>
+          <% } %>
+          <button class="primary-button" type="submit">Save <%= app.name %> settings</button>
+        </form>
+      </div>
+
+      <% if (overviewItems.length) { %>
+        <div class="dash-panel<%= app.id === 'plex' ? ' plex-settings-panel' : '' %>">
+          <div class="panel-header">
+            <h2>Overview Display</h2>
+            <span class="panel-sub">Category inherits from <%= app.category || 'Apps' %></span>
+          </div>
+          <form method="post" action="/apps/<%= app.id %>/settings" class="settings-form">
+            <input type="hidden" name="overviewElementsForm" value="1" />
+            <% if (app.id === 'tautulli' && tautulliItems.length) { %>
+              <input type="hidden" name="tautulliCardsForm" value="1" />
+            <% } %>
+            <div class="settings-table settings-table--elements">
+              <div class="settings-row settings-head settings-row--elements settings-row--with-expand">
+                <div>
+                  <img class="settings-head-icon" src="/icons/overview.svg" alt="" />
+                  <span class="settings-head-label">Name</span>
+                </div>
+                <div>
+                  <img class="settings-head-icon" src="/icons/enable.svg" alt="" />
+                  <span class="settings-head-label">Enable</span>
+                </div>
+                <div>
+                  <img class="settings-head-icon" src="/icons/dashboard.svg" alt="" />
+                  <span class="settings-head-label">Dashboard</span>
+                </div>
+                <div>
+                  <img class="settings-head-icon" src="/icons/favourite.svg" alt="" />
+                  <span class="settings-head-label">Favourite</span>
+                </div>
+                <div class="settings-cell--blank" aria-hidden="true"></div>
+              </div>
+              <% overviewItems.forEach((element, index) => { %>
+                <% const orderValue = Number.isFinite(element.order) ? element.order : index + 1; %>
+                <% const showWatchCardsToggle = app.id === 'tautulli' && (element.id === 'watch-stats' || element.id === 'watch-stats-wheel') && tautulliItems.length; %>
+                <% const showElementOptions = !showWatchCardsToggle; %>
+                <div class="settings-row settings-row--elements settings-row--with-expand settings-row--draggable">
+                  <div class="settings-element">
+                    <button class="order-button settings-drag-handle" type="button" title="Drag to reorder" aria-label="Drag to reorder">&#x2630;</button>
+                    <span class="settings-element-name"><%= element.name %></span>
+                  </div>
+                  <div class="settings-cell">
+                    <input type="checkbox" name="element_enable_<%= element.id %>" <%= element.enable ? 'checked' : '' %> />
+                  </div>
+                  <div class="settings-cell">
+                    <input type="checkbox" name="element_dashboard_<%= element.id %>" <%= element.dashboard ? 'checked' : '' %> />
+                  </div>
+                  <div class="settings-cell">
+                    <input class="settings-radio" type="checkbox" name="element_favourite_<%= element.id %>" <%= element.favourite ? 'checked' : '' %> />
+                  </div>
+                  <input type="hidden" class="settings-order-input" name="element_order_<%= element.id %>" value="<%= orderValue %>" />
+                  <div class="settings-cell settings-expand-cell">
+                    <% if (showElementOptions) { %>
+                      <button class="settings-expand-toggle settings-inline-toggle settings-element-options-toggle" type="button" data-target="elementOptions-<%= element.id %>" aria-label="Toggle carousel display options" aria-expanded="false">
+                        <img class="settings-expand-icon" src="/icons/expand.svg" alt="" />
+                      </button>
+                    <% } %>
+                    <% if (showWatchCardsToggle) { %>
+                      <button class="settings-expand-toggle settings-inline-toggle settings-element-options-toggle" type="button" data-target="watchCardsPanel-<%= element.id %>" aria-label="Toggle watch cards display settings" aria-expanded="false">
+                        <img class="settings-expand-icon" src="/icons/expand.svg" alt="" />
+                      </button>
+                    <% } %>
+                  </div>
+                </div>
+                <% if (showElementOptions) { %>
+                  <div class="settings-collapsible is-collapsed settings-inline-collapsible" id="elementOptions-<%= element.id %>">
+                    <div class="settings-card">
+                      <% if (element.id === 'activity-queue') { %>
+                        <div class="settings-card-title">Queue Display Options</div>
+                        <div class="settings-grid">
+                          <label class="radio-pill">
+                            <input type="checkbox" name="element_queue_col_detail_<%= element.id %>" <%= element.queueShowDetail !== false ? 'checked' : '' %> />
+                            <span><%= element.queueDetailLabel || 'Detail' %></span>
+                          </label>
+                          <label class="radio-pill">
+                            <input type="checkbox" name="element_queue_col_subdetail_<%= element.id %>" <%= element.queueShowSubDetail !== false ? 'checked' : '' %> />
+                            <span><%= element.queueSubDetailLabel || 'Sub-detail' %></span>
+                          </label>
+                          <label class="radio-pill">
+                            <input type="checkbox" name="element_queue_col_size_<%= element.id %>" <%= element.queueShowSize !== false ? 'checked' : '' %> />
+                            <span>Size</span>
+                          </label>
+                          <label class="radio-pill">
+                            <input type="checkbox" name="element_queue_col_protocol_<%= element.id %>" <%= element.queueShowProtocol !== false ? 'checked' : '' %> />
+                            <span>Protocol</span>
+                          </label>
+                          <label class="radio-pill">
+                            <input type="checkbox" name="element_queue_col_timeLeft_<%= element.id %>" <%= element.queueShowTimeLeft !== false ? 'checked' : '' %> />
+                            <span>Time Left</span>
+                          </label>
+                          <label class="radio-pill">
+                            <input type="checkbox" name="element_queue_col_progress_<%= element.id %>" <%= element.queueShowProgress !== false ? 'checked' : '' %> />
+                            <span>Progress</span>
+                          </label>
+                        </div>
+                        <div class="settings-grid" style="margin-top:12px;">
+                          <label class="field">
+                            <span>Visible items in queue</span>
+                            <input
+                              type="number"
+                              min="5"
+                              max="50"
+                              step="1"
+                              name="element_queue_visible_rows_<%= element.id %>"
+                              value="<%= element.queueVisibleRows || 10 %>"
+                            />
+                          </label>
+                        </div>
+                      <% } else { %>
+                        <div class="settings-card-title">Carousel Display Options</div>
+                        <div class="settings-grid">
+                          <label class="radio-pill">
+                            <input type="checkbox" name="element_showSubtitle_<%= element.id %>" <%= element.showSubtitle !== false ? 'checked' : '' %> />
+                            <span>Subtitle</span>
+                          </label>
+                          <label class="radio-pill">
+                            <input type="checkbox" name="element_showMeta_<%= element.id %>" <%= element.showMeta !== false ? 'checked' : '' %> />
+                            <span>Meta</span>
+                          </label>
+                          <label class="radio-pill">
+                            <input type="checkbox" name="element_showPill_<%= element.id %>" <%= element.showPill !== false ? 'checked' : '' %> />
+                            <span>Pill</span>
+                          </label>
+                          <label class="radio-pill">
+                            <input type="checkbox" name="element_showTypeIcon_<%= element.id %>" <%= element.showTypeIcon !== false ? 'checked' : '' %> />
+                            <span>Type Icon</span>
+                          </label>
+                          <label class="radio-pill">
+                            <input type="checkbox" name="element_showViewIcon_<%= element.id %>" <%= element.showViewIcon !== false ? 'checked' : '' %> />
+                            <span>View Icon</span>
+                          </label>
+                          <label class="radio-pill">
+                            <input type="checkbox" name="element_showUsername_<%= element.id %>" <%= element.showUsername !== false ? 'checked' : '' %> />
+                            <span>Username</span>
+                          </label>
+                        </div>
+                      <% } %>
+                    </div>
+                  </div>
+                <% } %>
+                <% if (showWatchCardsToggle) { %>
+                  <div class="settings-collapsible is-collapsed settings-inline-collapsible settings-inline-watch-config" id="watchCardsPanel-<%= element.id %>">
+                    <div class="settings-table settings-table--tautulli-cards">
+                      <% tautulliItems.forEach((item, index) => { %>
+                        <% const orderValue = Number.isFinite(item.order) ? item.order : index + 1; %>
+                        <div class="settings-row settings-row--tautulli-cards settings-row--draggable">
+                          <div class="settings-element">
+                            <button class="order-button settings-drag-handle" type="button" title="Drag to reorder" aria-label="Drag to reorder">&#x2630;</button>
+                            <span class="settings-element-name"><%= item.name %></span>
+                          </div>
+                          <div class="settings-cell">
+                            <input type="checkbox" name="tautulli_card_enable_<%= item.id %>" <%= item.enable ? 'checked' : '' %> />
+                          </div>
+                          <div class="settings-cell settings-cell--blank" aria-hidden="true"></div>
+                          <div class="settings-cell settings-cell--blank" aria-hidden="true"></div>
+                          <input type="hidden" class="settings-order-input" name="tautulli_card_order_<%= item.id %>" value="<%= orderValue %>" />
+                          <div class="settings-cell settings-cell--blank" aria-hidden="true"></div>
+                        </div>
+                      <% }) %>
+                    </div>
+                  </div>
+                <% } %>
+              <% }) %>
+            </div>
+            <button class="primary-button" type="submit">Save display settings</button>
+          </form>
+        </div>
+      <% } %>
+    </section>
+  </div>
+  <script>
+    const dashFrame = document.querySelector('.dash-frame');
+    const toggle = document.querySelector('.sidebar-toggle');
+    const toggleIcon = toggle?.querySelector('img');
+    const mobileQuery = window.matchMedia('(max-width: 980px)');
+    const isMobile = () => mobileQuery.matches;
+    const mainContent = document.querySelector('.dash-main');
+    const sidebar = document.querySelector('.dash-sidebar');
+    const safeStorage = {
+      get(key) {
+        try {
+          return localStorage.getItem(key);
+        } catch (err) {
+          return null;
+        }
+      },
+      set(key, value) {
+        try {
+          localStorage.setItem(key, value);
+        } catch (err) {
+          return;
+        }
+      },
+    };
+
+    function setToggleIcon() {
+      if (!toggleIcon) return;
+      toggleIcon.src = '/icons/sidebar-toggle.svg';
+    }
+
+    function applySidebarState() {
+      if (!dashFrame) return;
+      if (isMobile()) {
+        dashFrame.classList.remove('sidebar-collapsed');
+        dashFrame.classList.remove('mobile-nav-open');
+        document.body.classList.remove('mobile-nav-open');
+        setToggleIcon(false);
+      } else {
+        const collapsed = safeStorage.get('sidebarCollapsed') === 'true';
+        dashFrame.classList.toggle('sidebar-collapsed', collapsed);
+        dashFrame.classList.remove('mobile-nav-open');
+        document.body.classList.remove('mobile-nav-open');
+        setToggleIcon(!collapsed);
+      }
+    }
+
+    function closeMobileNav() {
+      if (!dashFrame || !isMobile()) return;
+      if (!dashFrame.classList.contains('mobile-nav-open')) return;
+      dashFrame.classList.remove('mobile-nav-open');
+      document.body.classList.remove('mobile-nav-open');
+      setToggleIcon(false);
+    }
+
+    applySidebarState();
+    mobileQuery.addEventListener('change', applySidebarState);
+    const accordion = document.querySelectorAll('.nav-accordion-item');
+    accordion.forEach((item) => {
+      const trigger = item.querySelector('.nav-accordion-trigger');
+      if (!trigger) return;
+      trigger.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const parentAccordion = item.closest('.nav-accordion');
+        const siblings = parentAccordion
+          ? Array.from(parentAccordion.children).filter((child) => child.classList.contains('nav-accordion-item'))
+          : [];
+        siblings.forEach((other) => {
+          if (other !== item) other.classList.remove('open');
+        });
+        item.classList.toggle('open');
+      });
+    });
+    function handleSidebarToggle() {
+      if (!dashFrame) return;
+      if (isMobile()) {
+        dashFrame.classList.remove('sidebar-collapsed');
+        const isOpen = dashFrame.classList.toggle('mobile-nav-open');
+        document.body.classList.toggle('mobile-nav-open', isOpen);
+        setToggleIcon(isOpen);
+        return;
+      }
+      const isCollapsed = dashFrame.classList.toggle('sidebar-collapsed');
+      safeStorage.set('sidebarCollapsed', isCollapsed ? 'true' : 'false');
+      setToggleIcon(!isCollapsed);
+    }
+
+    toggle?.addEventListener('click', handleSidebarToggle);
+
+    mainContent?.addEventListener('click', (event) => {
+      if (event.target.closest('.sidebar-toggle')) return;
+      if (event.target.closest('.main-window-bar')) return;
+      closeMobileNav();
+    });
+
+    sidebar?.addEventListener('click', (event) => {
+      if (!isMobile() || !dashFrame?.classList.contains('mobile-nav-open')) return;
+      const link = event.target.closest('a');
+      if (!link || !link.classList.contains('active')) return;
+      event.preventDefault();
+      closeMobileNav();
+    });
+
+    const userMenus = document.querySelectorAll('[data-user-menu]');
+
+    function closeUserMenus(except) {
+      userMenus.forEach((menu) => {
+        if (menu === except) return;
+        menu.classList.remove('user-pill--open');
+        menu.setAttribute('aria-expanded', 'false');
+      });
+    }
+
+    userMenus.forEach((menu) => {
+      menu.setAttribute('aria-expanded', 'false');
+      menu.addEventListener('click', (event) => {
+        if (event.target.closest('.user-menu')) return;
+        event.preventDefault();
+        const isOpen = menu.classList.contains('user-pill--open');
+        closeUserMenus(menu);
+        menu.classList.toggle('user-pill--open', !isOpen);
+        menu.setAttribute('aria-expanded', !isOpen ? 'true' : 'false');
+      });
+      menu.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        menu.click();
+      });
+    });
+
+    document.addEventListener('click', (event) => {
+      if (event.target.closest('[data-user-menu]')) return;
+      closeUserMenus();
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      closeUserMenus();
+    });
+
+    function initDragOrderTable(tableSelector) {
+      const table = document.querySelector(tableSelector);
+      if (!table) return;
+      let draggedRow = null;
+      const dataRows = () => Array.from(table.querySelectorAll('.settings-row')).filter((row) => !row.classList.contains('settings-head'));
+      const isInlinePanel = (node) => node && node.classList && node.classList.contains('settings-inline-collapsible');
+      const getInlinePanel = (row) => {
+        const next = row?.nextElementSibling;
+        return isInlinePanel(next) ? next : null;
+      };
+      const moveRowWithPanel = (row, beforeNode) => {
+        const panel = getInlinePanel(row);
+        const parent = row.parentElement;
+        if (!parent) return;
+        parent.insertBefore(row, beforeNode);
+        if (panel) {
+          parent.insertBefore(panel, row.nextSibling);
+        }
+      };
+      const updateOrders = () => {
+        dataRows().forEach((row, index) => {
+          const input = row.querySelector('.settings-order-input');
+          if (input) input.value = index + 1;
+        });
+      };
+
+      dataRows().forEach((row) => {
+        row.setAttribute('draggable', 'true');
+        row.addEventListener('dragstart', (event) => {
+          if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = 'move';
+          }
+          draggedRow = row;
+          row.classList.add('settings-row--dragging');
+        });
+        row.addEventListener('dragend', () => {
+          row.classList.remove('settings-row--dragging');
+          draggedRow = null;
+          updateOrders();
+        });
+        row.addEventListener('dragover', (event) => {
+          event.preventDefault();
+          if (!draggedRow || draggedRow === row) return;
+          const bounds = row.getBoundingClientRect();
+          const insertBefore = (event.clientY - bounds.top) < (bounds.height / 2);
+          const parent = row.parentElement;
+          if (!parent) return;
+          let target = row;
+          if (!insertBefore) {
+            const rowPanel = getInlinePanel(row);
+            target = rowPanel ? rowPanel.nextSibling : row.nextSibling;
+          }
+          if (isInlinePanel(target)) {
+            target = target.nextSibling;
+          }
+          moveRowWithPanel(draggedRow, target);
+        });
+      });
+    }
+    initDragOrderTable('.settings-table--elements');
+    initDragOrderTable('.settings-table--tautulli-cards');
+
+    const watchCardsToggle = document.getElementById('watchCardsToggle');
+    const watchCardsPanel = document.getElementById('watchCardsPanel');
+    if (watchCardsToggle && watchCardsPanel) {
+      watchCardsToggle.addEventListener('click', () => {
+        const isCollapsed = watchCardsPanel.classList.toggle('is-collapsed');
+        watchCardsToggle.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+      });
+    }
+
+    document.querySelectorAll('.settings-element-options-toggle').forEach((button) => {
+      const targetId = button.dataset.target || '';
+      const panel = targetId ? document.getElementById(targetId) : null;
+      if (!panel) return;
+      button.addEventListener('click', () => {
+        const isCollapsed = panel.classList.toggle('is-collapsed');
+        button.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+      });
+    });
+
+    const visibilityButtons = document.querySelectorAll('[data-visibility-toggle]');
+    visibilityButtons.forEach((button) => {
+      const inputId = button.dataset.visibilityToggle;
+      const input = inputId ? document.getElementById(inputId) : null;
+      const img = button.querySelector('img');
+      if (!input) return;
+      button.addEventListener('click', () => {
+        const isHidden = input.type === 'password';
+        input.type = isHidden ? 'text' : 'password';
+        button.dataset.visibilityState = isHidden ? 'visible' : 'hidden';
+        button.setAttribute('aria-label', isHidden ? 'Hide value' : 'Show value');
+        if (img) {
+          img.src = isHidden ? '/icons/view.svg' : '/icons/view-off.svg';
+        }
+      });
+    });
+
+    const plexTokenBtn = document.getElementById('plexRetrieveToken');
+    if (plexTokenBtn) {
+      plexTokenBtn.addEventListener('click', async () => {
+        try {
+          plexTokenBtn.disabled = true;
+          const res = await fetch('/api/plex/token');
+          const data = await res.json();
+          if (!res.ok) throw new Error(data?.error || 'Failed to fetch Plex token.');
+          const input = document.getElementById('plexTokenInput');
+          if (input) input.value = data.token || '';
+        } catch (err) {
+          console.error('[Launcharr] Plex token fetch failed', err);
+        } finally {
+          plexTokenBtn.disabled = false;
+        }
+      });
+    }
+
+    const plexMachineBtn = document.getElementById('plexRetrieveMachine');
+    if (plexMachineBtn) {
+      plexMachineBtn.addEventListener('click', async () => {
+        try {
+          plexMachineBtn.disabled = true;
+          const res = await fetch('/api/plex/machine');
+          const data = await res.json();
+          if (!res.ok) throw new Error(data?.error || 'Failed to fetch Plex machine.');
+          const input = document.getElementById('plexMachineInput');
+          if (input) input.value = data.machineId || '';
+        } catch (err) {
+          console.error('[Launcharr] Plex machine fetch failed', err);
+        } finally {
+          plexMachineBtn.disabled = false;
+        }
+      });
+    }
+
+  </script>
+  <script src="/pwa.js"></script>
+</body>
+</html>

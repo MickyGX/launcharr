@@ -1,0 +1,1482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Launcharr - Settings</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" type="image/png" href="/icons/launcharr-icon.png" />
+  <meta name="theme-color" content="#1cc6c2" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="apple-touch-icon" href="/icons/launcharr-icon.png" />
+</head>
+<body class="dash-body">
+  <div class="dash-frame">
+    <aside class="dash-sidebar">
+      <div class="dash-brand">
+        <span class="dash-logo">
+          <img class="nav-icon app-icon" src="/icons/launcharr-icon.png" alt="Launcharr" />
+        </span>
+        <div>
+          <div class="dash-title">Launcharr</div>
+        </div>
+      </div>
+
+      <div class="dash-nav">
+        <a class="nav-item" href="/dashboard">
+          <img class="nav-icon" src="/icons/dashboard.svg" alt="" />
+          <span class="nav-label">Dashboard</span>
+        </a>
+        <% if (navCategories && navCategories.length) { %>
+          <div class="nav-divider"></div>
+          <div class="nav-accordion">
+            <% navCategories.forEach((category) => { %>
+              <% if (category.sidebarMenu) { %>
+                <div class="nav-accordion-item nav-accordion-item--category">
+                  <button class="nav-accordion-trigger nav-accordion-trigger--category" type="button">
+                    <img class="nav-icon" src="<%= category.icon || '/icons/category.svg' %>" alt="" onerror="this.src='/icons/category.svg'" />
+                    <span class="nav-label"><%= category.name %></span>
+                  </button>
+                  <div class="nav-accordion-panel nav-accordion-panel--category">
+                    <div class="nav-accordion nav-accordion--nested">
+                      <% category.apps.forEach((appItem) => { %>
+                        <div class="nav-accordion-item">
+                          <button class="nav-accordion-trigger" type="button">
+                            <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+                            <span class="nav-label"><%= appItem.name %></span>
+                          </button>
+                          <div class="nav-accordion-panel">
+                            <% if (appItem.menuAccess.overview) { %>
+                              <a class="nav-subitem" href="/apps/<%= appItem.id %>">
+                                <img class="nav-subicon" src="/icons/overview.svg" alt="" />
+                                <span>Overview</span>
+                              </a>
+                            <% } %>
+                            <% if (appItem.menuAccess.launch) { %>
+                              <a class="nav-subitem" href="/apps/<%= appItem.id %>/launch" <%= appItem.effectiveLaunchMode === 'new-tab' ? 'target="_blank" rel="noreferrer"' : '' %>>
+                                <img class="nav-subicon" src="/icons/launch.svg" alt="" />
+                                <span>Launch</span>
+                              </a>
+                            <% } %>
+                            <% if (appItem.menuAccess.settings) { %>
+                              <a class="nav-subitem" href="/apps/<%= appItem.id %>/settings">
+                                <img class="nav-subicon" src="/icons/settings.svg" alt="" />
+                                <span>App settings</span>
+                              </a>
+                            <% } %>
+                            <% if (appItem.menuAccess.overview && role === 'admin') { %>
+                              <a class="nav-subitem" href="/apps/<%= appItem.id %>/activity">
+                                <img class="nav-subicon" src="/icons/activity-queue.svg" alt="" />
+                                <span>Activity</span>
+                              </a>
+                            <% } %>
+                          </div>
+                        </div>
+                      <% }) %>
+                    </div>
+                  </div>
+                </div>
+              <% } else { %>
+                <% category.apps.forEach((appItem) => { %>
+                  <div class="nav-accordion-item">
+                    <button class="nav-accordion-trigger" type="button">
+                      <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+                      <span class="nav-label"><%= appItem.name %></span>
+                    </button>
+                    <div class="nav-accordion-panel">
+                      <% if (appItem.menuAccess.overview) { %>
+                        <a class="nav-subitem" href="/apps/<%= appItem.id %>">
+                          <img class="nav-subicon" src="/icons/overview.svg" alt="" />
+                          <span>Overview</span>
+                        </a>
+                      <% } %>
+                      <% if (appItem.menuAccess.launch) { %>
+                        <a class="nav-subitem" href="/apps/<%= appItem.id %>/launch" <%= appItem.effectiveLaunchMode === 'new-tab' ? 'target="_blank" rel="noreferrer"' : '' %>>
+                          <img class="nav-subicon" src="/icons/launch.svg" alt="" />
+                          <span>Launch</span>
+                        </a>
+                      <% } %>
+                      <% if (appItem.menuAccess.settings) { %>
+                        <a class="nav-subitem" href="/apps/<%= appItem.id %>/settings">
+                          <img class="nav-subicon" src="/icons/settings.svg" alt="" />
+                          <span>App settings</span>
+                        </a>
+                      <% } %>
+                      <% if (appItem.menuAccess.overview && role === 'admin') { %>
+                        <a class="nav-subitem" href="/apps/<%= appItem.id %>/activity">
+                          <img class="nav-subicon" src="/icons/activity-queue.svg" alt="" />
+                          <span>Activity</span>
+                        </a>
+                      <% } %>
+                    </div>
+                  </div>
+                <% }) %>
+              <% } %>
+            <% }) %>
+          </div>
+        <% } %>
+        <div class="nav-divider"></div>
+        <a class="nav-item active" href="/settings">
+          <img class="nav-icon" src="/icons/settings.svg" alt="" />
+          <span class="nav-label">Settings</span>
+        </a>
+      </div>
+
+      <div class="dash-user">
+        <div class="user-pill user-pill--menu" data-user-menu role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
+          <% if (user.avatar) { %>
+            <img class="user-avatar" src="<%= user.avatar %>" alt="" />
+          <% } %>
+          <div class="user-meta">
+            <span class="role"><%= role %></span>
+            <div class="username"><%= user.username %></div>
+            <% if (user.email) { %>
+              <div class="email"><%= user.email %></div>
+            <% } %>
+          </div>
+          <span class="user-pill-caret" aria-hidden="true"></span>
+          <div class="user-menu" role="menu">
+            <a class="user-menu-item" href="/user-settings">
+              <img class="user-menu-icon" src="/icons/settings.svg" alt="" />
+              <span class="user-menu-text">User settings</span>
+            </a>
+            <% if (actualRole === 'admin') { %>
+              <a class="user-menu-item" href="/switch-view?role=<%= role === 'admin' ? 'user' : 'admin' %>">
+                <img class="user-menu-icon" src="/icons/window.svg" alt="" />
+                <span class="user-menu-text"><%= role === 'admin' ? 'Switch to user view' : 'Switch to admin view' %></span>
+              </a>
+            <% } %>
+            <div class="user-menu-divider"></div>
+            <a class="user-menu-item" href="/logout">
+              <img class="user-menu-icon" src="/icons/logout.svg" alt="" />
+              <span class="user-menu-text">Sign out</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <section class="dash-main">
+      <div class="main-window-bar">
+        <button class="sidebar-toggle main-toggle left-toggle" type="button" aria-label="Toggle sidebar">
+          <img class="toggle-icon" src="/icons/sidebar-toggle.svg" alt="" />
+        </button>
+        <div class="main-window-title">
+          <img class="main-window-icon" src="/icons/settings.svg" alt="" />
+          <span class="main-window-app">Settings</span>
+        </div>
+      <div class="main-window-spacer"></div>
+      <div class="main-window-status">
+        <span class="status-dot"></span>
+      </div>
+    </div>
+    <div class="settings-debug" id="settingsDebug" style="display:none;"></div>
+
+      <% const safeJson = (value) => JSON.stringify(value)
+        .replace(/</g, '\\u003c')
+        .replace(/\u2028/g, '\\u2028')
+        .replace(/\u2029/g, '\\u2029'); %>
+      <div class="settings-tabs" role="tablist" aria-label="Settings tabs">
+        <button class="settings-tab-btn is-active" type="button" data-tab="general">General</button>
+        <button class="settings-tab-btn" type="button" data-tab="app">App</button>
+        <button class="settings-tab-btn" type="button" data-tab="display">Display</button>
+        <button class="settings-tab-btn" type="button" data-tab="user">User</button>
+        <button class="settings-tab-btn" type="button" data-tab="log">Log</button>
+      </div>
+
+      <div class="settings-tab-panel is-active" data-tab="general">
+        <div class="dash-panel">
+          <div class="panel-header">
+            <h2>General Settings</h2>
+            <span class="panel-sub">Server identity and remote access</span>
+          </div>
+          <form method="post" action="/settings/general" class="settings-form">
+            <div class="settings-card">
+              <div class="settings-card-title">Server Identity</div>
+              <div class="settings-card-sub">Remote URL is used for external links and sharing. Local URL is preferred for LAN Plex SSO.</div>
+              <label class="field">
+                <span>Server Name</span>
+                <input
+                  type="text"
+                  name="server_name"
+                  value="<%= generalSettings?.serverName || 'Launcharr' %>"
+                  placeholder="Launcharr"
+                />
+              </label>
+              <label class="field">
+                <span>Remote URL</span>
+                <input
+                  type="text"
+                  name="remote_url"
+                  value="<%= generalSettings?.remoteUrl || '' %>"
+                  placeholder="https://example.com"
+                />
+              </label>
+              <label class="field">
+                <span>Local URL</span>
+                <input
+                  type="text"
+                  name="local_url"
+                  value="<%= generalSettings?.localUrl || '' %>"
+                  placeholder="http://192.168.0.2:3333"
+                />
+              </label>
+            </div>
+            <button class="primary-button" type="submit">Save general settings</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="settings-tab-panel" data-tab="display">
+      <div class="dash-panel">
+        <div class="panel-header">
+          <h2>Display Settings</h2>
+          <span class="panel-sub">App visibility per role</span>
+        </div>
+        <form method="post" action="/settings/apps" class="settings-form">
+          <div class="settings-table">
+            <div class="settings-row settings-head">
+              <div>
+                <img class="settings-head-icon" src="/icons/app.svg" alt="" />
+                <span class="settings-head-label">Application</span>
+              </div>
+              <div>
+                <img class="settings-head-icon" src="/icons/enable.svg" alt="" />
+                <span class="settings-head-label">Enable</span>
+              </div>
+              <div>
+                <img class="settings-head-icon" src="/icons/overview.svg" alt="" />
+                <span class="settings-head-label">Overview</span>
+              </div>
+              <div>
+                <img class="settings-head-icon" src="/icons/launch.svg" alt="" />
+                <span class="settings-head-label">Launch</span>
+                <span class="settings-tip" title="Tautulli iFrame is automatically opened as New Tab when Launcharr is accessed from a local/private host.">?</span>
+              </div>
+              <div>
+                <img class="settings-head-icon" src="/icons/favourite.svg" alt="" />
+                <span class="settings-head-label">Favourite</span>
+              </div>
+              <div>
+                <img class="settings-head-icon" src="/icons/category.svg" alt="" />
+                <span class="settings-head-label">Category</span>
+              </div>
+            </div>
+            <% const availableCategories = Array.isArray(categories) && categories.length ? categories : ['Tools']; %>
+            <% const categoryOptions = availableCategories.map((value) => {
+              const label = String(value || '').trim();
+              const initials = label
+                .split(/\s+/)
+                .map((part) => part.charAt(0))
+                .join('')
+                .toUpperCase();
+              const short = initials || label.slice(0, 3).toUpperCase();
+              return { value: label, label, short };
+            }); %>
+            <% const launchOptions = [
+              { value: 'disabled', label: 'Disabled', short: 'Off' },
+              { value: 'new-tab', label: 'New Tab', short: 'Tab' },
+              { value: 'iframe', label: 'iFrame', short: 'Frame' },
+            ]; %>
+            <% apps.forEach((app, index) => { %>
+              <% const menu = app.menu || {}; %>
+              <% const overview = menu.overview || {}; %>
+              <% const launch = menu.launch || {}; %>
+              <% const settings = menu.settings || {}; %>
+              <% const roles = Array.isArray(app.roles) ? app.roles.map(r => String(r).toLowerCase()) : (app.role ? [String(app.role).toLowerCase()] : []); %>
+              <% const defaultUser = !roles.length || roles.includes('user') || roles.includes('both'); %>
+              <% const defaultAdmin = !roles.length || roles.includes('admin') || roles.includes('both'); %>
+              <% const overviewUser = overview.user !== undefined ? overview.user : defaultUser; %>
+              <% const overviewAdmin = overview.admin !== undefined ? overview.admin : defaultAdmin; %>
+              <% const launchUser = launch.user !== undefined ? launch.user : defaultUser; %>
+              <% const launchAdmin = launch.admin !== undefined ? launch.admin : defaultAdmin; %>
+              <% const appLaunchOptions = launchOptions; %>
+              <% const modeValues = appLaunchOptions.map((option) => option.value); %>
+              <% const currentLaunchMode = modeValues.includes(app.launchMode) ? app.launchMode : (launchUser || launchAdmin ? 'new-tab' : 'disabled'); %>
+              <% const settingsAdmin = settings.admin !== undefined ? settings.admin : defaultAdmin; %>
+              <% const adminEnabled = overviewAdmin || launchAdmin || settingsAdmin; %>
+              <% const categoryValues = categoryOptions.map((option) => option.value); %>
+              <% const currentCategory = categoryValues.includes(app.category) ? app.category : categoryOptions[0].value; %>
+              <% const orderValue = Number.isFinite(app.order) ? app.order : index + 1; %>
+              <% const favouriteValue = Boolean(app.favourite || app.favorite); %>
+              <div class="settings-row settings-row--draggable" data-category="<%= currentCategory %>" draggable="true">
+                <div class="settings-app settings-app--draggable">
+                  <button class="order-button settings-drag-handle settings-drag-handle--app" type="button" title="Drag to reorder within category" aria-label="Drag to reorder within category">&#x2630;</button>
+                  <img class="nav-icon app-icon" src="<%= app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(app.id) ? '/icons/' + app.id + '.png' : '/icons/' + app.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+                  <span class="settings-app-name"><%= app.name %></span>
+                </div>
+                <div class="settings-cell">
+                  <input type="checkbox" name="display_enable_<%= app.id %>" <%= adminEnabled ? 'checked' : '' %> />
+                </div>
+                <div class="settings-cell">
+                  <input type="checkbox" name="display_overview_user_<%= app.id %>" <%= overviewUser ? 'checked' : '' %> <%= app.custom ? 'disabled title="Overview disabled for custom apps"' : '' %> />
+                </div>
+                <div class="settings-cell settings-cell--launch">
+                  <input class="settings-radio" type="checkbox" name="display_launch_user_<%= app.id %>" <%= launchUser ? 'checked' : '' %> />
+                  <select class="settings-select settings-launch-mode" name="display_launch_mode_<%= app.id %>" title="<%= app.id === 'tautulli' ? 'Tautulli iFrame mode is overridden to New Tab on local/private host access.' : 'Choose how launch opens.' %>">
+                    <% appLaunchOptions.forEach((option) => { %>
+                      <option value="<%= option.value %>" <%= option.value === currentLaunchMode ? 'selected' : '' %> data-full="<%= option.label %>" data-short="<%= option.short %>" title="<%= option.label %>"><%= option.label %></option>
+                    <% }) %>
+                  </select>
+                </div>
+                <div class="settings-cell">
+                  <input class="settings-radio" type="checkbox" name="display_favourite_<%= app.id %>" <%= favouriteValue ? 'checked' : '' %> />
+                </div>
+                <div class="settings-cell">
+                  <select class="settings-select settings-category" name="display_category_<%= app.id %>">
+                    <% categoryOptions.forEach((option) => { %>
+                      <option value="<%= option.value %>" <%= option.value === currentCategory ? 'selected' : '' %> data-full="<%= option.label %>" data-short="<%= option.short %>" title="<%= option.value %>"><%= option.label %></option>
+                    <% }) %>
+                  </select>
+                </div>
+                <input type="hidden" class="settings-order-input" name="display_order_<%= app.id %>" value="<%= orderValue %>" />
+              </div>
+            <% }) %>
+          </div>
+          <% if (arrApps && arrApps.length) { %>
+            <div class="panel-sub" style="margin-top:16px;">Combined Arr Queue Display</div>
+            <div class="settings-table" style="margin-top:16px;">
+              <div class="settings-row settings-row--arr-combine settings-head">
+                <div>
+                  <img class="settings-head-icon" src="/icons/app.svg" alt="" />
+                  <span class="settings-head-label">Arr App</span>
+                </div>
+                <div>
+                  <img class="settings-head-icon" src="/icons/downloading-soon.svg" alt="" />
+                  <span class="settings-head-label">Downloading Soon</span>
+                </div>
+                <div>
+                  <img class="settings-head-icon" src="/icons/recently-added.svg" alt="" />
+                  <span class="settings-head-label">Recently Downloaded</span>
+                </div>
+                <div>
+                  <img class="settings-head-icon" src="/icons/activity-queue.svg" alt="" />
+                  <span class="settings-head-label">Activity Queue</span>
+                </div>
+              </div>
+              <% arrApps.forEach((app) => { %>
+                <div class="settings-row settings-row--arr-combine">
+                  <div class="settings-app">
+                    <img class="nav-icon app-icon" src="/icons/<%= app.id %>.png" alt="" onerror="this.src='/icons/app.svg'" />
+                    <span class="settings-app-name"><%= app.name %></span>
+                  </div>
+                  <div class="settings-cell">
+                    <input
+                      type="checkbox"
+                      name="arr_combine_downloadingSoon_<%= app.id %>"
+                      <%= arrDashboardCombine?.downloadingSoon?.[app.id] ? 'checked' : '' %>
+                    />
+                  </div>
+                  <div class="settings-cell">
+                    <input
+                      type="checkbox"
+                      name="arr_combine_recentlyDownloaded_<%= app.id %>"
+                      <%= arrDashboardCombine?.recentlyDownloaded?.[app.id] ? 'checked' : '' %>
+                    />
+                  </div>
+                  <div class="settings-cell">
+                    <input
+                      type="checkbox"
+                      name="arr_combine_activityQueue_<%= app.id %>"
+                      <%= arrDashboardCombine?.activityQueue?.[app.id] ? 'checked' : '' %>
+                    />
+                  </div>
+                </div>
+              <% }) %>
+            </div>
+            <div class="settings-card" style="margin-top:16px;">
+              <div class="settings-card-title">Combined Arr Queue Display</div>
+              <div class="settings-grid">
+                <label class="radio-pill">
+                  <input type="checkbox" name="arr_combined_queue_col_detail" <%= arrCombinedQueueDisplay?.queueShowDetail !== false ? 'checked' : '' %> />
+                  <span>Detail</span>
+                </label>
+                <label class="radio-pill">
+                  <input type="checkbox" name="arr_combined_queue_col_subdetail" <%= arrCombinedQueueDisplay?.queueShowSubDetail !== false ? 'checked' : '' %> />
+                  <span>Sub-detail</span>
+                </label>
+                <label class="radio-pill">
+                  <input type="checkbox" name="arr_combined_queue_col_size" <%= arrCombinedQueueDisplay?.queueShowSize !== false ? 'checked' : '' %> />
+                  <span>Size</span>
+                </label>
+                <label class="radio-pill">
+                  <input type="checkbox" name="arr_combined_queue_col_protocol" <%= arrCombinedQueueDisplay?.queueShowProtocol !== false ? 'checked' : '' %> />
+                  <span>Protocol</span>
+                </label>
+                <label class="radio-pill">
+                  <input type="checkbox" name="arr_combined_queue_col_timeleft" <%= arrCombinedQueueDisplay?.queueShowTimeLeft !== false ? 'checked' : '' %> />
+                  <span>Time Left</span>
+                </label>
+                <label class="radio-pill">
+                  <input type="checkbox" name="arr_combined_queue_col_progress" <%= arrCombinedQueueDisplay?.queueShowProgress !== false ? 'checked' : '' %> />
+                  <span>Progress</span>
+                </label>
+              </div>
+              <div class="settings-grid" style="margin-top:12px;">
+                <label class="field">
+                  <span>Visible items in queue</span>
+                  <input
+                    type="number"
+                    min="5"
+                    max="50"
+                    step="1"
+                    name="arr_combined_queue_visible_rows"
+                    value="<%= arrCombinedQueueDisplay?.queueVisibleRows || 10 %>"
+                  />
+                </label>
+              </div>
+            </div>
+          <% } %>
+          <% if (downloaderApps && downloaderApps.length) { %>
+            <div class="panel-sub" style="margin-top:16px;">Combined Download Queue Display</div>
+            <div class="settings-table" style="margin-top:16px;">
+              <div class="settings-row settings-row--arr-combine settings-head">
+                <div>
+                  <img class="settings-head-icon" src="/icons/download.svg" alt="" />
+                  <span class="settings-head-label">Downloader</span>
+                </div>
+                <div class="settings-cell settings-cell--blank" aria-hidden="true"></div>
+                <div class="settings-cell settings-cell--blank" aria-hidden="true"></div>
+                <div>
+                  <img class="settings-head-icon" src="/icons/activity-queue.svg" alt="" />
+                  <span class="settings-head-label">Activity Queue</span>
+                </div>
+              </div>
+              <% downloaderApps.forEach((app) => { %>
+                <div class="settings-row settings-row--arr-combine">
+                  <div class="settings-app">
+                    <img class="nav-icon app-icon" src="<%= app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(app.id) ? '/icons/' + app.id + '.png' : '/icons/' + app.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+                    <span class="settings-app-name"><%= app.name %></span>
+                  </div>
+                  <div class="settings-cell settings-cell--blank" aria-hidden="true"></div>
+                  <div class="settings-cell settings-cell--blank" aria-hidden="true"></div>
+                  <div class="settings-cell">
+                    <input
+                      type="checkbox"
+                      name="downloader_combine_activityQueue_<%= app.id %>"
+                      <%= downloaderDashboardCombine?.activityQueue?.[app.id] ? 'checked' : '' %>
+                    />
+                  </div>
+                </div>
+              <% }) %>
+            </div>
+            <div class="settings-card" style="margin-top:16px;">
+              <div class="settings-card-title">Combined Download Queue Display</div>
+              <div class="settings-grid">
+                <label class="radio-pill">
+                  <input type="checkbox" name="downloader_combined_queue_col_detail" <%= downloaderCombinedQueueDisplay?.queueShowDetail !== false ? 'checked' : '' %> />
+                  <span>Source</span>
+                </label>
+                <label class="radio-pill">
+                  <input type="checkbox" name="downloader_combined_queue_col_subdetail" <%= downloaderCombinedQueueDisplay?.queueShowSubDetail !== false ? 'checked' : '' %> />
+                  <span>Detail</span>
+                </label>
+                <label class="radio-pill">
+                  <input type="checkbox" name="downloader_combined_queue_col_size" <%= downloaderCombinedQueueDisplay?.queueShowSize !== false ? 'checked' : '' %> />
+                  <span>Size</span>
+                </label>
+                <label class="radio-pill">
+                  <input type="checkbox" name="downloader_combined_queue_col_protocol" <%= downloaderCombinedQueueDisplay?.queueShowProtocol !== false ? 'checked' : '' %> />
+                  <span>Protocol</span>
+                </label>
+                <label class="radio-pill">
+                  <input type="checkbox" name="downloader_combined_queue_col_timeleft" <%= downloaderCombinedQueueDisplay?.queueShowTimeLeft !== false ? 'checked' : '' %> />
+                  <span>Time Left</span>
+                </label>
+                <label class="radio-pill">
+                  <input type="checkbox" name="downloader_combined_queue_col_progress" <%= downloaderCombinedQueueDisplay?.queueShowProgress !== false ? 'checked' : '' %> />
+                  <span>Progress</span>
+                </label>
+              </div>
+              <div class="settings-grid" style="margin-top:12px;">
+                <label class="field">
+                  <span>Visible items in queue</span>
+                  <input
+                    type="number"
+                    min="5"
+                    max="50"
+                    step="1"
+                    name="downloader_combined_queue_visible_rows"
+                    value="<%= downloaderCombinedQueueDisplay?.queueVisibleRows || 10 %>"
+                  />
+                </label>
+              </div>
+            </div>
+          <% } %>
+          <button class="primary-button" type="submit">Save display settings</button>
+        </form>
+      </div>
+      </div>
+
+      <div class="settings-tab-panel" data-tab="log">
+      <div class="dash-panel">
+        <div class="panel-header">
+          <h2>Activity Log Settings</h2>
+          <span class="panel-sub">Persisted logs with configurable retention</span>
+        </div>
+        <form method="post" action="/settings/logs" class="settings-form">
+          <div class="settings-card">
+            <div class="settings-card-title">Retention</div>
+            <div class="settings-card-sub">Logs are stored on disk and pruned by these limits.</div>
+            <label class="field">
+              <span>Max Entries</span>
+              <input
+                type="number"
+                min="50"
+                max="5000"
+                step="50"
+                name="log_max_entries"
+                value="<%= logSettings?.maxEntries || 250 %>"
+              />
+            </label>
+            <label class="field">
+              <span>Max Days</span>
+              <input
+                type="number"
+                min="1"
+                max="365"
+                step="1"
+                name="log_max_days"
+                value="<%= logSettings?.maxDays || 7 %>"
+              />
+            </label>
+          </div>
+          <button class="primary-button" type="submit">Save log settings</button>
+        </form>
+      </div>
+
+      <div class="dash-panel">
+        <div class="panel-header">
+          <h2>Combined Activity Log</h2>
+          <span class="panel-sub">All app events in one view</span>
+        </div>
+        <div class="panel-card log-body log-body--combined">
+          <div class="log-toolbar">
+            <div class="log-filter">
+              <span class="log-filter-label">App</span>
+              <select class="settings-select" id="settingsLogApp">
+                <option value="">All</option>
+                <option value="system">System</option>
+                <% apps.forEach((app) => { %>
+                  <option value="<%= app.id %>"><%= app.name %></option>
+                <% }) %>
+              </select>
+            </div>
+            <div class="log-filter">
+              <span class="log-filter-label">Level</span>
+              <select class="settings-select" id="settingsLogLevel">
+                <option value="">All</option>
+                <option value="info">Info</option>
+                <option value="error">Error</option>
+              </select>
+            </div>
+            <button class="primary-button log-refresh" type="button" id="settingsLogRefresh">Refresh</button>
+            <span class="log-status" id="settingsLogStatus">Loading...</span>
+          </div>
+          <div class="log-list" id="settingsLogList"></div>
+        </div>
+      </div>
+      </div>
+
+      <div class="settings-tab-panel" data-tab="app">
+      <div class="dash-panel">
+        <div class="panel-header">
+          <h2>Custom Apps</h2>
+          <span class="panel-sub">Create quick launch entries with custom icons</span>
+        </div>
+        <form class="settings-form" id="customAppForm">
+          <div class="settings-card">
+            <div class="settings-card-title">Create Custom App</div>
+            <div class="settings-card-sub">Overview is disabled for custom apps.</div>
+            <label class="field">
+              <span>Name</span>
+              <input type="text" id="customAppName" placeholder="Custom app name" />
+            </label>
+            <label class="field">
+              <span>Category</span>
+              <select id="customAppCategory">
+                <% (Array.isArray(categories) && categories.length ? categories : ['Tools']).forEach((category) => { %>
+                  <option value="<%= category %>"><%= category %></option>
+                <% }) %>
+              </select>
+            </label>
+            <label class="field">
+              <span>Icon</span>
+              <input type="file" id="customAppIcon" accept="image/png,image/jpeg,image/svg+xml,image/webp" />
+            </label>
+            <span class="settings-users-note" id="customAppNote">Overview is disabled for custom apps.</span>
+          </div>
+          <div class="settings-card-actions">
+            <button class="primary-button" type="submit" id="customAppSubmit">Add custom app</button>
+            <button class="order-button" type="button" id="customAppCancel" style="display:none;">Cancel edit</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="dash-panel">
+        <div class="panel-header">
+          <h2>Custom Apps</h2>
+          <span class="panel-sub">Manage custom apps</span>
+        </div>
+        <div class="settings-table settings-table--custom" id="customAppList">
+          <div class="settings-row settings-head">
+            <div>
+              <img class="settings-head-icon" src="/icons/app.svg" alt="" />
+              <span class="settings-head-label">App</span>
+            </div>
+            <div>
+              <img class="settings-head-icon" src="/icons/category.svg" alt="" />
+              <span class="settings-head-label">Category</span>
+            </div>
+            <div>
+              <img class="settings-head-icon" src="/icons/delete.svg" alt="" />
+              <span class="settings-head-label">Actions</span>
+            </div>
+          </div>
+          <% apps.filter((app) => app.custom).forEach((app) => { %>
+            <div class="settings-row">
+              <div class="settings-app">
+                <img class="nav-icon app-icon" src="<%= app.icon || '/icons/app.svg' %>" alt="" onerror="this.src='/icons/app.svg'" />
+                <span class="settings-app-name"><%= app.name %></span>
+              </div>
+              <div class="settings-cell">
+                <span><%= app.category || 'Tools' %></span>
+              </div>
+              <div class="settings-cell">
+                <button class="order-button custom-app-edit" type="button" data-app-id="<%= app.id %>" data-app-name="<%= app.name %>" data-app-category="<%= app.category || 'Tools' %>">Edit</button>
+                <button class="order-button custom-app-delete" type="button" data-app-id="<%= app.id %>">&times;</button>
+              </div>
+            </div>
+          <% }) %>
+        </div>
+      </div>
+
+      <div class="dash-panel">
+        <div class="panel-header">
+          <h2>Category Manager Settings</h2>
+          <span class="panel-sub">Create, delete, and reorder display categories</span>
+        </div>
+        <form method="post" action="/settings/categories" class="settings-form" id="categoryManagerForm">
+          <input type="hidden" id="categoryManagerJson" name="categories_json" />
+          <div class="settings-table settings-table--categories">
+            <div class="settings-row settings-row--categories settings-head">
+              <div>
+                <img class="settings-head-icon" src="/icons/category.svg" alt="" />
+                <span class="settings-head-label">Category</span>
+              </div>
+              <div>
+                <img class="settings-head-icon" src="/icons/app.svg" alt="" />
+                <span class="settings-head-label">Icon</span>
+              </div>
+              <div>
+                <img class="settings-head-icon" src="/icons/collapse.svg" alt="" />
+                <span class="settings-head-label">Sidebar menu</span>
+              </div>
+              <div>
+                <img class="settings-head-icon" src="/icons/order.svg" alt="" />
+                <span class="settings-head-label">Priority</span>
+              </div>
+              <div>
+                <img class="settings-head-icon" src="/icons/delete.svg" alt="" />
+                <span class="settings-head-label">Delete</span>
+              </div>
+            </div>
+            <div id="categoryRows">
+              <% const categoryManagerEntries = Array.isArray(categoryEntries) && categoryEntries.length
+                ? categoryEntries
+                : ['Tools'].map((name) => ({ name, sidebarMenu: false, icon: '/icons/category.svg' })); %>
+              <% categoryManagerEntries.forEach((entry, index) => { %>
+                <% const iconValue = entry.icon || '/icons/category.svg'; %>
+                <div class="settings-row settings-row--categories category-row" draggable="true" data-category="<%= entry.name %>" data-sidebar-menu="<%= entry.sidebarMenu ? 'true' : 'false' %>" data-icon="<%= iconValue %>">
+                  <div class="settings-app settings-app--category">
+                    <button class="order-button category-drag-handle" type="button" title="Drag to reorder" aria-label="Drag to reorder">&#x2630;</button>
+                    <img class="nav-icon category-icon-preview" src="<%= iconValue %>" alt="" onerror="this.src='/icons/category.svg'" />
+                    <span class="settings-app-name settings-app-name--category"><%= entry.name %></span>
+                  </div>
+                  <div class="settings-cell">
+                    <input class="settings-input category-icon-input" type="text" value="<%= iconValue %>" placeholder="/icons/category.svg" list="categoryIconOptions" aria-label="Category icon path" />
+                  </div>
+                  <div class="settings-cell">
+                    <input class="category-sidebar-toggle" type="checkbox" title="Group apps under this category in the sidebar" aria-label="Group apps in sidebar" <%= entry.sidebarMenu ? 'checked' : '' %> />
+                  </div>
+                  <div class="settings-cell">
+                    <span class="category-priority"><%= index + 1 %></span>
+                  </div>
+                  <div class="settings-cell">
+                    <button class="order-button category-delete-button" type="button" title="Delete category" aria-label="Delete category">&times;</button>
+                  </div>
+                </div>
+              <% }) %>
+            </div>
+          </div>
+          <div class="category-manager-add">
+            <input type="text" id="categoryManagerInput" class="category-manager-input" placeholder="New category name" autocomplete="off" />
+            <button class="primary-button" type="button" id="categoryManagerAddBtn">Add category</button>
+          </div>
+          <datalist id="categoryIconOptions">
+            <% (Array.isArray(categoryIcons) ? categoryIcons : []).forEach((iconPath) => { %>
+              <option value="<%= iconPath %>"></option>
+            <% }) %>
+          </datalist>
+          <span class="settings-users-note" id="categoryManagerNote">Drag and drop rows to set category priority.</span>
+          <button class="primary-button" type="submit">Save category settings</button>
+        </form>
+      </div>
+      </div>
+
+      <div class="settings-tab-panel" data-tab="user">
+      <div class="dash-panel">
+        <div class="panel-header">
+          <h2>User Settings</h2>
+          <span class="panel-sub">Plex users and access roles</span>
+        </div>
+        <div class="settings-form settings-users">
+          <div class="settings-users-actions">
+            <button class="primary-button" type="button" id="fetchPlexUsersBtn">Fetch users</button>
+            <button class="primary-button" type="button" id="savePlexRolesBtn" disabled>Save roles</button>
+            <span class="settings-users-note" id="plexUsersNote">Pull the user list from Plex to assign roles.</span>
+          </div>
+          <div class="settings-users-table">
+            <div class="settings-users-row settings-users-head">
+              <div class="settings-users-head-cell">
+                <img class="settings-head-icon" src="/icons/name.svg" alt="" />
+                <span>Name</span>
+              </div>
+              <div class="settings-users-head-cell">
+                <img class="settings-head-icon" src="/icons/role.svg" alt="" />
+                <span>Role</span>
+              </div>
+            </div>
+            <div id="plexUsersBody"></div>
+          </div>
+        </div>
+      </div>
+      </div>
+    </section>
+  </div>
+  <script>
+    const dashFrame = document.querySelector('.dash-frame');
+    const toggle = document.querySelector('.sidebar-toggle');
+    const toggleIcon = toggle?.querySelector('img');
+    const mobileQuery = window.matchMedia('(max-width: 980px)');
+    const isMobile = () => mobileQuery.matches;
+    const mainContent = document.querySelector('.dash-main');
+    const sidebar = document.querySelector('.dash-sidebar');
+    const tabButtons = Array.from(document.querySelectorAll('.settings-tab-btn'));
+    const tabPanels = Array.from(document.querySelectorAll('.settings-tab-panel'));
+    const debugBanner = document.getElementById('settingsDebug');
+    const showDebug = (message) => {
+      if (!debugBanner) return;
+      debugBanner.textContent = message;
+      debugBanner.style.display = 'block';
+    };
+    window.addEventListener('error', (event) => {
+      const location = event?.filename
+        ? ` (${event.filename}:${event.lineno || 0}:${event.colno || 0})`
+        : '';
+      showDebug('Settings error: ' + (event?.message || 'Unknown error') + location);
+    });
+    window.addEventListener('unhandledrejection', (event) => {
+      const message = event?.reason?.message || String(event?.reason || 'Unknown rejection');
+      showDebug('Settings error: ' + message);
+    });
+    const safeStorage = {
+      get(key) {
+        try {
+          return localStorage.getItem(key);
+        } catch (err) {
+          return null;
+        }
+      },
+      set(key, value) {
+        try {
+          localStorage.setItem(key, value);
+        } catch (err) {
+          return;
+        }
+      },
+    };
+
+    const setActiveTab = (tabId, persist = true) => {
+      if (!tabId) return;
+      tabButtons.forEach((btn) => {
+        const isActive = btn.dataset.tab === tabId;
+        btn.classList.toggle('is-active', isActive);
+        btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
+      tabPanels.forEach((panel) => {
+        panel.classList.toggle('is-active', panel.dataset.tab === tabId);
+      });
+      if (persist) safeStorage.set('settingsTab', tabId);
+    };
+    window.setActiveTab = setActiveTab;
+
+    const storedTab = safeStorage.get('settingsTab');
+    const hasStored = storedTab && tabPanels.some((panel) => panel.dataset.tab === storedTab);
+    setActiveTab(hasStored ? storedTab : 'general', false);
+
+    tabButtons.forEach((btn) => {
+      btn.addEventListener('click', () => setActiveTab(btn.dataset.tab));
+    });
+
+    function setToggleIcon() {
+      if (!toggleIcon) return;
+      toggleIcon.src = '/icons/sidebar-toggle.svg';
+    }
+
+    function applySidebarState() {
+      if (!dashFrame) return;
+      if (isMobile()) {
+        dashFrame.classList.remove('sidebar-collapsed');
+        dashFrame.classList.remove('mobile-nav-open');
+        document.body.classList.remove('mobile-nav-open');
+        setToggleIcon(false);
+      } else {
+        const collapsed = safeStorage.get('sidebarCollapsed') === 'true';
+        dashFrame.classList.toggle('sidebar-collapsed', collapsed);
+        dashFrame.classList.remove('mobile-nav-open');
+        document.body.classList.remove('mobile-nav-open');
+        setToggleIcon(!collapsed);
+      }
+    }
+
+    function closeMobileNav() {
+      if (!dashFrame || !isMobile()) return;
+      if (!dashFrame.classList.contains('mobile-nav-open')) return;
+      dashFrame.classList.remove('mobile-nav-open');
+      document.body.classList.remove('mobile-nav-open');
+      setToggleIcon(false);
+    }
+
+    applySidebarState();
+    mobileQuery.addEventListener('change', applySidebarState);
+    const accordion = document.querySelectorAll('.nav-accordion-item');
+    accordion.forEach((item) => {
+      const trigger = item.querySelector('.nav-accordion-trigger');
+      if (!trigger) return;
+      trigger.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const parentAccordion = item.closest('.nav-accordion');
+        const siblings = parentAccordion
+          ? Array.from(parentAccordion.children).filter((child) => child.classList.contains('nav-accordion-item'))
+          : [];
+        siblings.forEach((other) => {
+          if (other !== item) other.classList.remove('open');
+        });
+        item.classList.toggle('open');
+      });
+    });
+    function handleSidebarToggle() {
+      if (!dashFrame) return;
+      if (isMobile()) {
+        dashFrame.classList.remove('sidebar-collapsed');
+        const isOpen = dashFrame.classList.toggle('mobile-nav-open');
+        document.body.classList.toggle('mobile-nav-open', isOpen);
+        setToggleIcon(isOpen);
+        return;
+      }
+      const isCollapsed = dashFrame.classList.toggle('sidebar-collapsed');
+      safeStorage.set('sidebarCollapsed', isCollapsed ? 'true' : 'false');
+      setToggleIcon(!isCollapsed);
+    }
+
+    toggle?.addEventListener('click', handleSidebarToggle);
+
+    mainContent?.addEventListener('click', (event) => {
+      if (event.target.closest('.sidebar-toggle')) return;
+      if (event.target.closest('.main-window-bar')) return;
+      closeMobileNav();
+    });
+
+    sidebar?.addEventListener('click', (event) => {
+      if (!isMobile() || !dashFrame?.classList.contains('mobile-nav-open')) return;
+      const link = event.target.closest('a');
+      if (!link || !link.classList.contains('active')) return;
+      event.preventDefault();
+      closeMobileNav();
+    });
+
+    const userMenus = document.querySelectorAll('[data-user-menu]');
+
+    function closeUserMenus(except) {
+      userMenus.forEach((menu) => {
+        if (menu === except) return;
+        menu.classList.remove('user-pill--open');
+        menu.setAttribute('aria-expanded', 'false');
+      });
+    }
+
+    userMenus.forEach((menu) => {
+      menu.setAttribute('aria-expanded', 'false');
+      menu.addEventListener('click', (event) => {
+        if (event.target.closest('.user-menu')) return;
+        event.preventDefault();
+        const isOpen = menu.classList.contains('user-pill--open');
+        closeUserMenus(menu);
+        menu.classList.toggle('user-pill--open', !isOpen);
+        menu.setAttribute('aria-expanded', !isOpen ? 'true' : 'false');
+      });
+      menu.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        menu.click();
+      });
+    });
+
+    document.addEventListener('click', (event) => {
+      if (event.target.closest('[data-user-menu]')) return;
+      closeUserMenus();
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      closeUserMenus();
+    });
+  </script>
+  <script>
+    try {
+      const settingsLogList = document.getElementById('settingsLogList');
+      const settingsLogStatus = document.getElementById('settingsLogStatus');
+      const settingsLogRefresh = document.getElementById('settingsLogRefresh');
+      const settingsLogApp = document.getElementById('settingsLogApp');
+      const settingsLogLevel = document.getElementById('settingsLogLevel');
+      const logAppNames = <%- safeJson((apps || []).reduce((acc, app) => {
+        acc[String(app.id || '').toLowerCase()] = app.name || app.id;
+        return acc;
+      }, {})) %>;
+      let settingsLogs = [];
+
+    const escapeLogHtml = (value) => String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+    const formatLogTime = (value) => {
+      const date = value ? new Date(value) : null;
+      if (!date || Number.isNaN(date.getTime())) return '';
+      return date.toLocaleString();
+    };
+
+    const renderSettingsLogs = () => {
+      if (!settingsLogList) return;
+      const appFilter = String(settingsLogApp?.value || '').trim().toLowerCase();
+      const levelFilter = String(settingsLogLevel?.value || '').trim().toLowerCase();
+      const filtered = settingsLogs.filter((entry) => {
+        if (appFilter && String(entry.app || '').toLowerCase() !== appFilter) return false;
+        if (levelFilter && String(entry.level || '').toLowerCase() !== levelFilter) return false;
+        return true;
+      });
+      if (!filtered.length) {
+        settingsLogList.innerHTML = '<div class="log-empty">No logs yet.</div>';
+        return;
+      }
+      settingsLogList.innerHTML = filtered
+        .map((entry) => {
+          const appId = String(entry.app || 'system').toLowerCase();
+          const appName = logAppNames[appId] || (appId === 'system' ? 'System' : appId);
+          const level = String(entry.level || 'info').toLowerCase();
+          const action = String(entry.action || 'event');
+          const message = String(entry.message || '');
+          const time = formatLogTime(entry.ts);
+          return `
+            <div class="log-row log-row--${escapeLogHtml(level)}" data-app="${escapeLogHtml(appId)}">
+              <div class="log-time">${escapeLogHtml(time)}</div>
+              <div class="log-message">
+                <div class="log-title">
+                  <span class="log-app-pill" data-app="${escapeLogHtml(appId)}">${escapeLogHtml(appName)}</span>
+                  ${escapeLogHtml(action)}
+                </div>
+                <div class="log-text">${escapeLogHtml(message)}</div>
+              </div>
+            </div>
+          `;
+        })
+        .join('');
+    };
+
+    const loadSettingsLogs = async () => {
+      if (!settingsLogList || !settingsLogStatus) return;
+      settingsLogStatus.textContent = 'Loading...';
+      try {
+        const response = await fetch('/api/logs?limit=250');
+        const payload = response.ok ? await response.json() : { items: [] };
+        settingsLogs = Array.isArray(payload.items) ? payload.items : [];
+        renderSettingsLogs();
+        settingsLogStatus.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+      } catch (err) {
+        settingsLogStatus.textContent = 'Failed to load logs';
+      }
+    };
+
+    settingsLogRefresh?.addEventListener('click', loadSettingsLogs);
+    settingsLogApp?.addEventListener('change', renderSettingsLogs);
+    settingsLogLevel?.addEventListener('change', renderSettingsLogs);
+    loadSettingsLogs();
+    } catch (err) {
+      console.error('[Launcharr] Settings logs init failed', err);
+    }
+
+    try {
+      const fetchBtn = document.getElementById('fetchPlexUsersBtn');
+      const saveBtn = document.getElementById('savePlexRolesBtn');
+      const usersBody = document.getElementById('plexUsersBody');
+      const note = document.getElementById('plexUsersNote');
+
+      try {
+        const customAppForm = document.getElementById('customAppForm');
+        const customAppName = document.getElementById('customAppName');
+        const customAppCategory = document.getElementById('customAppCategory');
+        const customAppIcon = document.getElementById('customAppIcon');
+        const customAppNote = document.getElementById('customAppNote');
+        const customAppList = document.getElementById('customAppList');
+        const customAppSubmit = document.getElementById('customAppSubmit');
+        const customAppCancel = document.getElementById('customAppCancel');
+        let customAppIconData = '';
+        let customAppEditId = '';
+
+        const setCustomAppNote = (text, error = false) => {
+          if (!customAppNote) return;
+          customAppNote.textContent = text;
+          customAppNote.classList.toggle('settings-users-note--error', Boolean(error));
+        };
+
+        const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ''));
+          reader.onerror = () => reject(reader.error || new Error('Failed to read file.'));
+          reader.readAsDataURL(file);
+        });
+
+        customAppIcon?.addEventListener('change', async () => {
+          const file = customAppIcon.files && customAppIcon.files[0];
+          if (!file) {
+            customAppIconData = '';
+            return;
+          }
+          try {
+            customAppIconData = await readFileAsDataUrl(file);
+            setCustomAppNote('Icon loaded. Overview is disabled for custom apps.');
+          } catch (err) {
+            customAppIconData = '';
+            setCustomAppNote('Failed to read icon file.', true);
+          }
+        });
+
+        customAppForm?.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const name = String(customAppName?.value || '').trim();
+          const category = String(customAppCategory?.value || '').trim();
+          if (!name) {
+            setCustomAppNote('Custom app name is required.', true);
+            return;
+          }
+          setCustomAppNote('Saving custom app...');
+          try {
+            const endpoint = customAppEditId ? '/settings/custom-apps/update' : '/settings/custom-apps';
+            const response = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: customAppEditId, name, category, iconData: customAppIconData }),
+            });
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload?.error || 'Failed to add custom app.');
+            setCustomAppNote('Custom app added.');
+            window.location.reload();
+          } catch (err) {
+            setCustomAppNote(err?.message || 'Failed to add custom app.', true);
+          }
+        });
+
+        customAppList?.addEventListener('click', async (event) => {
+          const editBtn = event.target.closest('.custom-app-edit');
+          if (editBtn) {
+            customAppEditId = String(editBtn.dataset.appId || '').trim();
+            customAppName.value = String(editBtn.dataset.appName || '');
+            if (customAppCategory) customAppCategory.value = String(editBtn.dataset.appCategory || 'Tools');
+            customAppIconData = '';
+            if (customAppIcon) customAppIcon.value = '';
+            if (customAppSubmit) customAppSubmit.textContent = 'Save changes';
+            if (customAppCancel) customAppCancel.style.display = 'inline-flex';
+            setCustomAppNote('Editing custom app. Upload a new icon to replace the current one.');
+            setActiveTab('app');
+            customAppName?.focus();
+            return;
+          }
+          const button = event.target.closest('.custom-app-delete');
+          if (!button) return;
+          const appId = String(button.dataset.appId || '').trim();
+          if (!appId) return;
+          if (!window.confirm('Delete this custom app?')) return;
+          try {
+            const response = await fetch('/settings/custom-apps/delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: appId }),
+            });
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload?.error || 'Failed to delete custom app.');
+            window.location.reload();
+          } catch (err) {
+            setCustomAppNote(err?.message || 'Failed to delete custom app.', true);
+          }
+        });
+
+        customAppCancel?.addEventListener('click', () => {
+          customAppEditId = '';
+          if (customAppName) customAppName.value = '';
+          if (customAppCategory) customAppCategory.value = customAppCategory.options[0]?.value || 'Tools';
+          if (customAppIcon) customAppIcon.value = '';
+          customAppIconData = '';
+          if (customAppSubmit) customAppSubmit.textContent = 'Add custom app';
+          if (customAppCancel) customAppCancel.style.display = 'none';
+          setCustomAppNote('Overview is disabled for custom apps.');
+        });
+      } catch (err) {
+        console.error('[Launcharr] Custom app init failed', err);
+      }
+
+      try {
+        const settingsTable = document.querySelector('.settings-tab-panel[data-tab="display"] .settings-table');
+        if (settingsTable) {
+          const categoryMediaQuery = window.matchMedia('(max-width: 980px)');
+          let draggedSettingsRow = null;
+          const applyCategoryLabels = () => {
+            const useShort = categoryMediaQuery.matches;
+            settingsTable.querySelectorAll('.settings-category option, .settings-launch-mode option').forEach((option) => {
+              const full = option.dataset.full || option.textContent;
+              const short = option.dataset.short || option.textContent;
+              option.textContent = useShort ? short : full;
+            });
+          };
+          applyCategoryLabels();
+          categoryMediaQuery.addEventListener('change', applyCategoryLabels);
+
+          const dataRows = () => Array.from(settingsTable.querySelectorAll('.settings-row')).filter((row) => !row.classList.contains('settings-head'));
+          const getCategory = (row) => row.querySelector('.settings-category')?.value || 'Tools';
+          const updateCategoryOrders = (category) => {
+            const rows = dataRows().filter((row) => getCategory(row) === category);
+            rows.forEach((row, index) => {
+              const input = row.querySelector('.settings-order-input');
+              if (input) input.value = index + 1;
+              const rank = row.querySelector('.settings-order-rank');
+              if (rank) rank.textContent = String(index + 1);
+            });
+          };
+
+          dataRows().forEach((row) => {
+            row.dataset.category = getCategory(row);
+          });
+
+          Array.from(new Set(dataRows().map((row) => getCategory(row)))).forEach(updateCategoryOrders);
+
+          const attachSettingsRowDragEvents = (row) => {
+            row.addEventListener('dragstart', (event) => {
+              if (event.dataTransfer) {
+                event.dataTransfer.effectAllowed = 'move';
+                event.dataTransfer.setData('text/plain', String(row.dataset.category || ''));
+              }
+              draggedSettingsRow = row;
+              row.classList.add('settings-row--dragging');
+            });
+            row.addEventListener('dragend', () => {
+              const category = getCategory(row);
+              row.classList.remove('settings-row--dragging');
+              draggedSettingsRow = null;
+              updateCategoryOrders(category);
+            });
+            row.addEventListener('dragover', (event) => {
+              event.preventDefault();
+              if (!draggedSettingsRow || draggedSettingsRow === row) return;
+              if (getCategory(draggedSettingsRow) !== getCategory(row)) return;
+              const bounds = row.getBoundingClientRect();
+              const insertBefore = (event.clientY - bounds.top) < (bounds.height / 2);
+              const parent = row.parentElement;
+              if (!parent) return;
+              parent.insertBefore(draggedSettingsRow, insertBefore ? row : row.nextSibling);
+            });
+          };
+
+          dataRows().forEach(attachSettingsRowDragEvents);
+
+          settingsTable.addEventListener('change', (event) => {
+            const select = event.target.closest('.settings-category');
+            if (!select) return;
+            const row = select.closest('.settings-row');
+            if (!row) return;
+            const previousCategory = row.dataset.category || select.value;
+            row.dataset.category = select.value;
+            updateCategoryOrders(previousCategory);
+            updateCategoryOrders(select.value);
+          });
+        }
+      } catch (err) {
+        console.error('[Launcharr] Display settings init failed', err);
+      }
+
+      try {
+        const categoryManagerForm = document.getElementById('categoryManagerForm');
+        if (categoryManagerForm) {
+          const categoryRows = document.getElementById('categoryRows');
+          const categoryInput = document.getElementById('categoryManagerInput');
+          const categoryAddBtn = document.getElementById('categoryManagerAddBtn');
+          const categoryJsonInput = document.getElementById('categoryManagerJson');
+          const categoryNote = document.getElementById('categoryManagerNote');
+          let draggedCategoryRow = null;
+
+      const setCategoryNote = (text, error = false) => {
+        if (!categoryNote) return;
+        categoryNote.textContent = text;
+        categoryNote.classList.toggle('settings-users-note--error', Boolean(error));
+      };
+
+      const getCategoryRows = () => Array.from(categoryRows?.querySelectorAll('.category-row') || []);
+      const escapeHtml = (value) => String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+      const normalizeCategory = (value) => String(value || '').trim().toLowerCase();
+      let categoryFormSubmitting = false;
+
+      const syncCategoryPayload = () => {
+        if (!categoryJsonInput) return;
+        const categories = getCategoryRows()
+          .map((row) => ({
+            name: String(row.dataset.category || '').trim(),
+            sidebarMenu: row.dataset.sidebarMenu === 'true',
+            icon: String(row.dataset.icon || '').trim(),
+          }))
+          .filter((entry) => entry.name);
+        categoryJsonInput.value = JSON.stringify(categories);
+      };
+
+      const refreshCategoryRows = () => {
+        const rows = getCategoryRows();
+        rows.forEach((row, index) => {
+          const priority = row.querySelector('.category-priority');
+          if (priority) priority.textContent = String(index + 1);
+        });
+        const disableDelete = rows.length <= 1;
+        rows.forEach((row) => {
+          const deleteButton = row.querySelector('.category-delete-button');
+          if (deleteButton) deleteButton.disabled = disableDelete;
+        });
+        syncCategoryPayload();
+      };
+
+      const submitCategoryChanges = () => {
+        if (categoryFormSubmitting) return;
+        categoryFormSubmitting = true;
+        syncCategoryPayload();
+        categoryManagerForm.requestSubmit();
+      };
+
+      const attachCategoryRowEvents = (row) => {
+        const iconInput = row.querySelector('.category-icon-input');
+        const iconPreview = row.querySelector('.category-icon-preview');
+        if (iconInput) {
+          iconInput.addEventListener('change', () => {
+            const value = String(iconInput.value || '').trim() || '/icons/category.svg';
+            row.dataset.icon = value;
+            if (iconPreview) iconPreview.src = value;
+            syncCategoryPayload();
+          });
+        }
+        const sidebarToggle = row.querySelector('.category-sidebar-toggle');
+        if (sidebarToggle) {
+          sidebarToggle.addEventListener('change', () => {
+            row.dataset.sidebarMenu = sidebarToggle.checked ? 'true' : 'false';
+            syncCategoryPayload();
+          });
+        }
+        row.addEventListener('dragstart', (event) => {
+          if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', String(row.dataset.category || ''));
+          }
+          draggedCategoryRow = row;
+          row.classList.add('category-row--dragging');
+        });
+        row.addEventListener('dragend', () => {
+          row.classList.remove('category-row--dragging');
+          draggedCategoryRow = null;
+          refreshCategoryRows();
+        });
+        row.addEventListener('dragover', (event) => {
+          event.preventDefault();
+          if (!draggedCategoryRow || draggedCategoryRow === row || !categoryRows) return;
+          const bounds = row.getBoundingClientRect();
+          const insertBefore = (event.clientY - bounds.top) < (bounds.height / 2);
+          categoryRows.insertBefore(draggedCategoryRow, insertBefore ? row : row.nextSibling);
+        });
+      };
+
+      getCategoryRows().forEach(attachCategoryRowEvents);
+
+      categoryRows?.addEventListener('click', (event) => {
+        const deleteButton = event.target.closest('.category-delete-button');
+        if (!deleteButton) return;
+        const row = deleteButton.closest('.category-row');
+        if (!row) return;
+        const label = String(row.dataset.category || '').trim() || 'this category';
+        if (!window.confirm('Delete "' + label + '"?')) return;
+        row.remove();
+        setCategoryNote('Category removed. Applying changes...');
+        refreshCategoryRows();
+        submitCategoryChanges();
+      });
+
+      categoryAddBtn?.addEventListener('click', () => {
+        const label = String(categoryInput?.value || '').trim();
+        if (!label) {
+          setCategoryNote('Enter a category name before adding.', true);
+          return;
+        }
+        if (getCategoryRows().some((row) => normalizeCategory(row.dataset.category) === normalizeCategory(label))) {
+          setCategoryNote('That category already exists.', true);
+          return;
+        }
+        if (!window.confirm('Add "' + label + '" as a new category?')) return;
+
+        const row = document.createElement('div');
+        row.className = 'settings-row settings-row--categories category-row';
+        row.draggable = true;
+        row.dataset.category = label;
+        row.dataset.sidebarMenu = 'false';
+        row.dataset.icon = '/icons/category.svg';
+        row.innerHTML =
+          '<div class="settings-app settings-app--category">' +
+            '<button class="order-button category-drag-handle" type="button" title="Drag to reorder" aria-label="Drag to reorder">&#x2630;</button>' +
+            '<img class="nav-icon category-icon-preview" src="/icons/category.svg" alt="" />' +
+            '<span class="settings-app-name settings-app-name--category">' + escapeHtml(label) + '</span>' +
+          '</div>' +
+          '<div class="settings-cell">' +
+            '<input class="settings-input category-icon-input" type="text" value="/icons/category.svg" placeholder="/icons/category.svg" list="categoryIconOptions" aria-label="Category icon path" />' +
+          '</div>' +
+          '<div class="settings-cell">' +
+            '<input class="category-sidebar-toggle" type="checkbox" title="Group apps under this category in the sidebar" aria-label="Group apps in sidebar" />' +
+          '</div>' +
+          '<div class="settings-cell"><span class="category-priority"></span></div>' +
+          '<div class="settings-cell">' +
+            '<button class="order-button category-delete-button" type="button" title="Delete category" aria-label="Delete category">&times;</button>' +
+          '</div>';
+        categoryRows?.appendChild(row);
+        attachCategoryRowEvents(row);
+        if (categoryInput) categoryInput.value = '';
+        setCategoryNote('Category added. Applying changes...');
+        refreshCategoryRows();
+        submitCategoryChanges();
+      });
+
+      categoryInput?.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        categoryAddBtn?.click();
+      });
+
+      categoryManagerForm.addEventListener('submit', () => {
+        syncCategoryPayload();
+      });
+
+          refreshCategoryRows();
+        }
+      } catch (err) {
+        console.error('[Launcharr] Category manager init failed', err);
+      }
+
+    function roleOptions(selected) {
+      return [
+        { value: 'user', label: 'User' },
+        { value: 'co-admin', label: 'Co-admin' },
+        { value: 'admin', label: 'Admin' },
+      ]
+        .map((opt) => '<option value="' + opt.value + '"' + (opt.value === selected ? ' selected' : '') + '>' + opt.label + '</option>')
+        .join('');
+    }
+
+    function renderUsers(users) {
+      usersBody.innerHTML = '';
+      users.forEach((user) => {
+        const row = document.createElement('div');
+        row.className = 'settings-users-row';
+        row.dataset.identifier = user.identifier;
+        row.innerHTML =
+          '<div class="settings-users-name">' + (user.name || 'Plex User') + '</div>' +
+          '<div class="settings-users-role">' +
+            '<select ' + (user.locked ? 'disabled' : '') + '>' +
+              roleOptions(user.role || 'user') +
+            '</select>' +
+            (user.locked ? '<span class="settings-users-locked">Owner</span>' : '') +
+          '</div>';
+        usersBody.appendChild(row);
+      });
+    }
+
+    async function fetchUsers() {
+      if (!fetchBtn || !usersBody || !note) return;
+      fetchBtn.disabled = true;
+      note.textContent = 'Fetching Plex users...';
+      try {
+        console.info('[Launcharr] Plex users request');
+        const res = await fetch('/settings/plex-users');
+        console.info('[Launcharr] Plex users response', { status: res.status, ok: res.ok });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to fetch users.');
+        renderUsers(data.users || []);
+        saveBtn.disabled = false;
+        note.textContent = 'Update roles and hit save.';
+      } catch (err) {
+        console.error('[Launcharr] Plex users failed', { error: err?.message || String(err) });
+        note.textContent = err.message || 'Failed to fetch users.';
+      } finally {
+        fetchBtn.disabled = false;
+      }
+    }
+
+    async function saveRoles() {
+      if (!saveBtn || !usersBody || !note) return;
+      const rows = Array.from(usersBody.querySelectorAll('.settings-users-row'));
+      const roles = rows.map((row) => {
+        const identifier = row.dataset.identifier || '';
+        const select = row.querySelector('select');
+        return { identifier, role: select ? select.value : 'user' };
+      });
+      saveBtn.disabled = true;
+      note.textContent = 'Saving roles...';
+      try {
+        console.info('[Launcharr] Roles save request', { count: roles.length });
+        const res = await fetch('/settings/roles', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roles }),
+        });
+        console.info('[Launcharr] Roles save response', { status: res.status, ok: res.ok });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to save roles.');
+        note.textContent = 'Roles saved.';
+      } catch (err) {
+        console.error('[Launcharr] Roles save failed', { error: err?.message || String(err) });
+        note.textContent = err.message || 'Failed to save roles.';
+      } finally {
+        saveBtn.disabled = false;
+      }
+    }
+
+    fetchBtn?.addEventListener('click', fetchUsers);
+    saveBtn?.addEventListener('click', saveRoles);
+
+      if (fetchBtn) {
+        fetchUsers();
+      }
+    } catch (err) {
+      console.error('[Launcharr] Settings form init failed', err);
+    }
+  </script>
+  <script src="/pwa.js"></script>
+</body>
+</html>

@@ -1,0 +1,631 @@
+[
+  {
+    "id": "plex",
+    "name": "Plex",
+    "url": "http://localhost:32400/web",
+    "description": "Media library",
+    "category": "Media",
+    "roles": [
+      "admin",
+      "user"
+    ],
+    "apiKey": "",
+    "username": "",
+    "password": "",
+    "localUrl": "http://localhost:32400/web",
+    "remoteUrl": "",
+    "menu": {
+      "overview": {
+        "user": true,
+        "admin": true
+      },
+      "launch": {
+        "user": true,
+        "admin": true
+      },
+      "settings": {
+        "user": false,
+        "admin": true
+      }
+    },
+    "plexHost": "",
+    "plexToken": "",
+    "order": 1,
+    "favourite": false,
+    "overviewElements": [
+      {
+        "id": "active",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "showSubtitle": true,
+        "showMeta": true,
+        "showPill": true,
+        "showTypeIcon": true,
+        "showViewIcon": true,
+        "showUsername": true,
+        "order": 1
+      },
+      {
+        "id": "recent",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "showSubtitle": true,
+        "showMeta": true,
+        "showPill": true,
+        "showTypeIcon": true,
+        "showViewIcon": true,
+        "showUsername": true,
+        "order": 2
+      },
+      {
+        "id": "watchlisted",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "showSubtitle": true,
+        "showMeta": true,
+        "showPill": true,
+        "showTypeIcon": true,
+        "showViewIcon": true,
+        "showUsername": true,
+        "order": 3
+      }
+    ],
+    "launchMode": "iframe"
+  },
+  {
+    "id": "tautulli",
+    "name": "Tautulli",
+    "url": "http://localhost:8181",
+    "description": "Plex activity",
+    "category": "Manager",
+    "roles": [
+      "admin",
+      "user"
+    ],
+    "apiKey": "",
+    "username": "",
+    "password": "",
+    "localUrl": "http://localhost:8181",
+    "remoteUrl": "",
+    "menu": {
+      "overview": {
+        "user": true,
+        "admin": true
+      },
+      "launch": {
+        "user": true,
+        "admin": true
+      },
+      "settings": {
+        "user": false,
+        "admin": true
+      }
+    },
+    "order": 1,
+    "favourite": false,
+    "plexToken": "",
+    "tautulliCards": [
+      {
+        "id": "top_movies",
+        "enable": true,
+        "order": 1
+      },
+      {
+        "id": "popular_movies",
+        "enable": true,
+        "order": 2
+      },
+      {
+        "id": "top_tv",
+        "enable": true,
+        "order": 3
+      },
+      {
+        "id": "popular_tv",
+        "enable": true,
+        "order": 4
+      },
+      {
+        "id": "top_music",
+        "enable": true,
+        "order": 5
+      },
+      {
+        "id": "popular_music",
+        "enable": true,
+        "order": 6
+      },
+      {
+        "id": "top_libraries",
+        "enable": false,
+        "order": 9
+      },
+      {
+        "id": "top_users",
+        "enable": true,
+        "order": 8
+      },
+      {
+        "id": "top_platforms",
+        "enable": false,
+        "order": 10
+      },
+      {
+        "id": "last_watched",
+        "enable": true,
+        "order": 7
+      },
+      {
+        "id": "most_concurrent",
+        "enable": false,
+        "order": 11
+      }
+    ],
+    "overviewElements": [
+      {
+        "id": "watch-stats",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "order": 1
+      },
+      {
+        "id": "watch-stats-wheel",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "order": 2
+      }
+    ],
+    "launchMode": "iframe"
+  },
+  {
+    "id": "radarr",
+    "name": "Radarr",
+    "url": "http://localhost:7878",
+    "description": "Movies manager",
+    "category": "Arr Suite",
+    "roles": [
+      "admin",
+      "user"
+    ],
+    "apiKey": "",
+    "username": "",
+    "password": "",
+    "menu": {
+      "overview": {
+        "user": true,
+        "admin": true
+      },
+      "launch": {
+        "user": false,
+        "admin": true
+      },
+      "settings": {
+        "user": false,
+        "admin": true
+      }
+    },
+    "order": 2,
+    "favourite": false,
+    "launchMode": "iframe",
+    "localUrl": "http://localhost:7878",
+    "remoteUrl": "",
+    "plexToken": "",
+    "overviewElements": [
+      {
+        "id": "downloading-soon",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "showSubtitle": true,
+        "showMeta": true,
+        "showPill": true,
+        "showTypeIcon": true,
+        "showViewIcon": true,
+        "showUsername": true,
+        "order": 1
+      },
+      {
+        "id": "recently-downloaded",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "showSubtitle": true,
+        "showMeta": true,
+        "showPill": true,
+        "showTypeIcon": true,
+        "showViewIcon": true,
+        "showUsername": true,
+        "order": 2
+      },
+      {
+        "id": "activity-queue",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "showSubtitle": true,
+        "showMeta": true,
+        "showPill": true,
+        "showTypeIcon": true,
+        "showViewIcon": true,
+        "showUsername": true,
+        "order": 3
+      }
+    ]
+  },
+  {
+    "id": "sonarr",
+    "name": "Sonarr",
+    "url": "http://localhost:8989",
+    "description": "Series manager",
+    "category": "Arr Suite",
+    "roles": [
+      "admin",
+      "user"
+    ],
+    "apiKey": "",
+    "username": "",
+    "password": "",
+    "menu": {
+      "overview": {
+        "user": true,
+        "admin": true
+      },
+      "launch": {
+        "user": false,
+        "admin": true
+      },
+      "settings": {
+        "user": false,
+        "admin": true
+      }
+    },
+    "order": 3,
+    "favourite": false,
+    "launchMode": "iframe",
+    "localUrl": "http://localhost:8989",
+    "remoteUrl": "",
+    "plexToken": "",
+    "overviewElements": [
+      {
+        "id": "downloading-soon",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "order": 1
+      },
+      {
+        "id": "recently-downloaded",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "order": 2
+      }
+    ]
+  },
+  {
+    "id": "lidarr",
+    "name": "Lidarr",
+    "url": "http://localhost:8686",
+    "description": "Music manager",
+    "category": "Arr Suite",
+    "roles": [
+      "hidden"
+    ],
+    "apiKey": "",
+    "username": "",
+    "password": "",
+    "menu": {
+      "overview": {
+        "user": false,
+        "admin": true
+      },
+      "launch": {
+        "user": false,
+        "admin": true
+      },
+      "settings": {
+        "user": false,
+        "admin": true
+      }
+    },
+    "order": 4,
+    "favourite": false,
+    "launchMode": "iframe",
+    "overviewElements": [
+      {
+        "id": "downloading-soon",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "order": 1
+      },
+      {
+        "id": "recently-downloaded",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "order": 2
+      }
+    ]
+  },
+  {
+    "id": "readarr",
+    "name": "Readarr",
+    "url": "http://localhost:8787",
+    "description": "Books manager",
+    "category": "Arr Suite",
+    "roles": [
+      "admin",
+      "user"
+    ],
+    "apiKey": "",
+    "username": "",
+    "password": "",
+    "menu": {
+      "overview": {
+        "user": false,
+        "admin": true
+      },
+      "launch": {
+        "user": false,
+        "admin": true
+      },
+      "settings": {
+        "user": false,
+        "admin": true
+      }
+    },
+    "order": 5,
+    "favourite": false,
+    "launchMode": "iframe",
+    "overviewElements": [
+      {
+        "id": "downloading-soon",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "order": 1
+      },
+      {
+        "id": "recently-downloaded",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "order": 2
+      },
+      {
+        "id": "activity-queue",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "order": 3
+      }
+    ]
+  },
+  {
+    "id": "prowlarr",
+    "name": "Prowlarr",
+    "url": "http://localhost:9696",
+    "description": "Indexer manager",
+    "category": "Arr Suite",
+    "roles": [
+      "admin",
+      "user"
+    ],
+    "apiKey": "",
+    "username": "",
+    "password": "",
+    "menu": {
+      "overview": {
+        "user": false,
+        "admin": true
+      },
+      "launch": {
+        "user": false,
+        "admin": true
+      },
+      "settings": {
+        "user": false,
+        "admin": true
+      }
+    },
+    "order": 8,
+    "favourite": false,
+    "launchMode": "iframe",
+    "localUrl": "http://localhost:9696",
+    "remoteUrl": "",
+    "plexToken": ""
+  },
+  {
+    "id": "pulsarr",
+    "name": "Pulsarr",
+    "url": "http://localhost:3030",
+    "description": "Requests and watchlists",
+    "category": "Arr Suite",
+    "roles": [
+      "hidden"
+    ],
+    "apiKey": "",
+    "username": "",
+    "password": "",
+    "menu": {
+      "overview": {
+        "user": true,
+        "admin": true
+      },
+      "launch": {
+        "user": true,
+        "admin": true
+      },
+      "settings": {
+        "user": false,
+        "admin": true
+      }
+    },
+    "order": 1,
+    "favourite": false,
+    "launchMode": "iframe",
+    "overviewElements": [
+      {
+        "id": "recent-requests",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "showSubtitle": true,
+        "showMeta": true,
+        "showPill": true,
+        "showTypeIcon": true,
+        "showViewIcon": true,
+        "showUsername": true,
+        "order": 1
+      },
+      {
+        "id": "most-watchlisted",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "showSubtitle": true,
+        "showMeta": true,
+        "showPill": true,
+        "showTypeIcon": true,
+        "showViewIcon": true,
+        "showUsername": true,
+        "order": 2
+      }
+    ],
+    "localUrl": "http://localhost:3030",
+    "remoteUrl": "",
+    "plexToken": ""
+  },
+  {
+    "id": "cleanuparr",
+    "name": "Cleanuparr",
+    "url": "http://localhost:8083",
+    "description": "Library cleanup",
+    "category": "Arr Suite",
+    "roles": [
+      "hidden"
+    ],
+    "apiKey": "",
+    "username": "",
+    "password": "",
+    "menu": {
+      "overview": {
+        "user": false,
+        "admin": true
+      },
+      "launch": {
+        "user": false,
+        "admin": true
+      },
+      "settings": {
+        "user": false,
+        "admin": true
+      }
+    },
+    "order": 6,
+    "favourite": false,
+    "launchMode": "iframe"
+  },
+  {
+    "id": "huntarr",
+    "name": "Huntarr",
+    "url": "http://localhost:9200",
+    "description": "Indexer hunting",
+    "category": "Arr Suite",
+    "roles": [
+      "hidden"
+    ],
+    "apiKey": "",
+    "username": "",
+    "password": "",
+    "menu": {
+      "overview": {
+        "user": false,
+        "admin": true
+      },
+      "launch": {
+        "user": false,
+        "admin": true
+      },
+      "settings": {
+        "user": false,
+        "admin": true
+      }
+    },
+    "order": 7,
+    "favourite": false,
+    "launchMode": "iframe"
+  },
+  {
+    "id": "transmission",
+    "name": "Transmission",
+    "url": "http://localhost:9091",
+    "description": "Torrent client",
+    "category": "Downloaders",
+    "roles": [
+      "hidden"
+    ],
+    "apiKey": "",
+    "username": "",
+    "password": "",
+    "menu": {
+      "overview": {
+        "user": false,
+        "admin": true
+      },
+      "launch": {
+        "user": true,
+        "admin": true
+      },
+      "settings": {
+        "user": false,
+        "admin": true
+      }
+    },
+    "order": 2,
+    "favourite": false,
+    "launchMode": "iframe",
+    "localUrl": "http://localhost:9091",
+    "remoteUrl": "",
+    "plexToken": ""
+  },
+  {
+    "id": "nzbget",
+    "name": "NZBGet",
+    "url": "http://localhost:6789",
+    "description": "Usenet client",
+    "category": "Downloaders",
+    "roles": [
+      "hidden"
+    ],
+    "apiKey": "",
+    "username": "",
+    "password": "",
+    "menu": {
+      "overview": {
+        "user": false,
+        "admin": true
+      },
+      "launch": {
+        "user": true,
+        "admin": true
+      },
+      "settings": {
+        "user": false,
+        "admin": true
+      }
+    },
+    "order": 1,
+    "favourite": false,
+    "launchMode": "iframe",
+    "localUrl": "http://localhost:6789",
+    "remoteUrl": "",
+    "plexToken": ""
+  }
+]

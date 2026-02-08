@@ -1,0 +1,1286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Launcharr · <%= app.name %> Overview</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" type="image/png" href="/icons/launcharr-icon.png" />
+  <meta name="theme-color" content="#1cc6c2" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="apple-touch-icon" href="/icons/launcharr-icon.png" />
+</head>
+<body class="dash-body">
+  <div class="dash-frame">
+    <aside class="dash-sidebar">
+      <div class="dash-brand">
+        <span class="dash-logo">
+          <img class="nav-icon app-icon" src="/icons/launcharr-icon.png" alt="Launcharr" />
+        </span>
+        <div>
+          <div class="dash-title">Launcharr</div>
+        </div>
+      </div>
+
+      <div class="dash-nav">
+        <a class="nav-item" href="/dashboard">
+          <img class="nav-icon" src="/icons/dashboard.svg" alt="" />
+          <span class="nav-label">Dashboard</span>
+        </a>
+        <% if (navCategories && navCategories.length) { %>
+          <div class="nav-divider"></div>
+          <div class="nav-accordion">
+            <% navCategories.forEach((category) => { %>
+              <% if (category.sidebarMenu) { %>
+                <% const categoryOpen = category.apps.some((item) => item.id === app.id); %>
+                <div class="nav-accordion-item nav-accordion-item--category<%= categoryOpen ? ' open' : '' %>">
+                  <button class="nav-accordion-trigger nav-accordion-trigger--category" type="button">
+                    <img class="nav-icon" src="<%= category.icon || '/icons/category.svg' %>" alt="" onerror="this.src='/icons/category.svg'" />
+                    <span class="nav-label"><%= category.name %></span>
+                  </button>
+                  <div class="nav-accordion-panel nav-accordion-panel--category">
+                    <div class="nav-accordion nav-accordion--nested">
+                      <% category.apps.forEach((appItem) => { %>
+                        <div class="nav-accordion-item<%= appItem.id === app.id && (!((appItem.favourite || appItem.favorite)) || appItem.navFavourite) ? ' open' : '' %>">
+                          <button class="nav-accordion-trigger" type="button">
+                            <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+                            <span class="nav-label"><%= appItem.name %></span>
+                          </button>
+                          <div class="nav-accordion-panel">
+                            <% if (appItem.menuAccess.overview) { %>
+                              <a class="nav-subitem<%= appItem.id === app.id ? ' active' : '' %>" href="/apps/<%= appItem.id %>">
+                                <img class="nav-subicon" src="/icons/overview.svg" alt="" />
+                                <span>Overview</span>
+                              </a>
+                            <% } %>
+                            <% if (appItem.menuAccess.launch) { %>
+                              <a class="nav-subitem" href="/apps/<%= appItem.id %>/launch" <%= appItem.effectiveLaunchMode === 'new-tab' ? 'target="_blank" rel="noreferrer"' : '' %>>
+                                <img class="nav-subicon" src="/icons/launch.svg" alt="" />
+                                <span>Launch</span>
+                              </a>
+                            <% } %>
+                            <% if (appItem.menuAccess.settings) { %>
+                              <a class="nav-subitem" href="/apps/<%= appItem.id %>/settings">
+                                <img class="nav-subicon" src="/icons/settings.svg" alt="" />
+                                <span>App settings</span>
+                              </a>
+                            <% } %>
+                            <% if (appItem.menuAccess.overview && role === 'admin') { %>
+                              <a class="nav-subitem<%= appItem.id === app.id ? (String(page || '') === 'activity' ? ' active' : '') : '' %>" href="/apps/<%= appItem.id %>/activity">
+                                <img class="nav-subicon" src="/icons/activity-queue.svg" alt="" />
+                                <span>Activity</span>
+                              </a>
+                            <% } %>
+                          </div>
+                        </div>
+                      <% }) %>
+                    </div>
+                  </div>
+                </div>
+              <% } else { %>
+                <% category.apps.forEach((appItem) => { %>
+                  <div class="nav-accordion-item<%= appItem.id === app.id && (!((appItem.favourite || appItem.favorite)) || appItem.navFavourite) ? ' open' : '' %>">
+                    <button class="nav-accordion-trigger" type="button">
+                      <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+                      <span class="nav-label"><%= appItem.name %></span>
+                    </button>
+                    <div class="nav-accordion-panel">
+                      <% if (appItem.menuAccess.overview) { %>
+                        <a class="nav-subitem<%= appItem.id === app.id ? ' active' : '' %>" href="/apps/<%= appItem.id %>">
+                          <img class="nav-subicon" src="/icons/overview.svg" alt="" />
+                          <span>Overview</span>
+                        </a>
+                      <% } %>
+                      <% if (appItem.menuAccess.launch) { %>
+                        <a class="nav-subitem" href="/apps/<%= appItem.id %>/launch" <%= appItem.effectiveLaunchMode === 'new-tab' ? 'target="_blank" rel="noreferrer"' : '' %>>
+                          <img class="nav-subicon" src="/icons/launch.svg" alt="" />
+                          <span>Launch</span>
+                        </a>
+                      <% } %>
+                      <% if (appItem.menuAccess.settings) { %>
+                        <a class="nav-subitem" href="/apps/<%= appItem.id %>/settings">
+                          <img class="nav-subicon" src="/icons/settings.svg" alt="" />
+                          <span>App settings</span>
+                        </a>
+                      <% } %>
+                      <% if (appItem.menuAccess.overview && role === 'admin') { %>
+                        <a class="nav-subitem<%= appItem.id === app.id ? (String(page || '') === 'activity' ? ' active' : '') : '' %>" href="/apps/<%= appItem.id %>/activity">
+                          <img class="nav-subicon" src="/icons/activity-queue.svg" alt="" />
+                          <span>Activity</span>
+                        </a>
+                      <% } %>
+                    </div>
+                  </div>
+                <% }) %>
+              <% } %>
+            <% }) %>
+          </div>
+        <% } %>
+        <% if (role === 'admin') { %>
+          <div class="nav-divider"></div>
+          <a class="nav-item" href="/settings">
+            <img class="nav-icon" src="/icons/settings.svg" alt="" />
+            <span class="nav-label">Settings</span>
+          </a>
+        <% } %>
+      </div>
+
+      <div class="dash-user">
+        <div class="user-pill user-pill--menu" data-user-menu role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
+          <% if (user.avatar) { %>
+            <img class="user-avatar" src="<%= user.avatar %>" alt="" />
+          <% } %>
+          <div class="user-meta">
+            <span class="role"><%= role %></span>
+            <div class="username"><%= user.username %></div>
+            <% if (user.email) { %>
+              <div class="email"><%= user.email %></div>
+            <% } %>
+          </div>
+          <span class="user-pill-caret" aria-hidden="true"></span>
+          <div class="user-menu" role="menu">
+            <a class="user-menu-item" href="/user-settings">
+              <img class="user-menu-icon" src="/icons/settings.svg" alt="" />
+              <span class="user-menu-text">User settings</span>
+            </a>
+            <% if (actualRole === 'admin') { %>
+              <a class="user-menu-item" href="/switch-view?role=<%= role === 'admin' ? 'user' : 'admin' %>">
+                <img class="user-menu-icon" src="/icons/window.svg" alt="" />
+                <span class="user-menu-text"><%= role === 'admin' ? 'Switch to user view' : 'Switch to admin view' %></span>
+              </a>
+            <% } %>
+            <div class="user-menu-divider"></div>
+            <a class="user-menu-item" href="/logout">
+              <img class="user-menu-icon" src="/icons/logout.svg" alt="" />
+              <span class="user-menu-text">Sign out</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <section class="dash-main bar-flush">
+      <% 
+        const menu = app.menu || {};
+        const overview = menu.overview || {};
+        const launch = menu.launch || {};
+        const settingsMenu = menu.settings || {};
+        const roleKey = role === 'admin' || role === 'co-admin' ? 'admin' : 'user';
+        const hasMenu = Boolean(menu.overview || menu.launch || menu.settings);
+        const enabled = hasMenu ? Boolean(overview[roleKey] || launch[roleKey] || settingsMenu[roleKey]) : true;
+        const hasUrl = Boolean(app.localUrl || app.remoteUrl);
+        const hasToken = app.id === 'plex' ? Boolean(app.plexToken) : true;
+        const statusOk = enabled && hasUrl && hasToken;
+      %>
+      <div class="main-window-bar">
+        <button class="sidebar-toggle main-toggle left-toggle" type="button" aria-label="Toggle sidebar">
+          <img class="toggle-icon" src="/icons/sidebar-toggle.svg" alt="" />
+        </button>
+        <div class="main-window-title">
+          <img class="main-window-icon" src="<%= ['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'cleanuparr', 'huntarr', 'transmission'].includes(app.id) ? '/icons/' + app.id + '.png' : '/icons/' + app.id + '.svg' %>" alt="" onerror="this.src='/icons/app.svg'" />
+          <span class="main-window-app"><%= app.name %></span>
+          <span class="main-window-rest">| Overview</span>
+        </div>
+        <div class="main-window-spacer"></div>
+        <div class="main-window-status">
+          <span class="status-dot <%= statusOk ? 'status-dot--ok' : 'status-dot--bad' %>"></span>
+        </div>
+      </div>
+
+      <% if (app.id === 'plex') { %>
+        <%
+          const overviewItems = Array.isArray(overviewElements) ? overviewElements : [];
+          const overviewById = new Map(overviewItems.map((item) => [item.id, item]));
+          const activeSettings = overviewById.get('active') || { enable: true, order: 1 };
+          const recentSettings = overviewById.get('recent') || { enable: true, order: 2 };
+          const watchlistedSettings = overviewById.get('watchlisted') || { enable: true, order: 3 };
+          const orderedPlexSections = [
+            { id: 'active', settings: activeSettings },
+            { id: 'recent', settings: recentSettings },
+            { id: 'watchlisted', settings: watchlistedSettings },
+          ]
+            .filter((item) => item.settings?.enable !== false)
+            .sort((a, b) => {
+              const favouriteDelta = (b.settings?.favourite ? 1 : 0) - (a.settings?.favourite ? 1 : 0);
+              if (favouriteDelta !== 0) return favouriteDelta;
+              const orderDelta = (a.settings?.order || 0) - (b.settings?.order || 0);
+              if (orderDelta !== 0) return orderDelta;
+              return a.id.localeCompare(b.id);
+            });
+        %>
+        <div class="plex-overview">
+          <% orderedPlexSections.forEach((section) => { %>
+            <% if (section.id === 'active') { %>
+              <section class="plex-module plex-module--no-subtitle" id="plex-active">
+                <div class="plex-topbar">
+                  <div class="plex-title-wrap">
+                    <div class="plex-title">
+                      <img class="plex-logo" src="/icons/plex.png" alt="Plex" loading="eager" />
+                      <span>Active Streams</span>
+                    </div>
+                    <div class="plex-subtitle"></div>
+                  </div>
+                  <div class="plex-spacer"></div>
+
+                  <div class="plex-controls-right">
+                    <button class="plex-iconbtn" id="plexActivePrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
+                    <button class="plex-iconbtn" id="plexActiveNextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="plex-active">
+                      <div class="plex-doublechev">
+                        <div class="plex-chev plex-up"></div>
+                        <div class="plex-chev plex-down"></div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="plex-panel">
+                  <div id="plexActiveViewport" class="plex-carousel-viewport">
+                    <div id="plexActiveTrack" class="plex-carousel-track">
+                      <div class="plex-empty">Loading…</div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            <% } %>
+            <% if (section.id === 'recent') { %>
+              <section class="plex-module plex-module--no-subtitle" id="plex-recent">
+                <div class="plex-topbar">
+                  <div class="plex-title-wrap">
+                    <div class="plex-title">
+                      <img class="plex-logo" src="/icons/plex.png" alt="Plex" loading="eager" />
+                      <span>Recently Added</span>
+                    </div>
+                    <div class="plex-subtitle"></div>
+                  </div>
+
+                  <div class="plex-spacer"></div>
+
+                  <div class="plex-controls-right">
+                    <div class="plex-select plex-icon plex-filter-media" id="plexRecentTypeWrap" title="Media type">
+                      <select id="plexRecentTypeFilter" aria-label="Media type">
+                        <option value="movie" selected>Movies</option>
+                        <option value="show">TV</option>
+                      </select>
+                    </div>
+
+                    <div class="plex-select plex-xsmall" title="Limit">
+                      <select id="plexRecentLimitSelect">
+                        <option value="10">10</option>
+                        <option value="20" selected>20</option>
+                        <option value="50">50</option>
+                      </select>
+                    </div>
+
+                    <button class="plex-iconbtn" id="plexRecentPrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
+                    <button class="plex-iconbtn" id="plexRecentNextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="plex-recent">
+                      <div class="plex-doublechev">
+                        <div class="plex-chev plex-up"></div>
+                        <div class="plex-chev plex-down"></div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="plex-panel">
+                  <div id="plexRecentViewport" class="plex-carousel-viewport">
+                    <div id="plexRecentTrack" class="plex-carousel-track">
+                      <div class="plex-empty">Loading…</div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            <% } %>
+            <% if (section.id === 'watchlisted') { %>
+              <section class="plex-module plex-module--no-subtitle" id="plex-watchlisted">
+                <div class="plex-topbar">
+                  <div class="plex-title-wrap">
+                    <div class="plex-title">
+                      <img class="plex-logo" src="/icons/plex.png" alt="Plex" loading="eager" />
+                      <span>Most Watchlisted This Week</span>
+                    </div>
+                    <div class="plex-subtitle"></div>
+                  </div>
+
+                  <div class="plex-spacer"></div>
+
+                  <div class="plex-controls-right">
+                    <div class="plex-select plex-icon plex-filter-media" id="plexWatchlistedTypeWrap" title="Media type">
+                      <select id="plexWatchlistedTypeFilter" aria-label="Media type">
+                        <option value="all" selected>All</option>
+                        <option value="movie">Movies</option>
+                        <option value="show">TV</option>
+                      </select>
+                    </div>
+
+                    <div class="plex-select plex-xsmall" title="Limit">
+                      <select id="plexWatchlistedLimitSelect">
+                        <option value="10">10</option>
+                        <option value="20" selected>20</option>
+                        <option value="50">50</option>
+                      </select>
+                    </div>
+
+                    <button class="plex-iconbtn" id="plexWatchlistedPrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
+                    <button class="plex-iconbtn" id="plexWatchlistedNextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="plex-watchlisted">
+                      <div class="plex-doublechev">
+                        <div class="plex-chev plex-up"></div>
+                        <div class="plex-chev plex-down"></div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="plex-panel">
+                  <div id="plexWatchlistedViewport" class="plex-carousel-viewport">
+                    <div id="plexWatchlistedTrack" class="plex-carousel-track">
+                      <div class="plex-empty">Loading…</div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            <% } %>
+          <% }) %>
+
+          <div id="plexActiveModalBackdrop" class="plex-modal-backdrop plex-hidden">
+            <div class="plex-modal">
+              <button id="plexActiveModalClose" class="plex-modal-close" aria-label="Close">✕</button>
+              <div class="plex-modal-header">
+                <div class="plex-modal-title">
+                  <span id="plexActiveModalTypeIcon" class="plex-mini-icon"></span>
+                  <span id="plexActiveModalTitle">Loading…</span>
+                </div>
+                <div id="plexActiveModalSubtitle" class="plex-modal-subtitle"></div>
+              </div>
+              <div id="plexActiveModalBody" class="plex-modal-body"></div>
+            </div>
+          </div>
+
+          <div id="plexRecentModalBackdrop" class="plex-modal-backdrop plex-hidden">
+            <div class="plex-modal">
+              <button id="plexRecentModalClose" class="plex-modal-close" aria-label="Close">✕</button>
+              <div class="plex-modal-header">
+                <div class="plex-modal-title">
+                  <span id="plexRecentModalTypeIcon" class="plex-mini-icon"></span>
+                  <span id="plexRecentModalTitle">Loading…</span>
+                </div>
+                <div id="plexRecentModalSubtitle" class="plex-modal-subtitle"></div>
+              </div>
+              <div id="plexRecentModalBody" class="plex-modal-body"></div>
+            </div>
+          </div>
+
+          <div id="plexWatchlistedModalBackdrop" class="plex-modal-backdrop plex-hidden">
+            <div class="plex-modal">
+              <button id="plexWatchlistedModalClose" class="plex-modal-close" aria-label="Close">✕</button>
+              <div class="plex-modal-header">
+                <div class="plex-modal-title">
+                  <span id="plexWatchlistedModalTypeIcon" class="plex-mini-icon"></span>
+                  <span id="plexWatchlistedModalTitle">Loading…</span>
+                </div>
+                <div id="plexWatchlistedModalSubtitle" class="plex-modal-subtitle"></div>
+              </div>
+              <div id="plexWatchlistedModalBody" class="plex-modal-body"></div>
+            </div>
+          </div>
+        </div>
+      <% } %>
+
+      <% if (app.id === 'tautulli') { %>
+        <%
+          const overviewItems = Array.isArray(overviewElements) ? overviewElements : [];
+          const showStats = overviewItems.some((item) => item.id === 'watch-stats' && item.enable !== false);
+          const showStatsWheel = overviewItems.some((item) => item.id === 'watch-stats-wheel' && item.enable !== false);
+        %>
+        <% if (showStats || showStatsWheel) { %>
+          <div class="plex-overview">
+            <% if (showStats) { %>
+              <section class="plex-module plex-module--no-subtitle" id="tautulli-stats">
+                <div class="plex-topbar">
+                  <div class="plex-title-wrap">
+                    <div class="plex-title">
+                      <img class="plex-logo" src="/icons/tautulli.png" alt="Tautulli" loading="eager" />
+                      <span>Watch Statistics</span>
+                    </div>
+                    <div class="plex-subtitle"></div>
+                  </div>
+                  <div class="plex-spacer"></div>
+
+                  <div class="plex-controls-right">
+                    <button class="plex-iconbtn" id="tautulliStatsPrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
+                    <button class="plex-iconbtn" id="tautulliStatsNextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="tautulli-stats">
+                      <div class="plex-doublechev">
+                        <div class="plex-chev plex-up"></div>
+                        <div class="plex-chev plex-down"></div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="plex-panel">
+                  <div id="tautulliStatsViewport" class="plex-carousel-viewport">
+                    <div id="tautulliStatsTrack" class="plex-carousel-track">
+                      <div class="plex-empty">Loading…</div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            <% } %>
+            <% if (showStatsWheel) { %>
+              <section class="plex-module plex-module--no-subtitle" id="tautulli-stats-wheel">
+                <div class="plex-topbar">
+                  <div class="plex-title-wrap">
+                    <div class="plex-title">
+                      <img class="plex-logo" src="/icons/tautulli.png" alt="Tautulli" loading="eager" />
+                      <span>Watch Statistics Wheel</span>
+                    </div>
+                    <div class="plex-subtitle"></div>
+                  </div>
+                  <div class="plex-spacer"></div>
+
+                  <div class="plex-controls-right">
+                    <button class="plex-iconbtn" id="tautulliWheelPrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
+                    <button class="plex-iconbtn" id="tautulliWheelNextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="tautulli-stats-wheel">
+                      <div class="plex-doublechev">
+                        <div class="plex-chev plex-up"></div>
+                        <div class="plex-chev plex-down"></div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="plex-panel">
+                  <div id="tautulliWheelViewport" class="plex-carousel-viewport">
+                    <div id="tautulliWheelTrack" class="plex-carousel-track">
+                      <div class="plex-empty">Loading…</div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            <% } %>
+          </div>
+          <div id="tautulliModalBackdrop" class="plex-modal-backdrop plex-hidden">
+            <div class="plex-modal">
+              <button id="tautulliModalClose" class="plex-modal-close" aria-label="Close">✕</button>
+              <div class="plex-modal-header">
+                <div class="plex-modal-title">
+                  <span id="tautulliModalTypeIcon" class="plex-mini-icon"></span>
+                  <span id="tautulliModalTitle">Loading…</span>
+                </div>
+                <div id="tautulliModalSubtitle" class="plex-modal-subtitle"></div>
+              </div>
+              <div id="tautulliModalBody" class="plex-modal-body"></div>
+            </div>
+          </div>
+        <% } %>
+      <% } %>
+
+      <% if (['sonarr', 'radarr', 'lidarr', 'readarr'].includes(app.id)) { %>
+        <%
+          const overviewItems = Array.isArray(overviewElements) ? overviewElements : [];
+          const overviewById = new Map(overviewItems.map((item) => [item.id, item]));
+          const downloadingSoonSettings = overviewById.get('downloading-soon') || { enable: true, order: 1 };
+          const recentlyDownloadedSettings = overviewById.get('recently-downloaded') || { enable: true, order: 2 };
+          const activityQueueSettings = overviewById.get('activity-queue') || { enable: true, order: 3 };
+          const arrLogo = '/icons/' + app.id + '.png';
+          const appPrefix = app.id;
+          const orderedArrSections = [
+            { id: 'downloading-soon', settings: downloadingSoonSettings },
+            { id: 'recently-downloaded', settings: recentlyDownloadedSettings },
+            ...(app.id === 'sonarr' || app.id === 'radarr' || app.id === 'lidarr' || app.id === 'readarr'
+              ? [{ id: 'activity-queue', settings: activityQueueSettings }]
+              : []),
+          ]
+            .filter((item) => item.settings?.enable !== false)
+            .sort((a, b) => {
+              const favouriteDelta = (b.settings?.favourite ? 1 : 0) - (a.settings?.favourite ? 1 : 0);
+              if (favouriteDelta !== 0) return favouriteDelta;
+              const orderDelta = (a.settings?.order || 0) - (b.settings?.order || 0);
+              if (orderDelta !== 0) return orderDelta;
+              return a.id.localeCompare(b.id);
+            });
+        %>
+        <div class="plex-overview">
+          <% orderedArrSections.forEach((section) => { %>
+            <% if (section.id === 'downloading-soon') { %>
+              <section class="plex-module plex-module--no-subtitle" id="<%= appPrefix %>-downloading-soon">
+                <div class="plex-topbar">
+                  <div class="plex-title-wrap">
+                    <div class="plex-title">
+                      <img class="plex-logo" src="<%= arrLogo %>" alt="<%= app.name %>" loading="eager" />
+                      <span>Downloading Soon</span>
+                    </div>
+                    <div class="plex-subtitle"></div>
+                  </div>
+
+                  <div class="plex-spacer"></div>
+
+                  <div class="plex-controls-right">
+                    <div class="plex-select plex-icon plex-filter-window" title="Window">
+                      <select id="<%= appPrefix %>SoonWindowFilter" aria-label="Window">
+                        <option value="today">Today</option>
+                        <option value="week">Week</option>
+                        <option value="month" selected>Month</option>
+                      </select>
+                    </div>
+
+                    <button class="plex-iconbtn" id="<%= appPrefix %>SoonPrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
+                    <button class="plex-iconbtn" id="<%= appPrefix %>SoonNextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="<%= appPrefix %>-downloading-soon" data-collapse-global="true">
+                      <div class="plex-doublechev">
+                        <div class="plex-chev plex-up"></div>
+                        <div class="plex-chev plex-down"></div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="plex-panel">
+                  <div id="<%= appPrefix %>SoonViewport" class="plex-carousel-viewport">
+                    <div id="<%= appPrefix %>SoonTrack" class="plex-carousel-track">
+                      <div class="plex-empty">Loading…</div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            <% } %>
+            <% if (section.id === 'recently-downloaded') { %>
+              <section class="plex-module plex-module--no-subtitle" id="<%= appPrefix %>-recently-downloaded">
+                <div class="plex-topbar">
+                  <div class="plex-title-wrap">
+                    <div class="plex-title">
+                      <img class="plex-logo" src="<%= arrLogo %>" alt="<%= app.name %>" loading="eager" />
+                      <span>Recently Downloaded</span>
+                    </div>
+                    <div class="plex-subtitle"></div>
+                  </div>
+
+                  <div class="plex-spacer"></div>
+
+                  <div class="plex-controls-right">
+                    <div class="plex-select plex-icon plex-filter-event" title="Event type">
+                      <select id="<%= appPrefix %>RecentTypeFilter" aria-label="Event type">
+                        <option value="imported" selected>Imported</option>
+                        <option value="grabbed">Grabbed</option>
+                        <option value="failed">Failed</option>
+                        <option value="all">All</option>
+                      </select>
+                    </div>
+
+                    <div class="plex-select plex-xsmall" title="Limit">
+                      <select id="<%= appPrefix %>RecentLimitSelect">
+                        <option value="10">10</option>
+                        <option value="20" selected>20</option>
+                        <option value="50">50</option>
+                      </select>
+                    </div>
+
+                    <button class="plex-iconbtn" id="<%= appPrefix %>RecentPrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
+                    <button class="plex-iconbtn" id="<%= appPrefix %>RecentNextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="<%= appPrefix %>-recently-downloaded" data-collapse-global="true">
+                      <div class="plex-doublechev">
+                        <div class="plex-chev plex-up"></div>
+                        <div class="plex-chev plex-down"></div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="plex-panel">
+                  <div id="<%= appPrefix %>RecentViewport" class="plex-carousel-viewport">
+                    <div id="<%= appPrefix %>RecentTrack" class="plex-carousel-track">
+                      <div class="plex-empty">Loading…</div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            <% } %>
+            <% if (section.id === 'activity-queue') { %>
+              <%
+                const queueClasses = [
+                  section.settings?.queueShowDetail === false ? 'queue-hide-detail' : '',
+                  section.settings?.queueShowSubDetail === false ? 'queue-hide-subdetail' : '',
+                  section.settings?.queueShowSize === false ? 'queue-hide-size' : '',
+                  section.settings?.queueShowProtocol === false ? 'queue-hide-protocol' : '',
+                  section.settings?.queueShowTimeLeft === false ? 'queue-hide-timeleft' : '',
+                  section.settings?.queueShowProgress === false ? 'queue-hide-progress' : '',
+                ].filter(Boolean).join(' ');
+                const queueVisibleRows = section.settings?.queueVisibleRows || 10;
+              %>
+              <section class="plex-module plex-module--no-subtitle" id="<%= appPrefix %>-activity-queue">
+                <div class="plex-topbar">
+                  <div class="plex-title-wrap">
+                    <div class="plex-title">
+                      <img class="plex-logo" src="<%= arrLogo %>" alt="<%= app.name %>" loading="eager" />
+                      <span>Download Queue</span>
+                    </div>
+                    <div class="plex-subtitle"></div>
+                  </div>
+
+                  <div class="plex-spacer"></div>
+
+                  <div class="plex-controls-right">
+                    <div class="plex-select plex-icon plex-filter-media" title="Type">
+                      <select id="<%= appPrefix %>QueueTypeFilter" aria-label="Queue type">
+                        <option value="all" selected>All</option>
+                        <% if (appPrefix === 'sonarr') { %>
+                          <option value="tv">TV</option>
+                        <% } %>
+                        <% if (appPrefix === 'radarr') { %>
+                          <option value="movie">Movies</option>
+                        <% } %>
+                        <% if (appPrefix === 'lidarr') { %>
+                          <option value="music">Music</option>
+                        <% } %>
+                        <% if (appPrefix === 'readarr') { %>
+                          <option value="book">Books</option>
+                        <% } %>
+                      </select>
+                    </div>
+
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="<%= appPrefix %>-activity-queue" data-collapse-global="true">
+                      <div class="plex-doublechev">
+                        <div class="plex-chev plex-up"></div>
+                        <div class="plex-chev plex-down"></div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="plex-panel queue-panel">
+                  <div class="queue-table <%= queueClasses %>" style="--queue-visible-rows:<%= queueVisibleRows %>">
+                    <div class="queue-row header">
+                      <div>Title</div>
+                      <div><%= appPrefix === 'lidarr' ? 'Album' : (appPrefix === 'readarr' ? 'Author' : (appPrefix === 'radarr' ? 'Year' : 'Episode')) %></div>
+                      <div><%= appPrefix === 'lidarr' ? 'Track' : (appPrefix === 'readarr' ? 'Book' : (appPrefix === 'radarr' ? 'Studio' : 'Episode Title')) %></div>
+                      <div>Size</div>
+                      <div>Protocol</div>
+                      <div>Time Left</div>
+                      <div>Progress</div>
+                    </div>
+                    <div id="<%= appPrefix %>QueueBody" class="queue-body">
+                      <div class="queue-empty">Loading…</div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            <% } %>
+          <% }) %>
+        </div>
+      <% } %>
+
+      <% if (['transmission', 'nzbget'].includes(app.id)) { %>
+        <%
+          const overviewItems = Array.isArray(overviewElements) ? overviewElements : [];
+          const overviewById = new Map(overviewItems.map((item) => [item.id, item]));
+          const activityQueueSettings = overviewById.get('activity-queue') || { enable: true, order: 1 };
+          const appLogo = app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(app.id)
+            ? '/icons/' + app.id + '.png'
+            : '/icons/' + app.id + '.svg');
+          const appPrefix = app.id;
+          const queueDetailLabel = appPrefix === 'nzbget' ? 'Category' : 'Status';
+          const queueSubDetailLabel = appPrefix === 'nzbget' ? 'Status' : 'Rate';
+          const orderedDownloaderSections = [
+            { id: 'activity-queue', settings: activityQueueSettings },
+          ]
+            .filter((item) => item.settings?.enable !== false)
+            .sort((a, b) => {
+              const favouriteDelta = (b.settings?.favourite ? 1 : 0) - (a.settings?.favourite ? 1 : 0);
+              if (favouriteDelta !== 0) return favouriteDelta;
+              const orderDelta = (a.settings?.order || 0) - (b.settings?.order || 0);
+              if (orderDelta !== 0) return orderDelta;
+              return a.id.localeCompare(b.id);
+            });
+        %>
+        <div class="plex-overview">
+          <% orderedDownloaderSections.forEach((section) => { %>
+            <% if (section.id === 'activity-queue') { %>
+              <%
+                const queueClasses = [
+                  section.settings?.queueShowDetail === false ? 'queue-hide-detail' : '',
+                  section.settings?.queueShowSubDetail === false ? 'queue-hide-subdetail' : '',
+                  section.settings?.queueShowSize === false ? 'queue-hide-size' : '',
+                  section.settings?.queueShowProtocol === false ? 'queue-hide-protocol' : '',
+                  section.settings?.queueShowTimeLeft === false ? 'queue-hide-timeleft' : '',
+                  section.settings?.queueShowProgress === false ? 'queue-hide-progress' : '',
+                ].filter(Boolean).join(' ');
+                const queueVisibleRows = section.settings?.queueVisibleRows || 10;
+              %>
+              <section class="plex-module plex-module--no-subtitle" id="<%= appPrefix %>-activity-queue">
+                <div class="plex-topbar">
+                  <div class="plex-title-wrap">
+                    <div class="plex-title">
+                      <img class="plex-logo" src="<%= appLogo %>" alt="<%= app.name %>" loading="eager" />
+                      <span>Activity Queue</span>
+                    </div>
+                    <div class="plex-subtitle"></div>
+                  </div>
+
+                  <div class="plex-spacer"></div>
+
+                  <div class="plex-controls-right">
+                    <div class="plex-select plex-icon plex-filter-status" title="Status">
+                      <select id="<%= appPrefix %>QueueStatusFilter" aria-label="Queue status">
+                        <option value="all" selected>All</option>
+                        <% if (appPrefix === 'transmission') { %>
+                          <option value="active">Active</option>
+                          <option value="downloading">Downloading</option>
+                          <option value="seeding">Seeding</option>
+                          <option value="paused">Paused</option>
+                          <option value="finished">Finished</option>
+                          <option value="error">Error</option>
+                        <% } else { %>
+                          <option value="downloading">Downloading</option>
+                          <option value="queued">Queued</option>
+                          <option value="paused">Paused</option>
+                        <% } %>
+                      </select>
+                    </div>
+
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="<%= appPrefix %>-activity-queue" data-collapse-global="true">
+                      <div class="plex-doublechev">
+                        <div class="plex-chev plex-up"></div>
+                        <div class="plex-chev plex-down"></div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="plex-panel queue-panel">
+                  <div class="queue-table <%= queueClasses %>" style="--queue-visible-rows:<%= queueVisibleRows %>">
+                    <div class="queue-row header">
+                      <div>Title</div>
+                      <div><%= queueDetailLabel %></div>
+                      <div><%= queueSubDetailLabel %></div>
+                      <div>Size</div>
+                      <div>Protocol</div>
+                      <div>Time Left</div>
+                      <div>Progress</div>
+                    </div>
+                    <div id="<%= appPrefix %>QueueBody" class="queue-body">
+                      <div class="queue-empty">Loading…</div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            <% } %>
+          <% }) %>
+        </div>
+      <% } %>
+
+      <% if (app.id === 'pulsarr') { %>
+        <%
+          const overviewItems = Array.isArray(overviewElements) ? overviewElements : [];
+          const overviewById = new Map(overviewItems.map((item) => [item.id, item]));
+          const recentRequestsSettings = overviewById.get('recent-requests') || { enable: true, order: 1 };
+          const watchlistedSettings = overviewById.get('most-watchlisted') || { enable: true, order: 2 };
+          const orderedPulsarrSections = [
+            { id: 'recent-requests', settings: recentRequestsSettings },
+            { id: 'most-watchlisted', settings: watchlistedSettings },
+          ]
+            .filter((item) => item.settings?.enable !== false)
+            .sort((a, b) => {
+              const favouriteDelta = (b.settings?.favourite ? 1 : 0) - (a.settings?.favourite ? 1 : 0);
+              if (favouriteDelta !== 0) return favouriteDelta;
+              const orderDelta = (a.settings?.order || 0) - (b.settings?.order || 0);
+              if (orderDelta !== 0) return orderDelta;
+              return a.id.localeCompare(b.id);
+            });
+        %>
+        <div class="plex-overview">
+          <% orderedPulsarrSections.forEach((section) => { %>
+            <% if (section.id === 'recent-requests') { %>
+              <section class="plex-module plex-module--no-subtitle" id="pulsarr-recent-requests">
+                <div class="plex-topbar">
+                  <div class="plex-title-wrap">
+                    <div class="plex-title">
+                      <img class="plex-logo" src="/icons/pulsarr.png" alt="Pulsarr" loading="eager" />
+                      <span>Recent Requests</span>
+                    </div>
+                    <div class="plex-subtitle"></div>
+                  </div>
+
+                  <div class="plex-spacer"></div>
+
+                  <div class="plex-controls-right">
+                    <div class="plex-select plex-icon plex-filter-status" title="Status">
+                      <select id="pulsarrRequestsStatusFilter" aria-label="Status">
+                        <option value="all" selected>All</option>
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="available">Available</option>
+                        <option value="declined">Declined</option>
+                      </select>
+                    </div>
+
+                    <div class="plex-select plex-xsmall" title="Limit">
+                      <select id="pulsarrRequestsLimitSelect">
+                        <option value="10">10</option>
+                        <option value="20" selected>20</option>
+                        <option value="50">50</option>
+                      </select>
+                    </div>
+
+                    <button class="plex-iconbtn" id="pulsarrRequestsPrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
+                    <button class="plex-iconbtn" id="pulsarrRequestsNextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="pulsarr-recent-requests" data-collapse-global="true">
+                      <div class="plex-doublechev">
+                        <div class="plex-chev plex-up"></div>
+                        <div class="plex-chev plex-down"></div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="plex-panel">
+                  <div id="pulsarrRequestsViewport" class="plex-carousel-viewport">
+                    <div id="pulsarrRequestsTrack" class="plex-carousel-track">
+                      <div class="plex-empty">Loading…</div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            <% } %>
+            <% if (section.id === 'most-watchlisted') { %>
+              <section class="plex-module plex-module--no-subtitle" id="pulsarr-most-watchlisted">
+                <div class="plex-topbar">
+                  <div class="plex-title-wrap">
+                    <div class="plex-title">
+                      <img class="plex-logo" src="/icons/pulsarr.png" alt="Pulsarr" loading="eager" />
+                      <span>Most Watchlisted</span>
+                    </div>
+                    <div class="plex-subtitle"></div>
+                  </div>
+
+                  <div class="plex-spacer"></div>
+
+                  <div class="plex-controls-right">
+                    <div class="plex-select plex-icon plex-filter-media" title="Media type">
+                      <select id="pulsarrWatchlistedTypeFilter" aria-label="Media type">
+                        <option value="all" selected>All</option>
+                        <option value="movie">Movies</option>
+                        <option value="show">TV</option>
+                      </select>
+                    </div>
+
+                    <div class="plex-select plex-xsmall" title="Limit">
+                      <select id="pulsarrWatchlistedLimitSelect">
+                        <option value="10">10</option>
+                        <option value="20" selected>20</option>
+                        <option value="50">50</option>
+                      </select>
+                    </div>
+
+                    <button class="plex-iconbtn" id="pulsarrWatchlistedPrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
+                    <button class="plex-iconbtn" id="pulsarrWatchlistedNextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="pulsarr-most-watchlisted" data-collapse-global="true">
+                      <div class="plex-doublechev">
+                        <div class="plex-chev plex-up"></div>
+                        <div class="plex-chev plex-down"></div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="plex-panel">
+                  <div id="pulsarrWatchlistedViewport" class="plex-carousel-viewport">
+                    <div id="pulsarrWatchlistedTrack" class="plex-carousel-track">
+                      <div class="plex-empty">Loading…</div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            <% } %>
+          <% }) %>
+
+          <div id="pulsarrModalBackdrop" class="plex-modal-backdrop plex-hidden">
+            <div class="plex-modal">
+              <button id="pulsarrModalClose" class="plex-modal-close" aria-label="Close">✕</button>
+              <div class="plex-modal-header">
+                <div class="plex-modal-title">
+                  <span id="pulsarrModalTypeIcon" class="plex-mini-icon"></span>
+                  <span id="pulsarrModalTitle">Loading…</span>
+                </div>
+                <div id="pulsarrModalSubtitle" class="plex-modal-subtitle"></div>
+              </div>
+              <div id="pulsarrModalBody" class="plex-modal-body"></div>
+            </div>
+          </div>
+        </div>
+      <% } %>
+
+      <% if (app.id === 'prowlarr') { %>
+        <%
+          const overviewItems = Array.isArray(overviewElements) ? overviewElements : [];
+          const overviewById = new Map(overviewItems.map((item) => [item.id, item]));
+          const searchSettings = overviewById.get('search') || { enable: true, order: 1 };
+          const orderedProwlarrSections = [
+            { id: 'search', settings: searchSettings },
+          ]
+            .filter((item) => item.settings?.enable !== false)
+            .sort((a, b) => {
+              const favouriteDelta = (b.settings?.favourite ? 1 : 0) - (a.settings?.favourite ? 1 : 0);
+              if (favouriteDelta !== 0) return favouriteDelta;
+              const orderDelta = (a.settings?.order || 0) - (b.settings?.order || 0);
+              if (orderDelta !== 0) return orderDelta;
+              return a.id.localeCompare(b.id);
+            });
+        %>
+        <div class="plex-overview">
+          <% orderedProwlarrSections.forEach((section) => { %>
+            <% if (section.id === 'search') { %>
+              <section class="plex-module plex-module--no-subtitle" id="prowlarr-search">
+                <div class="plex-topbar">
+                  <div class="plex-title-wrap">
+                    <div class="plex-title">
+                      <img class="plex-logo" src="/icons/prowlarr.png" alt="Prowlarr" loading="eager" />
+                      <span>Indexer Search</span>
+                    </div>
+                    <div class="plex-subtitle"></div>
+                  </div>
+
+                  <div class="plex-spacer"></div>
+
+                  <div class="plex-controls-right">
+                    <div class="plex-search" title="Search">
+                      <input id="prowlarrSearchInput" type="text" placeholder="Search indexers" aria-label="Search indexers" />
+                      <button class="plex-search-btn" id="prowlarrSearchButton" type="button">Search</button>
+                    </div>
+
+                    <div class="plex-select plex-xsmall" title="Limit">
+                      <select id="prowlarrSearchLimitSelect" aria-label="Limit">
+                        <option value="25" selected>25</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                      </select>
+                    </div>
+
+                    <div class="prowlarr-pagination">
+                      <button class="plex-iconbtn" id="prowlarrSearchPrevBtn" type="button" aria-label="Previous page"><div class="plex-chev plex-left"></div></button>
+                      <span id="prowlarrSearchPageLabel" class="prowlarr-page-label">Page 1</span>
+                      <button class="plex-iconbtn" id="prowlarrSearchNextBtn" type="button" aria-label="Next page"><div class="plex-chev plex-right"></div></button>
+                    </div>
+
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="prowlarr-search" data-collapse-global="true">
+                      <div class="plex-doublechev">
+                        <div class="plex-chev plex-up"></div>
+                        <div class="plex-chev plex-down"></div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="plex-panel">
+                  <div class="prowlarr-table">
+                    <div class="prowlarr-row prowlarr-row--head">
+                      <div>Name</div>
+                      <div>Peers</div>
+                      <div>Size</div>
+                      <div>Protocol</div>
+                      <div>Action</div>
+                    </div>
+                    <div id="prowlarrSearchResults" class="prowlarr-results">
+                      <div class="prowlarr-row prowlarr-row--empty">Enter a search term to get results.</div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            <% } %>
+          <% }) %>
+        </div>
+      <% } %>
+
+      <% if (app.id !== 'plex' && app.id !== 'tautulli' && !['sonarr', 'radarr', 'lidarr', 'readarr', 'pulsarr', 'prowlarr', 'transmission', 'nzbget'].includes(app.id)) { %>
+        <div class="dash-panel overview-panel">
+          <div class="panel-header">
+            <h2>App Overview</h2>
+            <span class="panel-sub">API output placeholder</span>
+          </div>
+          <div class="panel-card">
+            <div class="panel-title">Coming soon</div>
+            <p>This page will display live data fetched from the app API.</p>
+            <span class="panel-link">Placeholder only</span>
+          </div>
+        </div>
+      <% } %>
+
+    </section>
+  </div>
+  <script>
+    const dashFrame = document.querySelector('.dash-frame');
+    const toggle = document.querySelector('.sidebar-toggle');
+    const toggleIcon = toggle?.querySelector('img');
+    const mobileQuery = window.matchMedia('(max-width: 980px)');
+    const isMobile = () => mobileQuery.matches;
+    const mainContent = document.querySelector('.dash-main');
+    const sidebar = document.querySelector('.dash-sidebar');
+    const safeStorage = {
+      get(key) {
+        try {
+          return localStorage.getItem(key);
+        } catch (err) {
+          return null;
+        }
+      },
+      set(key, value) {
+        try {
+          localStorage.setItem(key, value);
+        } catch (err) {
+          return;
+        }
+      },
+    };
+    const userMenus = document.querySelectorAll('[data-user-menu]');
+
+    function setToggleIcon() {
+      if (!toggleIcon) return;
+      toggleIcon.src = '/icons/sidebar-toggle.svg';
+    }
+
+    function applySidebarState() {
+      if (!dashFrame) return;
+      if (isMobile()) {
+        dashFrame.classList.remove('sidebar-collapsed');
+        dashFrame.classList.remove('mobile-nav-open');
+        document.body.classList.remove('mobile-nav-open');
+        setToggleIcon(false);
+      } else {
+        const collapsed = safeStorage.get('sidebarCollapsed') === 'true';
+        dashFrame.classList.toggle('sidebar-collapsed', collapsed);
+        dashFrame.classList.remove('mobile-nav-open');
+        document.body.classList.remove('mobile-nav-open');
+        setToggleIcon(!collapsed);
+      }
+    }
+
+    function closeMobileNav() {
+      if (!dashFrame || !isMobile()) return;
+      if (!dashFrame.classList.contains('mobile-nav-open')) return;
+      dashFrame.classList.remove('mobile-nav-open');
+      document.body.classList.remove('mobile-nav-open');
+      setToggleIcon(false);
+    }
+
+    applySidebarState();
+    mobileQuery.addEventListener('change', applySidebarState);
+    const accordion = document.querySelectorAll('.nav-accordion-item');
+    accordion.forEach((item) => {
+      const trigger = item.querySelector('.nav-accordion-trigger');
+      if (!trigger) return;
+      trigger.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const parentAccordion = item.closest('.nav-accordion');
+        const siblings = parentAccordion
+          ? Array.from(parentAccordion.children).filter((child) => child.classList.contains('nav-accordion-item'))
+          : [];
+        siblings.forEach((other) => {
+          if (other !== item) other.classList.remove('open');
+        });
+        item.classList.toggle('open');
+      });
+    });
+    function handleSidebarToggle() {
+      if (!dashFrame) return;
+      if (isMobile()) {
+        dashFrame.classList.remove('sidebar-collapsed');
+        const isOpen = dashFrame.classList.toggle('mobile-nav-open');
+        document.body.classList.toggle('mobile-nav-open', isOpen);
+        setToggleIcon(isOpen);
+        return;
+      }
+      const isCollapsed = dashFrame.classList.toggle('sidebar-collapsed');
+      safeStorage.set('sidebarCollapsed', isCollapsed ? 'true' : 'false');
+      setToggleIcon(!isCollapsed);
+    }
+
+    toggle?.addEventListener('click', handleSidebarToggle);
+
+    mainContent?.addEventListener('click', (event) => {
+      if (event.target.closest('.sidebar-toggle')) return;
+      if (event.target.closest('.main-window-bar')) return;
+      closeMobileNav();
+    });
+
+    sidebar?.addEventListener('click', (event) => {
+      if (!isMobile() || !dashFrame?.classList.contains('mobile-nav-open')) return;
+      const link = event.target.closest('a');
+      if (!link || !link.classList.contains('active')) return;
+      event.preventDefault();
+      closeMobileNav();
+    });
+
+    function closeUserMenus(except) {
+      userMenus.forEach((menu) => {
+        if (menu === except) return;
+        menu.classList.remove('user-pill--open');
+        menu.setAttribute('aria-expanded', 'false');
+      });
+    }
+
+    userMenus.forEach((menu) => {
+      menu.setAttribute('aria-expanded', 'false');
+      menu.addEventListener('click', (event) => {
+        if (event.target.closest('.user-menu')) return;
+        event.preventDefault();
+        const isOpen = menu.classList.contains('user-pill--open');
+        closeUserMenus(menu);
+        menu.classList.toggle('user-pill--open', !isOpen);
+        menu.setAttribute('aria-expanded', !isOpen ? 'true' : 'false');
+      });
+      menu.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        menu.click();
+      });
+    });
+
+    document.addEventListener('click', (event) => {
+      if (event.target.closest('[data-user-menu]')) return;
+      closeUserMenus();
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      closeUserMenus();
+    });
+
+    document.querySelectorAll('.plex-select.plex-filter-media').forEach((wrap) => {
+      const select = wrap.querySelector('select');
+      if (!select) return;
+      const sync = () => {
+        wrap.dataset.filterValue = String(select.value || 'all').toLowerCase();
+      };
+      select.addEventListener('change', sync);
+      sync();
+    });
+
+    document.querySelectorAll('.plex-collapse-btn[data-collapse-global="true"]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const targetId = button.getAttribute('data-target');
+        const section = targetId ? document.getElementById(targetId) : null;
+        if (!section) return;
+        section.classList.toggle('plex-collapsed');
+      });
+    });
+  </script>
+  <% if (app.id === 'plex') { %>
+    <script>
+      window.PLEX_OVERVIEW_CONFIG = <%- JSON.stringify({
+        baseUrl: (appBaseUrls && appBaseUrls[app.id]) || app.localUrl || app.remoteUrl || '',
+        host: app.plexHost || '',
+        token: app.plexToken || '',
+        displaySettings: (Array.isArray(overviewElements) ? overviewElements : []).reduce((acc, item) => {
+          if (!item?.id) return acc;
+          acc[item.id] = {
+            showSubtitle: item.showSubtitle !== false,
+            showMeta: item.showMeta !== false,
+            showPill: item.showPill !== false,
+            showTypeIcon: item.showTypeIcon !== false,
+            showViewIcon: item.showViewIcon !== false,
+            showUsername: item.showUsername !== false,
+          };
+          return acc;
+        }, {})
+      }) %>;
+    </script>
+    <script src="/plex-overview.js"></script>
+  <% } %>
+  <% if (app.id === 'tautulli') { %>
+    <% const plexApp = apps.find((appItem) => appItem.id === 'plex'); %>
+    <% const activeTautulliCards = (Array.isArray(tautulliCards) ? tautulliCards : []).filter((item) => item.enable).sort((a, b) => (a.order || 0) - (b.order || 0)).map((item) => item.id); %>
+    <script>
+      window.TAUTULLI_OVERVIEW_CONFIG = <%- JSON.stringify({
+        baseUrl: (appBaseUrls && appBaseUrls[app.id]) || app.localUrl || app.remoteUrl || app.url || '',
+        apiKey: app.apiKey || '',
+        plexBaseUrl: (plexApp && ((appBaseUrls && appBaseUrls[plexApp.id]) || plexApp.localUrl || plexApp.remoteUrl || plexApp.url)) || '',
+        statsCards: activeTautulliCards
+      }) %>;
+    </script>
+    <script src="/tautulli-overview.js"></script>
+  <% } %>
+  <% if (['sonarr', 'radarr', 'lidarr', 'readarr'].includes(app.id)) { %>
+    <script>
+      window.ARR_OVERVIEW_CONFIG = <%- JSON.stringify({
+        appId: app.id,
+        appName: app.name,
+        baseUrl: (appBaseUrls && appBaseUrls[app.id]) || app.localUrl || app.remoteUrl || app.url || '',
+        apiKey: app.apiKey || '',
+        displaySettings: (Array.isArray(overviewElements) ? overviewElements : []).reduce((acc, item) => {
+          if (!item?.id) return acc;
+          acc[item.id] = {
+            showSubtitle: item.showSubtitle !== false,
+            showMeta: item.showMeta !== false,
+            showPill: item.showPill !== false,
+            showTypeIcon: item.showTypeIcon !== false,
+            showViewIcon: item.showViewIcon !== false,
+            showUsername: item.showUsername !== false,
+          };
+          return acc;
+        }, {})
+      }) %>;
+    </script>
+    <script src="/arr-overview.js"></script>
+  <% } %>
+  <% if (['transmission', 'nzbget'].includes(app.id)) { %>
+    <script>
+      window.DOWNLOADER_QUEUE_CONFIG = <%- JSON.stringify({
+        appId: app.id,
+        appName: app.name,
+        prefix: app.id,
+      }) %>;
+    </script>
+    <script src="/downloaders-queue.js"></script>
+  <% } %>
+  <% if (app.id === 'pulsarr') { %>
+    <script>
+      window.PULSARR_OVERVIEW_CONFIG = <%- JSON.stringify({
+        appId: app.id,
+        appName: app.name,
+        baseUrl: (appBaseUrls && appBaseUrls[app.id]) || app.localUrl || app.remoteUrl || app.url || '',
+        apiKey: app.apiKey || '',
+        displaySettings: (Array.isArray(overviewElements) ? overviewElements : []).reduce((acc, item) => {
+          if (!item?.id) return acc;
+          acc[item.id] = {
+            showSubtitle: item.showSubtitle !== false,
+            showMeta: item.showMeta !== false,
+            showPill: item.showPill !== false,
+            showTypeIcon: item.showTypeIcon !== false,
+            showViewIcon: item.showViewIcon !== false,
+            showUsername: item.showUsername !== false,
+          };
+          return acc;
+        }, {})
+      }) %>;
+    </script>
+    <script src="/pulsarr-overview.js"></script>
+  <% } %>
+  <% if (app.id === 'prowlarr') { %>
+    <script>
+      window.PROWLARR_OVERVIEW_CONFIG = <%- JSON.stringify({
+        appId: app.id,
+        appName: app.name,
+        displaySettings: (Array.isArray(overviewElements) ? overviewElements : []).reduce((acc, item) => {
+          if (!item?.id) return acc;
+          acc[item.id] = {
+            showSubtitle: item.showSubtitle !== false,
+            showMeta: item.showMeta !== false,
+            showPill: item.showPill !== false,
+            showTypeIcon: item.showTypeIcon !== false,
+            showViewIcon: item.showViewIcon !== false,
+            showUsername: item.showUsername !== false,
+          };
+          return acc;
+        }, {})
+      }) %>;
+    </script>
+    <script src="/prowlarr-overview.js"></script>
+  <% } %>
+  <script src="/pwa.js"></script>
+</body>
+</html>

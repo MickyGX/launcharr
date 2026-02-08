@@ -1,0 +1,24 @@
+services:
+  launcharr:
+    build: .
+    container_name: launcharr
+    environment:
+      - CONFIG_PATH=/app/config/config.json
+      - DATA_DIR=/app/data
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.routers.launcharr.rule=Host(`launcharr.example.com`)
+      - traefik.http.routers.launcharr.entrypoints=websecure
+      - traefik.http.routers.launcharr.tls.certresolver=letsencrypt
+      - traefik.http.services.launcharr.loadbalancer.server.port=3333
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data
+    networks:
+      - proxy
+    restart: unless-stopped
+
+networks:
+  proxy:
+    external: true

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Launcharr · Login</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" type="image/png" href="/icons/launcharr-icon.png" />
+  <meta name="theme-color" content="#1cc6c2" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="apple-touch-icon" href="/icons/launcharr-icon.png" />
+</head>
+<body class="login-body">
+  <div class="login-stars"></div>
+  <div class="login-planet"></div>
+
+  <main class="login-wrap">
+    <div class="login-card">
+      <div class="login-title">
+        <img src="/icons/launcharr-icon.png" alt="" />
+        <span>Launcharr</span>
+      </div>
+      <% if (error) { %>
+        <div class="login-error"><%= error %></div>
+      <% } %>
+      <% if (allowLocalLogin) { %>
+        <form class="login-form" method="post" action="/login">
+          <label class="login-field">
+            <span>Username or email</span>
+            <input class="login-input" type="text" name="username" autocomplete="username" required />
+          </label>
+          <label class="login-field">
+            <span>Password</span>
+            <input class="login-input" type="password" name="password" autocomplete="current-password" required />
+          </label>
+          <button class="primary-button" type="submit">Sign in</button>
+        </form>
+        <div class="login-divider">or</div>
+      <% } %>
+      <p>Sign in with Plex to access your dashboard.</p>
+      <a class="primary-button" href="/auth/plex">Login with Plex</a>
+      <div class="login-sub">Plex SSO required</div>
+    </div>
+  </main>
+  <script src="/pwa.js"></script>
+</body>
+</html>

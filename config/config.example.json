@@ -1,0 +1,25 @@
+{
+  "general": {
+    "serverName": "Launcharr",
+    "remoteUrl": "",
+    "localUrl": ""
+  },
+  "apps": [],
+  "categories": [
+    { "name": "Admin", "sidebarMenu": false, "icon": "/icons/admin.svg" },
+    { "name": "Media", "sidebarMenu": true, "icon": "/icons/media-play.svg" },
+    { "name": "Manager", "sidebarMenu": false, "icon": "/icons/settings.svg" },
+    { "name": "Arr Suite", "sidebarMenu": false, "icon": "/icons/app.svg" },
+    { "name": "Downloaders", "sidebarMenu": false, "icon": "/icons/download.svg" },
+    { "name": "Tools", "sidebarMenu": false, "icon": "/icons/tools.svg" }
+  ],
+  "logs": {
+    "maxEntries": 250,
+    "maxDays": 7
+  },
+  "arrDashboardCombine": {
+    "downloadingSoon": {},
+    "recentlyDownloaded": {},
+    "activityQueue": {}
+  }
+}

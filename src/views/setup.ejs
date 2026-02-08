@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Launcharr · Setup</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" type="image/png" href="/icons/launcharr-icon.png" />
+  <meta name="theme-color" content="#1cc6c2" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="apple-touch-icon" href="/icons/launcharr-icon.png" />
+</head>
+<body class="login-body">
+  <div class="login-stars"></div>
+  <div class="login-planet"></div>
+
+  <main class="login-wrap">
+    <div class="login-card">
+      <div class="login-title">
+        <img src="/icons/launcharr-icon.png" alt="" />
+        <span>Launcharr</span>
+      </div>
+      <p>Create the master admin account to finish setup.</p>
+      <% if (error) { %>
+        <div class="login-error"><%= error %></div>
+      <% } %>
+      <form class="login-form" method="post" action="/setup">
+        <label class="login-field">
+          <span>Username</span>
+          <input class="login-input" type="text" name="username" value="<%= values?.username || '' %>" autocomplete="username" required />
+        </label>
+        <label class="login-field">
+          <span>Email</span>
+          <input class="login-input" type="email" name="email" value="<%= values?.email || '' %>" autocomplete="email" required />
+        </label>
+        <label class="login-field">
+          <span>Password (min <%= minPassword %> chars)</span>
+          <input class="login-input" type="password" name="password" autocomplete="new-password" required />
+        </label>
+        <label class="login-field">
+          <span>Confirm password</span>
+          <input class="login-input" type="password" name="confirmPassword" autocomplete="new-password" required />
+        </label>
+        <button class="primary-button" type="submit">Create admin</button>
+      </form>
+      <div class="login-sub">You can still use Plex SSO after setup.</div>
+    </div>
+  </main>
+  <script src="/pwa.js"></script>
+</body>
+</html>
