@@ -64,6 +64,18 @@
           throw new Error("PIN response missing code.");
         }
 
+        if (data.id) {
+          try {
+            await fetch("/api/plex/pin", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ pinId: String(data.id) })
+            });
+          } catch (err) {
+            console.warn("[plex] pin session store failed", err);
+          }
+        }
+
         const params = new URLSearchParams();
         params.set("clientID", client.id);
         params.set("code", data.code);

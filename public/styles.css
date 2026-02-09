@@ -2904,6 +2904,53 @@ input[type="checkbox"]{
 .plex-eye-icon:hover{filter:brightness(1.1)}
 .plex-type-icon svg,.plex-eye-icon svg{width:16px;height:16px;opacity:.95}
 
+.plex-watchlist-btn{
+  position:absolute;
+  top:3px;
+  right:3px;
+  width:28px;
+  height:24px;
+  border-radius:8px;
+  border:2px solid rgba(255,255,255,.22);
+  background:rgba(20,24,36,.92);
+  color:#f6d66a;
+  display:grid;
+  place-items:center;
+  cursor:pointer;
+  z-index:3;
+}
+
+.plex-watchlist-btn svg{
+  width:16px;
+  height:16px;
+  display:block;
+}
+
+.plex-watchlist-btn:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+}
+
+.plex-watchlist-btn--modal{
+  top:8px;
+  right:8px;
+  width:34px;
+  height:29px;
+  border-radius:9px;
+  z-index:4;
+}
+
+.plex-watchlist-btn--modal svg{
+  width:19px;
+  height:19px;
+}
+
+.plex-card--watchlisted .plex-eye-icon{
+  right:3px;
+  bottom:3px;
+}
+
+
 .plex-footer{
   padding:8px 10px 10px;
   background:transparent;
@@ -3184,6 +3231,7 @@ input[type="checkbox"]{
 }
 .plex-modal-meta{color:var(--plex-text)}
 .plex-modal-poster{
+  position: relative;
   width: 250px;
   border-radius: 10px;
   border: 2px solid rgba(255,255,255,.18);

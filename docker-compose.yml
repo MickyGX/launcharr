@@ -1,7 +1,7 @@
 services:
   launcharr:
     build: .
-    container_name: launcharr
+    container_name: launcharr_dev
     ports:
       - "3333:3333"
     environment:
@@ -10,6 +10,7 @@ services:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
+      - BASEURL=http://192.168.0.2:3333
     volumes:
       - ./config:/app/config
       - ./data:/app/data

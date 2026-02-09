@@ -18,7 +18,7 @@ const app = express();
 
 const PORT = process.env.PORT || 3333;
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
-const CLIENT_ID = process.env.PLEX_CLIENT_ID || 'launcharr';
+const CLIENT_ID = process.env.PLEX_CLIENT_ID || getOrCreatePlexClientId();
 const PRODUCT = process.env.PLEX_PRODUCT || 'Launcharr';
 const PLATFORM = process.env.PLEX_PLATFORM || 'Web';
 const DEVICE_NAME = process.env.PLEX_DEVICE_NAME || 'Launcharr';
@@ -486,12 +486,15 @@ app.get('/auth/plex', async (req, res) => {
   try {
     const { publicJwk } = await ensureKeypair();
     const authBaseUrl = resolvePublicBaseUrl(req);
+    // DEBUG: Plex SSO baseUrl/callback tracing (keep for troubleshooting)
     console.log(`[plex] client auth start baseUrl=${authBaseUrl} forwardUrl=${new URL('/oauth/callback', authBaseUrl).toString()}`);
     pushLog({
       level: 'info',
       app: 'plex',
       action: 'login.start',
       message: 'Plex login started.',
+      // DEBUG: keep baseUrl in logs for Plex SSO troubleshooting
+      meta: { baseUrl: authBaseUrl },
     });
     return res.render('plex-auth', {
       title: 'Plex Login',
@@ -515,6 +518,18 @@ app.get('/auth/plex', async (req, res) => {
   }
 });
 
+app.post('/api/plex/pin', (req, res) => {
+  try {
+    const pinId = String(req.body?.pinId || '').trim();
+    if (!pinId) return res.status(400).json({ error: 'Missing pinId.' });
+    req.session.pinId = pinId;
+    req.session.pinIssuedAt = Date.now();
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ error: safeMessage(err) || 'Failed to store PIN.' });
+  }
+});
+
 app.get('/oauth/callback', async (req, res) => {
   try {
     const pinId = req.session?.pinId || req.query.pinId;
@@ -528,13 +543,20 @@ app.get('/oauth/callback', async (req, res) => {
       return res.status(400).send('Missing PIN session. Start login again.');
     }
 
-    const authToken = await exchangePinWithRetry(pinId);
+    const pinResult = await exchangePinWithRetry(pinId);
+    const authToken = pinResult?.token || null;
     if (!authToken) {
       pushLog({
         level: 'error',
         app: 'plex',
         action: 'login.callback',
         message: 'Plex login not completed.',
+        // DEBUG: capture pin/attempts for Plex SSO troubleshooting
+        meta: {
+          pinId: String(pinId || ''),
+          attempts: pinResult?.attempts || 0,
+          lastError: pinResult?.error || '',
+        },
       });
       return res.status(401).send('Plex login not completed. Try again.');
     }
@@ -566,7 +588,35 @@ app.get('/oauth/callback', async (req, res) => {
     };
     req.session.viewRole = null;
     req.session.authToken = authToken;
+    req.session.plexServerToken = null;
     req.session.pinId = null;
+
+    try {
+      const config = loadConfig();
+      const apps = config.apps || [];
+      const plexApp = apps.find((appItem) => normalizeAppId(appItem?.id) === 'plex');
+      if (plexApp) {
+        const resources = await fetchPlexResources(authToken);
+        const serverToken = resolvePlexServerToken(resources, {
+          machineId: String(plexApp?.plexMachine || '').trim(),
+          localUrl: plexApp?.localUrl,
+          remoteUrl: plexApp?.remoteUrl,
+          plexHost: plexApp?.plexHost,
+        });
+        if (serverToken) {
+          req.session.plexServerToken = serverToken;
+          if (role === 'admin' && serverToken !== plexApp.plexToken) {
+            const nextApps = apps.map((appItem) => (normalizeAppId(appItem?.id) === 'plex'
+              ? { ...appItem, plexToken: serverToken }
+              : appItem
+            ));
+            saveConfig({ ...config, apps: nextApps });
+          }
+        }
+      }
+    } catch (err) {
+      req.session.plexServerToken = null;
+    }
 
     pushLog({
       level: 'info',
@@ -1347,11 +1397,13 @@ app.get('/api/plex/token', requireAdmin, (req, res) => {
   const apps = config.apps || [];
   const plexApp = apps.find((appItem) => appItem.id === 'plex');
   const sessionToken = String(req.session?.authToken || '').trim();
+  const sessionServerToken = String(req.session?.plexServerToken || '').trim();
   const fallbackToken = String(plexApp?.plexToken || '').trim();
-  const token = sessionToken || fallbackToken;
+  const token = sessionServerToken || fallbackToken || sessionToken;
   if (!token) return res.status(400).json({ error: 'Missing Plex token.' });
 
   (async () => {
+    if (sessionServerToken) return { token: sessionServerToken };
     if (!sessionToken) return { token };
     try {
       const resources = await fetchPlexResources(sessionToken);
@@ -1478,9 +1530,11 @@ app.get('/api/plex/discovery/details', requireUser, async (req, res) => {
     const metadata = resolvedRatingKey
       ? await fetchPlexDiscoveryMetadata(resolvedRatingKey, token)
       : { summary: '', studio: '', contentRating: '', tagline: '', year: '' };
-    const watchlist = (slug && (kind === 'movie' || kind === 'tv'))
-      ? await fetchPlexWatchlistState({ kind, slug, token })
-      : { allowed: false };
+    let watchlist = { allowed: false };
+    if (slug && (kind === 'movie' || kind === 'tv')) {
+      const actions = await fetchPlexDiscoveryActions({ kind, slug, token });
+      watchlist = buildWatchlistStateFromActions(actions);
+    }
     pushLog({
       level: 'info',
       app: 'plex',
@@ -3051,6 +3105,24 @@ function isPrivateIp(ip) {
   return false;
 }
 
+function getOrCreatePlexClientId() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    const idPath = path.join(DATA_DIR, 'plex_client_id.txt');
+    if (fs.existsSync(idPath)) {
+      const stored = fs.readFileSync(idPath, 'utf8').trim();
+      if (stored) return stored;
+    }
+    const created = `launcharr-${crypto.randomBytes(12).toString('hex')}`;
+    fs.writeFileSync(idPath, created);
+    return created;
+  } catch (err) {
+    return `launcharr-${crypto.randomBytes(12).toString('hex')}`;
+  }
+}
+
 function resolveArrDashboardCombineSettings(config, apps) {
   const configured = (config && typeof config.arrDashboardCombine === 'object' && config.arrDashboardCombine)
     ? config.arrDashboardCombine
@@ -3630,8 +3702,7 @@ async function fetchPlexDiscoveryMetadata(ratingKey, token) {
   };
 }
 
-async function fetchPlexWatchlistState({ kind, slug, token }) {
-  const actions = await fetchPlexDiscoveryActions({ kind, slug, token });
+function buildWatchlistStateFromActions(actions) {
   const addAction = actions.find((action) => action && action.id === 'addToWatchlist');
   const removeAction = actions.find((action) => action && action.id === 'removeFromWatchlist');
   const upsell = actions.find((action) => action && action.id === 'upsellWatchlist');
@@ -3664,6 +3735,11 @@ async function fetchPlexWatchlistState({ kind, slug, token }) {
     nextAction: isWatchlisted ? 'remove' : 'add',
     label: isWatchlisted ? 'Remove from Watchlist' : 'Add to Watchlist',
   };
+}
+
+async function fetchPlexWatchlistState({ kind, slug, token }) {
+  const actions = await fetchPlexDiscoveryActions({ kind, slug, token });
+  return buildWatchlistStateFromActions(actions);
 }
 
 async function resolvePlexDiscoverRatingKey({ kind, slug, token }) {
@@ -3994,13 +4070,20 @@ async function exchangePin(pinId) {
   return data.authToken || null;
 }
 
-async function exchangePinWithRetry(pinId, attempts = 6, delayMs = 1000) {
+async function exchangePinWithRetry(pinId, attempts = 60, delayMs = 2000) {
+  let lastError = '';
   for (let i = 0; i < attempts; i += 1) {
-    const token = await exchangePin(pinId);
-    if (token) return token;
+    try {
+      const token = await exchangePin(pinId);
+      if (token) {
+        return { token, attempts: i + 1, error: '' };
+      }
+    } catch (err) {
+      lastError = safeMessage(err) || '';
+    }
     await sleep(delayMs);
   }
-  return null;
+  return { token: null, attempts, error: lastError };
 }
 
 function sleep(ms) {

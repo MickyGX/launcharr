@@ -912,6 +912,8 @@
     let activeMessage = '';
     let watchlistBusy = false;
     let detailsRequestId = 0;
+    let cardRequestId = 0;
+    const watchlistCache = new Map();
 
     function postJson(url, body, callback, errorCB) {
       const xhr = new XMLHttpRequest();
@@ -936,7 +938,7 @@
       if (!modalBody) return;
       const details = activeDetails || {};
       const overviewText = details.summary || it.subtitle || 'No overview available for this title.';
-      const watchLink = it.link ? '<a class="plex-pill2" href="' + escapeHtml(it.link) + '" target="_blank" rel="noreferrer">Open in Discover</a>' : '';
+      const watchLink = '';
       const watchlist = details.watchlist || null;
       const query = encodeURIComponent(String(it.title || '').trim());
       const mediaType = it.kind === 'tv' ? 'tv' : 'movie';
@@ -947,19 +949,12 @@
         ? ('https://www.themoviedb.org/' + (mediaType === 'tv' ? 'tv/' : 'movie/') + encodeURIComponent(String(it.tmdbId)))
         : ('https://www.themoviedb.org/search?query=' + query);
 
-      let watchlistControl = '';
-      if (watchlist && watchlist.allowed) {
-        const buttonLabel = escapeHtml(watchlist.label || 'Add to Watchlist');
-        const disabled = watchlistBusy ? ' disabled' : '';
-        watchlistControl =
-          '<button class="plex-pill2" type="button" data-action="watchlist-toggle" data-next-action="' + escapeHtml(watchlist.nextAction || 'add') + '"' + disabled + '>' +
-            buttonLabel +
-          '</button>';
-      } else if (watchlist && watchlist.label) {
-        watchlistControl = '<span class="plex-pill2">' + escapeHtml(watchlist.label) + '</span>';
-      } else {
-        watchlistControl = '<span class="plex-pill2">Loading watchlist…</span>';
-      }
+      const watchlistState = watchlist || {};
+      const canWatchlist = Boolean(watchlistState.allowed);
+      const nextAction = escapeHtml(watchlistState.nextAction || 'add');
+      const isWatchlisted = Boolean(watchlistState.isWatchlisted);
+      const watchlistDisabled = watchlistBusy || !canWatchlist;
+      const watchlistTitle = watchlistState.label || (isWatchlisted ? 'Remove from Watchlist' : 'Add to Watchlist');
 
       modalBody.innerHTML =
         '<div class="plex-modal-scroll">' +
@@ -971,6 +966,9 @@
                   ? '<img src="' + it.thumb + '" alt="' + escapeHtml(it.title) + '" referrerpolicy="no-referrer" />'
                   : '<div class="plex-placeholder" style="height:340px"><div class="plex-placeholder-big">' + escapeHtml(it.title) + '</div><div class="plex-placeholder-small">No poster</div></div>'
                 ) +
+                '<button class="plex-watchlist-btn plex-watchlist-btn--modal" type="button" data-action="watchlist-toggle" data-next-action="' + nextAction + '"' + (watchlistDisabled ? ' disabled' : '') + ' title="' + escapeHtml(watchlistTitle) + '">' +
+                  watchlistIcon(isWatchlisted) +
+                '</button>' +
               '</div>' +
               '<div class="plex-modal-meta">' +
                 '<div class="plex-pills">' +
@@ -979,7 +977,6 @@
                   (details.studio ? '<span class="plex-pill2">' + escapeHtml(details.studio) + '</span>' : '') +
                   (details.contentRating ? '<span class="plex-pill2">' + escapeHtml(details.contentRating) + '</span>' : '') +
                   watchLink +
-                  watchlistControl +
                 '</div>' +
                 (activeMessage ? '<div class="plex-overview-text" style="margin-bottom:10px">' + escapeHtml(activeMessage) + '</div>' : '') +
                 '<div class="plex-section">' +
@@ -1010,6 +1007,11 @@
         if (currentRequestId !== detailsRequestId) return;
         if (!activeItem || activeItem.link !== it.link) return;
         activeDetails = payload || {};
+        if (it.slug) {
+          watchlistCache.set(String(it.kind) + ':' + String(it.slug), {
+            watchlist: activeDetails.watchlist || null,
+          });
+        }
         if (payload && payload.ratingKey && !activeItem.ratingKey) activeItem.ratingKey = payload.ratingKey;
         if (payload && payload.imdbId && !activeItem.imdbId) activeItem.imdbId = String(payload.imdbId);
         if (payload && payload.tmdbId && !activeItem.tmdbId) activeItem.tmdbId = String(payload.tmdbId);
@@ -1021,6 +1023,53 @@
         if (!activeItem || activeItem.link !== it.link) return;
         activeMessage = 'Could not load full overview details.';
         renderWatchlistedModal(it);
+      });
+    }
+
+    function watchlistIcon(isOn) {
+      return isOn
+        ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 3h12a1 1 0 0 1 1 1v17.5a1 1 0 0 1-1.5.86L12 19.5l-5.5 2.86A1 1 0 0 1 5 21.5V4a1 1 0 0 1 1-1z"/></svg>'
+        : '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 3h10a2 2 0 0 1 2 2v16.4a1 1 0 0 1-1.46.88L12 19.3l-5.54 2.98A1 1 0 0 1 5 21.4V5a2 2 0 0 1 2-2zm0 2v14.8l4.54-2.45a1 1 0 0 1 .92 0L17 19.8V5H7z"/></svg>';
+    }
+
+    function updateWatchlistButton(button, watchlist) {
+      if (!button) return;
+      const state = watchlist || {};
+      const allowed = Boolean(state.allowed);
+      const isOn = Boolean(state.isWatchlisted);
+      button.innerHTML = watchlistIcon(isOn);
+      button.setAttribute('data-next-action', String(state.nextAction || (isOn ? 'remove' : 'add')));
+      button.setAttribute('title', state.label || (isOn ? 'Remove from Watchlist' : 'Add to Watchlist'));
+      button.disabled = watchlistBusy || !allowed;
+    }
+
+    function hydrateWatchlistState(items) {
+      const current = ++cardRequestId;
+      items.forEach((it, idx) => {
+        if (!it || !it.slug || (it.kind !== 'tv' && it.kind !== 'movie')) return;
+        const cacheKey = String(it.kind) + ':' + String(it.slug);
+        const cached = watchlistCache.get(cacheKey);
+        const card = elTrack.querySelector('.plex-card[data-index="' + String(idx) + '"]');
+        const watchBtn = card ? card.querySelector('.plex-watchlist-btn') : null;
+        if (cached) {
+          if (watchBtn) updateWatchlistButton(watchBtn, cached.watchlist);
+          return;
+        }
+        const query = new URLSearchParams();
+        query.set('kind', it.kind === 'tv' ? 'tv' : 'movie');
+        query.set('slug', String(it.slug || ''));
+        if (it.ratingKey) query.set('ratingKey', String(it.ratingKey));
+        fetchJson('/api/plex/discovery/details?' + query.toString(), function (payload) {
+          if (current !== cardRequestId) return;
+          const next = payload || {};
+          watchlistCache.set(cacheKey, {
+            watchlist: next.watchlist || null,
+          });
+          const targetCard = elTrack.querySelector('.plex-card[data-index="' + String(idx) + '"]');
+          if (!targetCard) return;
+          const btn = targetCard.querySelector('.plex-watchlist-btn');
+          if (btn) updateWatchlistButton(btn, next.watchlist);
+        });
       });
     }
 
@@ -1062,6 +1111,9 @@
           if (payload && payload.watchlist) {
             activeDetails = { ...(activeDetails || {}), watchlist: payload.watchlist };
             activeMessage = 'Watchlist updated.';
+            const cacheKey = String(activeItem.kind) + ':' + String(activeItem.slug);
+            const cached = watchlistCache.get(cacheKey) || {};
+            watchlistCache.set(cacheKey, { ...cached, watchlist: payload.watchlist });
           } else {
             activeMessage = 'Watchlist updated.';
           }
@@ -1106,7 +1158,7 @@
       const metaLine = metaBits.join(' • ');
 
       const card = document.createElement('div');
-      card.className = 'plex-card';
+      card.className = 'plex-card plex-card--watchlisted';
       card.dataset.index = String(idx);
 
       card.innerHTML =
@@ -1142,7 +1194,9 @@
     }
 
     function applyFilters() {
-      carousel.setItems(filteredItems(), renderCard, showDetailsModal);
+      const items = filteredItems();
+      carousel.setItems(items, renderCard, showDetailsModal);
+      hydrateWatchlistState(items);
     }
 
     function loadWatchlisted() {
@@ -1157,6 +1211,7 @@
 
     if (elType) elType.addEventListener('change', applyFilters);
     if (elLimit) elLimit.addEventListener('change', applyFilters);
+    // watchlist toggle handled inside the modal only
     window.addEventListener('resize', () => {
       carousel.updateLayout();
     });

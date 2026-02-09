@@ -34,7 +34,7 @@
           <div class="nav-accordion">
             <% navCategories.forEach((category) => { %>
               <% if (category.sidebarMenu) { %>
-                <% const categoryOpen = category.apps.some((item) => item.id === app.id); %>
+                <% const categoryOpen = category.apps.some((item) => item.id === app.id && !item.navFavourite && !((item.favourite || item.favorite))); %>
                 <div class="nav-accordion-item nav-accordion-item--category<%= categoryOpen ? ' open' : '' %>">
                   <button class="nav-accordion-trigger nav-accordion-trigger--category" type="button">
                     <img class="nav-icon" src="<%= category.icon || '/icons/category.svg' %>" alt="" onerror="this.src='/icons/category.svg'" />
