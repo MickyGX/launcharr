@@ -5,8 +5,6 @@ import express from 'express';
 import cookieSession from 'cookie-session';
 import {
   exportJWK,
-  importPKCS8,
-  SignJWT,
   calculateJwkThumbprint,
 } from 'jose';
 import { fileURLToPath } from 'url';
@@ -344,6 +342,8 @@ app.use(
 );
 
 loadLogsFromDisk(resolveLogSettings(loadConfig()));
+// DEBUG: confirm Plex client id creation on startup.
+console.log(`[plex] client id=${CLIENT_ID}`);
 
 app.get('/', (req, res) => {
   const user = req.session?.user || null;
@@ -484,22 +484,17 @@ app.post('/setup', (req, res) => {
 
 app.get('/auth/plex', async (req, res) => {
   try {
-    const { publicJwk } = await ensureKeypair();
     const authBaseUrl = resolvePublicBaseUrl(req);
-    // DEBUG: Plex SSO baseUrl/callback tracing (keep for troubleshooting)
-    console.log(`[plex] client auth start baseUrl=${authBaseUrl} forwardUrl=${new URL('/oauth/callback', authBaseUrl).toString()}`);
     pushLog({
       level: 'info',
       app: 'plex',
       action: 'login.start',
       message: 'Plex login started.',
-      // DEBUG: keep baseUrl in logs for Plex SSO troubleshooting
-      meta: { baseUrl: authBaseUrl },
+      meta: null,
     });
     return res.render('plex-auth', {
       title: 'Plex Login',
       baseUrl: authBaseUrl,
-      publicJwk,
       client: {
         id: CLIENT_ID,
         product: PRODUCT,
@@ -561,70 +556,7 @@ app.get('/oauth/callback', async (req, res) => {
       return res.status(401).send('Plex login not completed. Try again.');
     }
 
-    const plexUser = await fetchPlexUser(authToken);
-    const role = resolveRole(plexUser);
-
-    if (!role) {
-      pushLog({
-        level: 'error',
-        app: 'plex',
-        action: 'login.callback',
-        message: 'Access denied for Plex user.',
-        meta: { user: plexUser?.username || plexUser?.title || plexUser?.email || '' },
-      });
-      return res.status(403).send('Access denied for this Plex user.');
-    }
-
-    const rawAvatar = plexUser.thumb || plexUser.avatar || plexUser.photo || null;
-    const avatar = rawAvatar
-      ? (rawAvatar.startsWith('http') ? rawAvatar : `https://plex.tv${rawAvatar}`)
-      : null;
-
-    req.session.user = {
-      username: plexUser.username || plexUser.title || 'Plex User',
-      email: plexUser.email || null,
-      avatar,
-      role,
-    };
-    req.session.viewRole = null;
-    req.session.authToken = authToken;
-    req.session.plexServerToken = null;
-    req.session.pinId = null;
-
-    try {
-      const config = loadConfig();
-      const apps = config.apps || [];
-      const plexApp = apps.find((appItem) => normalizeAppId(appItem?.id) === 'plex');
-      if (plexApp) {
-        const resources = await fetchPlexResources(authToken);
-        const serverToken = resolvePlexServerToken(resources, {
-          machineId: String(plexApp?.plexMachine || '').trim(),
-          localUrl: plexApp?.localUrl,
-          remoteUrl: plexApp?.remoteUrl,
-          plexHost: plexApp?.plexHost,
-        });
-        if (serverToken) {
-          req.session.plexServerToken = serverToken;
-          if (role === 'admin' && serverToken !== plexApp.plexToken) {
-            const nextApps = apps.map((appItem) => (normalizeAppId(appItem?.id) === 'plex'
-              ? { ...appItem, plexToken: serverToken }
-              : appItem
-            ));
-            saveConfig({ ...config, apps: nextApps });
-          }
-        }
-      }
-    } catch (err) {
-      req.session.plexServerToken = null;
-    }
-
-    pushLog({
-      level: 'info',
-      app: 'plex',
-      action: 'login.success',
-      message: 'Plex login successful.',
-      meta: { user: req.session.user.username || '', role },
-    });
+    await completePlexLogin(req, authToken);
     res.redirect('/');
   } catch (err) {
     console.error('Plex callback failed:', err);
@@ -637,6 +569,20 @@ app.get('/oauth/callback', async (req, res) => {
     res.status(500).send(`Login failed: ${safeMessage(err)}`);
   }
 });
+
+app.get('/api/plex/pin/status', async (req, res) => {
+  try {
+    const pinId = String(req.query?.pinId || req.session?.pinId || '').trim();
+    if (!pinId) return res.status(400).json({ error: 'Missing pinId.' });
+    const authToken = await exchangePin(pinId);
+    if (!authToken) return res.json({ ok: false });
+    await completePlexLogin(req, authToken);
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ error: safeMessage(err) || 'PIN status check failed.' });
+  }
+});
+
 
 app.get('/dashboard', requireUser, (req, res) => {
   const config = loadConfig();
@@ -1350,6 +1296,10 @@ app.post('/apps/:id/settings', requireAdmin, (req, res) => {
   const shouldUpdateTautulliCards = Boolean(req.body.tautulliCardsForm);
   const isDisplayOnlyUpdate = shouldUpdateOverviewElements || shouldUpdateTautulliCards;
   const plexAdminUser = String(req.body?.plexAdminUser || '').trim();
+  const shouldIgnoreJwtToken = (value) => {
+    const raw = String(value || '').trim();
+    return raw && raw.split('.').length >= 3;
+  };
   const apps = (config.apps || []).map((appItem) => {
     if (appItem.id !== req.params.id) return appItem;
     const overviewElements = shouldUpdateOverviewElements
@@ -1375,9 +1325,20 @@ app.post('/apps/:id/settings', requireAdmin, (req, res) => {
       password: isDisplayOnlyUpdate
         ? appItem.password || ''
         : (req.body.password !== undefined ? req.body.password : (appItem.password || '')),
-      plexToken: isDisplayOnlyUpdate
-        ? appItem.plexToken || ''
-        : (req.body.plexToken !== undefined ? req.body.plexToken : (appItem.plexToken || '')),
+      plexToken: (() => {
+        if (isDisplayOnlyUpdate) return appItem.plexToken || '';
+        const nextToken = req.body.plexToken !== undefined ? req.body.plexToken : (appItem.plexToken || '');
+        if (appItem.id === 'plex' && shouldIgnoreJwtToken(nextToken)) {
+          pushLog({
+            level: 'error',
+            app: 'plex',
+            action: 'token.save',
+            message: 'Rejected Plex auth JWT. Server token required.',
+          });
+          return appItem.plexToken || '';
+        }
+        return nextToken;
+      })(),
       plexMachine: isDisplayOnlyUpdate
         ? appItem.plexMachine || ''
         : (req.body.plexMachine !== undefined ? req.body.plexMachine : (appItem.plexMachine || '')),
@@ -1413,13 +1374,31 @@ app.get('/api/plex/token', requireAdmin, (req, res) => {
         remoteUrl: plexApp?.remoteUrl,
         plexHost: plexApp?.plexHost,
       });
-      return { token: serverToken || sessionToken };
+      if (serverToken) return { token: serverToken };
+      pushLog({
+        level: 'error',
+        app: 'plex',
+        action: 'token.resolve',
+        message: 'Plex server token could not be resolved.',
+        meta: {
+          machineId: String(plexApp?.plexMachine || '').trim(),
+          localUrl: plexApp?.localUrl || '',
+          remoteUrl: plexApp?.remoteUrl || '',
+        },
+      });
+      return { error: 'Unable to resolve Plex server token. Set Plex Machine/URL and try again.' };
     } catch (err) {
-      return { token: sessionToken };
+      pushLog({
+        level: 'error',
+        app: 'plex',
+        action: 'token.resolve',
+        message: safeMessage(err) || 'Plex server token lookup failed.',
+      });
+      return { error: 'Plex server token lookup failed.' };
     }
   })()
     .then((payload) => res.json(payload))
-    .catch(() => res.json({ token }));
+    .catch(() => res.json({ error: 'Plex server token lookup failed.' }));
 });
 
 app.get('/api/plex/machine', requireAdmin, async (req, res) => {
@@ -3885,6 +3864,86 @@ function resolveReturnPath(req, fallback = '/dashboard') {
   }
 }
 
+async function completePlexLogin(req, authToken) {
+  const plexUser = await fetchPlexUser(authToken);
+  const role = resolveRole(plexUser);
+
+  if (!role) {
+    pushLog({
+      level: 'error',
+      app: 'plex',
+      action: 'login.callback',
+      message: 'Access denied for Plex user.',
+      meta: { user: plexUser?.username || plexUser?.title || plexUser?.email || '' },
+    });
+    throw new Error('Access denied for this Plex user.');
+  }
+
+  const rawAvatar = plexUser.thumb || plexUser.avatar || plexUser.photo || null;
+  const avatar = rawAvatar
+    ? (rawAvatar.startsWith('http') ? rawAvatar : `https://plex.tv${rawAvatar}`)
+    : null;
+
+  req.session.user = {
+    username: plexUser.username || plexUser.title || 'Plex User',
+    email: plexUser.email || null,
+    avatar,
+    role,
+  };
+  req.session.viewRole = null;
+  req.session.authToken = authToken;
+  req.session.plexServerToken = null;
+  req.session.pinId = null;
+
+  try {
+    const config = loadConfig();
+    const apps = config.apps || [];
+    const plexApp = apps.find((appItem) => normalizeAppId(appItem?.id) === 'plex');
+    if (plexApp) {
+      const resources = await fetchPlexResources(authToken);
+      const serverToken = resolvePlexServerToken(resources, {
+        machineId: String(plexApp?.plexMachine || '').trim(),
+        localUrl: plexApp?.localUrl,
+        remoteUrl: plexApp?.remoteUrl,
+        plexHost: plexApp?.plexHost,
+      });
+      const debug = buildPlexResourceDebug(resources, {
+        machineId: String(plexApp?.plexMachine || '').trim(),
+        localUrl: plexApp?.localUrl,
+        remoteUrl: plexApp?.remoteUrl,
+        plexHost: plexApp?.plexHost,
+      });
+      pushLog({
+        level: 'info',
+        app: 'plex',
+        action: 'login.resources',
+        message: serverToken ? 'Plex server token resolved.' : 'Plex server token not resolved.',
+        meta: debug,
+      });
+      if (serverToken) {
+        req.session.plexServerToken = serverToken;
+        if (role === 'admin' && serverToken !== plexApp.plexToken) {
+          const nextApps = apps.map((appItem) => (normalizeAppId(appItem?.id) === 'plex'
+            ? { ...appItem, plexToken: serverToken }
+            : appItem
+          ));
+          saveConfig({ ...config, apps: nextApps });
+        }
+      }
+    }
+  } catch (err) {
+    req.session.plexServerToken = null;
+  }
+
+  pushLog({
+    level: 'info',
+    app: 'plex',
+    action: 'login.success',
+    message: 'Plex login successful.',
+    meta: { user: req.session.user.username || '', role },
+  });
+}
+
 function plexHeaders() {
   return {
     'X-Plex-Client-Identifier': CLIENT_ID,
@@ -3954,6 +4013,62 @@ function resolvePlexServerToken(resources, { machineId, localUrl, remoteUrl, ple
 
   if (servers.length === 1 && servers[0]?.accessToken) return servers[0].accessToken;
   return '';
+}
+
+function buildPlexResourceDebug(resources, { machineId, localUrl, remoteUrl, plexHost }) {
+  const list = Array.isArray(resources)
+    ? resources
+    : (resources?.MediaContainer?.Device || resources?.mediaContainer?.Device || []);
+  const servers = (Array.isArray(list) ? list : [])
+    .filter((item) => String(item?.provides || '').includes('server'));
+  const normalizeId = (value) => String(value || '').trim();
+  const machine = normalizeId(machineId);
+  const toHost = (value) => {
+    if (!value) return '';
+    try {
+      return new URL(String(value)).hostname.toLowerCase();
+    } catch (err) {
+      return String(value).replace(/^https?:\/\//i, '').replace(/\/.*$/, '').toLowerCase();
+    }
+  };
+  const hostCandidates = [localUrl, remoteUrl, plexHost]
+    .map(toHost)
+    .filter(Boolean);
+  const machineMatch = machine
+    ? servers.some((item) => normalizeId(item?.clientIdentifier || item?.clientidentifier) === machine)
+    : false;
+  const hostMatch = hostCandidates.length
+    ? servers.some((server) => {
+      const connections = Array.isArray(server?.connections)
+        ? server.connections
+        : (Array.isArray(server?.Connection) ? server.Connection : []);
+      const connectionHosts = connections
+        .map((conn) => toHost(conn?.uri || conn?.address || conn?.host))
+        .filter(Boolean);
+      return connectionHosts.some((host) => hostCandidates.includes(host));
+    })
+    : false;
+  const serverSummaries = servers.map((server) => {
+    const connections = Array.isArray(server?.connections)
+      ? server.connections
+      : (Array.isArray(server?.Connection) ? server.Connection : []);
+    const connectionHosts = connections
+      .map((conn) => toHost(conn?.uri || conn?.address || conn?.host))
+      .filter(Boolean);
+    return {
+      name: String(server?.name || ''),
+      clientIdentifier: normalizeId(server?.clientIdentifier || server?.clientidentifier),
+      connectionHosts,
+    };
+  });
+  return {
+    serverCount: servers.length,
+    machineMatch,
+    hostMatch,
+    hasMachineId: Boolean(machine),
+    hostCandidates,
+    servers: serverSummaries,
+  };
 }
 
 async function fetchLatestDockerTag() {
@@ -4041,18 +4156,7 @@ function buildAuthUrl(code, pinId, baseUrl = BASE_URL) {
 }
 
 async function exchangePin(pinId) {
-  const { privatePem, kid } = await ensureKeypair();
-  const privateKey = await importPKCS8(privatePem, 'EdDSA');
-
-  const deviceJwt = await new SignJWT({})
-    .setProtectedHeader({ alg: 'EdDSA', kid })
-    .setIssuedAt()
-    .setIssuer(CLIENT_ID)
-    .setAudience('plex.tv')
-    .setExpirationTime('5m')
-    .sign(privateKey);
-
-  const url = `https://clients.plex.tv/api/v2/pins/${pinId}?deviceJWT=${encodeURIComponent(deviceJwt)}`;
+  const url = `https://plex.tv/api/v2/pins/${pinId}`;
   const res = await fetch(url, {
     method: 'GET',
     headers: {
@@ -4061,16 +4165,30 @@ async function exchangePin(pinId) {
     },
   });
 
+  const text = await res.text();
   if (!res.ok) {
-    const text = await res.text();
     throw new Error(`PIN exchange failed (${res.status}): ${text}`);
   }
 
-  const data = await res.json();
+  let data = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch (err) {
+    throw new Error(`PIN exchange JSON parse failed: ${text.slice(0, 180)}`);
+  }
+  if (!data?.authToken) {
+    pushLog({
+      level: 'error',
+      app: 'plex',
+      action: 'login.pin',
+      message: 'PIN exchange returned no authToken.',
+      meta: { pinId: String(pinId || ''), payload: data || {} },
+    });
+  }
   return data.authToken || null;
 }
 
-async function exchangePinWithRetry(pinId, attempts = 60, delayMs = 2000) {
+async function exchangePinWithRetry(pinId, attempts = 20, delayMs = 1000) {
   let lastError = '';
   for (let i = 0; i < attempts; i += 1) {
     try {

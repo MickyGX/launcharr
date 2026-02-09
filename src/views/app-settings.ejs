@@ -697,9 +697,13 @@
           plexTokenBtn.disabled = true;
           const res = await fetch('/api/plex/token');
           const data = await res.json();
-          if (!res.ok) throw new Error(data?.error || 'Failed to fetch Plex token.');
+          if (!res.ok || data?.error) throw new Error(data?.error || 'Failed to fetch Plex token.');
+          const nextToken = String(data.token || '').trim();
+          if (nextToken.split('.').length >= 3) {
+            throw new Error('Resolved token looks like a Plex auth JWT. Please set Plex Machine/URL and try again.');
+          }
           const input = document.getElementById('plexTokenInput');
-          if (input) input.value = data.token || '';
+          if (input) input.value = nextToken;
         } catch (err) {
           console.error('[Launcharr] Plex token fetch failed', err);
         } finally {

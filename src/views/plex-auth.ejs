@@ -38,11 +38,9 @@
     <script>
       (async () => {
         const baseUrl = "<%= baseUrl %>";
-        const publicJwk = <%- JSON.stringify(publicJwk) %>;
         const client = <%- JSON.stringify(client) %>;
         const headers = {
           Accept: "application/json",
-          "Content-Type": "application/json",
           "X-Plex-Client-Identifier": client.id,
           "X-Plex-Product": client.product,
           "X-Plex-Platform": client.platform,
@@ -50,10 +48,9 @@
           "X-Plex-Device-Name": client.deviceName
         };
 
-        const res = await fetch("https://clients.plex.tv/api/v2/pins", {
+        const res = await fetch("https://plex.tv/api/v2/pins?strong=true", {
           method: "POST",
-          headers,
-          body: JSON.stringify({ jwk: publicJwk, strong: true })
+          headers
         });
         if (!res.ok) {
           const text = await res.text();
@@ -84,6 +81,11 @@
         params.set("forwardUrl", callbackUrl.toString());
         params.set("context[device][product]", client.product);
         params.set("context[device][platform]", client.platform);
+        params.set("context[device][name]", client.deviceName);
+        const status = document.getElementById("plex-auth-status");
+        if (status) {
+          status.textContent = "Opening Plex login in your browser.";
+        }
 
         window.location.href = "https://app.plex.tv/auth#?" + params.toString();
       })().catch((err) => {

@@ -26,6 +26,7 @@ data/*
 # Local configuration (copy from config/config.example.json)
 config/config.json
 reference/config.json
+reference/
 
 # Local compose overrides
 docker-compose.override.yml

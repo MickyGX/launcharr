@@ -10,7 +10,8 @@ services:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
-      - BASEURL=http://192.168.0.2:3333
+      - BASE_URL=http://192.168.0.2:3333
+      # - PLEX_CLIENT_ID=launcharr-dev-192-168-0-2
     volumes:
       - ./config:/app/config
       - ./data:/app/data
