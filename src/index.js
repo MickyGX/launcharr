@@ -25,6 +25,7 @@ const DEVICE_NAME = process.env.PLEX_DEVICE_NAME || 'Launcharr';
 const SESSION_SECRET = process.env.SESSION_SECRET || 'change-me';
 const LOCAL_AUTH_MIN_PASSWORD = 6;
 const CONFIG_PATH = process.env.CONFIG_PATH || path.join(__dirname, '..', 'config', 'config.json');
+const APP_VERSION = process.env.APP_VERSION || loadPackageVersion();
 const DEFAULT_APPS_PATH = process.env.DEFAULT_APPS_PATH || path.join(__dirname, '..', 'default-apps.json');
 const DEFAULT_CATEGORIES_PATH = process.env.DEFAULT_CATEGORIES_PATH || path.join(__dirname, '..', 'config', 'default-categories.json');
 const CONFIG_EXAMPLE_PATH = process.env.CONFIG_EXAMPLE_PATH || path.join(__dirname, '..', 'config', 'config.example.json');
@@ -113,6 +114,9 @@ const DEFAULT_LOG_SETTINGS = {
   maxEntries: 250,
   maxDays: 7,
 };
+
+const VERSION_CACHE_TTL_MS = 10 * 60 * 1000;
+let versionCache = { fetchedAt: 0, payload: null };
 
 const DEFAULT_QUEUE_DISPLAY = {
   queueShowDetail: true,
@@ -1398,6 +1402,28 @@ app.get('/api/plex/machine', requireAdmin, async (req, res) => {
   return res.status(502).json({ error: lastError || 'Failed to reach Plex.' });
 });
 
+app.get('/api/version', requireUser, async (_req, res) => {
+  const current = normalizeVersionTag(APP_VERSION || '');
+  const now = Date.now();
+  if (versionCache.payload && (now - versionCache.fetchedAt) < VERSION_CACHE_TTL_MS) {
+    return res.json({ ...versionCache.payload, current });
+  }
+  try {
+    const latest = await fetchLatestDockerTag();
+    const payload = {
+      current,
+      latest,
+      upToDate: Boolean(current && latest && current === latest),
+    };
+    versionCache = { fetchedAt: now, payload };
+    return res.json(payload);
+  } catch (err) {
+    const payload = { current, latest: '', upToDate: true };
+    versionCache = { fetchedAt: now, payload };
+    return res.json(payload);
+  }
+});
+
 app.get('/api/plex/discovery/watchlisted', requireUser, async (req, res) => {
   const config = loadConfig();
   const apps = config.apps || [];
@@ -2304,6 +2330,40 @@ function uniqueList(items) {
 
 function isSecureEnv() {
   return (process.env.COOKIE_SECURE || '').toLowerCase() === 'true';
+}
+
+function loadPackageVersion() {
+  try {
+    const pkgPath = path.join(__dirname, '..', 'package.json');
+    const raw = fs.readFileSync(pkgPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    return String(parsed?.version || '').trim();
+  } catch (err) {
+    return '';
+  }
+}
+
+function normalizeVersionTag(value) {
+  const tag = String(value || '').trim();
+  if (!tag) return '';
+  return tag.startsWith('v') ? tag : `v${tag}`;
+}
+
+function parseSemver(value) {
+  const raw = String(value || '').trim().replace(/^v/i, '');
+  const match = raw.match(/^(\d+)\.(\d+)\.(\d+)$/);
+  if (!match) return null;
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3]),
+  };
+}
+
+function compareSemver(a, b) {
+  if (a.major !== b.major) return a.major - b.major;
+  if (a.minor !== b.minor) return a.minor - b.minor;
+  return a.patch - b.patch;
 }
 
 function getNavApps(apps, role, req, categoryOrder = DEFAULT_CATEGORY_ORDER) {
@@ -3818,6 +3878,30 @@ function resolvePlexServerToken(resources, { machineId, localUrl, remoteUrl, ple
 
   if (servers.length === 1 && servers[0]?.accessToken) return servers[0].accessToken;
   return '';
+}
+
+async function fetchLatestDockerTag() {
+  const res = await fetch('https://registry.hub.docker.com/v2/repositories/mickygx/launcharr/tags?page_size=50', {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Docker Hub tag lookup failed (${res.status}): ${text.slice(0, 180)}`);
+  }
+  const payload = await res.json();
+  const tags = Array.isArray(payload?.results) ? payload.results : [];
+  const parsed = tags
+    .map((tag) => {
+      const name = String(tag?.name || '').trim();
+      const semver = parseSemver(name);
+      if (!semver) return null;
+      return { name: normalizeVersionTag(name), semver };
+    })
+    .filter(Boolean);
+  if (!parsed.length) return '';
+  parsed.sort((a, b) => compareSemver(b.semver, a.semver));
+  return parsed[0].name;
 }
 
 function parsePlexUsers(xmlText) {

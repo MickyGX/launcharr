@@ -1,7 +1,10 @@
 FROM node:20-alpine
 
+ARG APP_VERSION=""
+
 WORKDIR /app
-ENV NODE_ENV=production
+ENV NODE_ENV=production \
+    APP_VERSION=${APP_VERSION}
 
 COPY package.json ./
 RUN npm install --omit=dev

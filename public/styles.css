@@ -1378,6 +1378,30 @@ a{color:inherit}
   color:var(--muted);
 }
 
+.version-badge{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+
+.version-pill{
+  padding:4px 8px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.18);
+  background:rgba(0,0,0,.35);
+  color:var(--text);
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.02em;
+  white-space:nowrap;
+}
+
+.version-pill--latest{
+  border-color:rgba(120,255,247,.5);
+  background:rgba(18,28,36,.55);
+  color:#bff6f0;
+}
+
 .sidebar-toggle.main-toggle{
   margin-right:10px;
   width:30px;
