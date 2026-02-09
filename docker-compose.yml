@@ -1,17 +1,14 @@
 services:
   launcharr:
-    build: .
-    container_name: launcharr_dev
+    container_name: launcharr
     ports:
       - "3333:3333"
     environment:
       - CONFIG_PATH=/app/config/config.json
       - DATA_DIR=/app/data
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
-      - BASE_URL=http://192.168.0.2:3333
-      # - PLEX_CLIENT_ID=launcharr-dev-192-168-0-2
+      # - PUID=${PUID}
+      # - PGID=${PGID}
+      # - TZ=${TZ}
     volumes:
       - ./config:/app/config
       - ./data:/app/data

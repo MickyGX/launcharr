@@ -30,6 +30,7 @@ reference/
 
 # Local compose overrides
 docker-compose.override.yml
+docker-compose.local.yml
 
 # Local custom app icons
 public/icons/custom/

@@ -1,6 +1,5 @@
 services:
   launcharr:
-    build: .
     container_name: launcharr
     environment:
       - CONFIG_PATH=/app/config/config.json
