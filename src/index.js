@@ -1342,9 +1342,28 @@ app.get('/api/plex/token', requireAdmin, (req, res) => {
   const config = loadConfig();
   const apps = config.apps || [];
   const plexApp = apps.find((appItem) => appItem.id === 'plex');
-  const token = String(req.session?.authToken || plexApp?.plexToken || '').trim();
+  const sessionToken = String(req.session?.authToken || '').trim();
+  const fallbackToken = String(plexApp?.plexToken || '').trim();
+  const token = sessionToken || fallbackToken;
   if (!token) return res.status(400).json({ error: 'Missing Plex token.' });
-  return res.json({ token });
+
+  (async () => {
+    if (!sessionToken) return { token };
+    try {
+      const resources = await fetchPlexResources(sessionToken);
+      const serverToken = resolvePlexServerToken(resources, {
+        machineId: String(plexApp?.plexMachine || '').trim(),
+        localUrl: plexApp?.localUrl,
+        remoteUrl: plexApp?.remoteUrl,
+        plexHost: plexApp?.plexHost,
+      });
+      return { token: serverToken || sessionToken };
+    } catch (err) {
+      return { token: sessionToken };
+    }
+  })()
+    .then((payload) => res.json(payload))
+    .catch(() => res.json({ token }));
 });
 
 app.get('/api/plex/machine', requireAdmin, async (req, res) => {
@@ -3738,6 +3757,67 @@ function plexHeaders() {
     'X-Plex-Device': PLATFORM,
     'X-Plex-Device-Name': DEVICE_NAME,
   };
+}
+
+async function fetchPlexResources(token) {
+  const res = await fetch('https://plex.tv/api/v2/resources?includeHttps=1&includeRelay=1', {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      'X-Plex-Token': token,
+      ...plexHeaders(),
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Plex resources request failed (${res.status}): ${text.slice(0, 180)}`);
+  }
+  return res.json();
+}
+
+function resolvePlexServerToken(resources, { machineId, localUrl, remoteUrl, plexHost }) {
+  const list = Array.isArray(resources)
+    ? resources
+    : (resources?.MediaContainer?.Device || resources?.mediaContainer?.Device || []);
+  const servers = (Array.isArray(list) ? list : [])
+    .filter((item) => String(item?.provides || '').includes('server'));
+  const normalizeId = (value) => String(value || '').trim();
+  const machine = normalizeId(machineId);
+  if (machine) {
+    const match = servers.find((item) =>
+      normalizeId(item?.clientIdentifier || item?.clientidentifier) === machine
+    );
+    if (match?.accessToken) return match.accessToken;
+  }
+
+  const toHost = (value) => {
+    if (!value) return '';
+    try {
+      return new URL(String(value)).hostname.toLowerCase();
+    } catch (err) {
+      return String(value).replace(/^https?:\/\//i, '').replace(/\/.*$/, '').toLowerCase();
+    }
+  };
+  const hostCandidates = [localUrl, remoteUrl, plexHost]
+    .map(toHost)
+    .filter(Boolean);
+
+  if (hostCandidates.length) {
+    for (const server of servers) {
+      const connections = Array.isArray(server?.connections)
+        ? server.connections
+        : (Array.isArray(server?.Connection) ? server.Connection : []);
+      const connectionHosts = connections
+        .map((conn) => toHost(conn?.uri || conn?.address || conn?.host))
+        .filter(Boolean);
+      if (connectionHosts.some((host) => hostCandidates.includes(host))) {
+        if (server?.accessToken) return server.accessToken;
+      }
+    }
+  }
+
+  if (servers.length === 1 && servers[0]?.accessToken) return servers[0].accessToken;
+  return '';
 }
 
 function parsePlexUsers(xmlText) {
