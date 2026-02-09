@@ -2355,6 +2355,7 @@ function buildNavCategories(navApps, categoryEntries) {
   const seen = new Set();
   entries.forEach((entry) => {
     const apps = grouped.get(entry.name) || [];
+    seen.add(entry.name.toLowerCase());
     if (!apps.length) return;
     const filteredApps = entry.sidebarMenu ? apps : apps.filter((appItem) => !isFavourite(appItem));
     if (!filteredApps.length) return;
@@ -2364,7 +2365,6 @@ function buildNavCategories(navApps, categoryEntries) {
       icon: entry.icon || defaultIcon,
       apps: filteredApps,
     });
-    seen.add(entry.name.toLowerCase());
   });
   grouped.forEach((apps, name) => {
     if (!apps.length) return;

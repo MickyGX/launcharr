@@ -505,7 +505,7 @@
   {
     "id": "cleanuparr",
     "name": "Cleanuparr",
-    "url": "http://localhost:8083",
+    "url": "http://localhost:11011",
     "description": "Library cleanup",
     "category": "Arr Suite",
     "roles": [
@@ -535,7 +535,7 @@
   {
     "id": "huntarr",
     "name": "Huntarr",
-    "url": "http://localhost:9200",
+    "url": "http://localhost:9705",
     "description": "Indexer hunting",
     "category": "Arr Suite",
     "roles": [
