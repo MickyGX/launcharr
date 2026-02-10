@@ -3901,12 +3901,14 @@ async function completePlexLogin(req, authToken) {
     const plexApp = apps.find((appItem) => normalizeAppId(appItem?.id) === 'plex');
     if (plexApp) {
       const resources = await fetchPlexResources(authToken);
-      const serverToken = resolvePlexServerToken(resources, {
+      const serverResource = resolvePlexServerResource(resources, {
         machineId: String(plexApp?.plexMachine || '').trim(),
         localUrl: plexApp?.localUrl,
         remoteUrl: plexApp?.remoteUrl,
         plexHost: plexApp?.plexHost,
       });
+      const serverToken = String(serverResource?.accessToken || '').trim();
+      const isServerOwner = isPlexServerOwner(serverResource);
       const debug = buildPlexResourceDebug(resources, {
         machineId: String(plexApp?.plexMachine || '').trim(),
         localUrl: plexApp?.localUrl,
@@ -3922,12 +3924,20 @@ async function completePlexLogin(req, authToken) {
       });
       if (serverToken) {
         req.session.plexServerToken = serverToken;
-        if (role === 'admin' && serverToken !== plexApp.plexToken) {
+        if (role === 'admin' && isServerOwner && serverToken !== plexApp.plexToken) {
           const nextApps = apps.map((appItem) => (normalizeAppId(appItem?.id) === 'plex'
             ? { ...appItem, plexToken: serverToken }
             : appItem
           ));
           saveConfig({ ...config, apps: nextApps });
+        } else if (role === 'admin' && !isServerOwner && serverToken !== plexApp.plexToken) {
+          pushLog({
+            level: 'info',
+            app: 'plex',
+            action: 'token.save',
+            message: 'Skipped Plex token update; only server owner can update token.',
+            meta: { user: req.session?.user?.username || '' },
+          });
         }
       }
     }
@@ -3971,6 +3981,11 @@ async function fetchPlexResources(token) {
 }
 
 function resolvePlexServerToken(resources, { machineId, localUrl, remoteUrl, plexHost }) {
+  const match = resolvePlexServerResource(resources, { machineId, localUrl, remoteUrl, plexHost });
+  return match?.accessToken || '';
+}
+
+function resolvePlexServerResource(resources, { machineId, localUrl, remoteUrl, plexHost }) {
   const list = Array.isArray(resources)
     ? resources
     : (resources?.MediaContainer?.Device || resources?.mediaContainer?.Device || []);
@@ -3982,7 +3997,7 @@ function resolvePlexServerToken(resources, { machineId, localUrl, remoteUrl, ple
     const match = servers.find((item) =>
       normalizeId(item?.clientIdentifier || item?.clientidentifier) === machine
     );
-    if (match?.accessToken) return match.accessToken;
+    if (match) return match;
   }
 
   const toHost = (value) => {
@@ -4006,13 +4021,22 @@ function resolvePlexServerToken(resources, { machineId, localUrl, remoteUrl, ple
         .map((conn) => toHost(conn?.uri || conn?.address || conn?.host))
         .filter(Boolean);
       if (connectionHosts.some((host) => hostCandidates.includes(host))) {
-        if (server?.accessToken) return server.accessToken;
+        return server;
       }
     }
   }
 
-  if (servers.length === 1 && servers[0]?.accessToken) return servers[0].accessToken;
-  return '';
+  if (servers.length === 1) return servers[0];
+  return null;
+}
+
+function isPlexServerOwner(server) {
+  if (!server) return false;
+  const value = server?.owned ?? server?.owner ?? server?.isOwner;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
+  if (typeof value === 'string') return value.toLowerCase() === 'true' || value === '1';
+  return false;
 }
 
 function buildPlexResourceDebug(resources, { machineId, localUrl, remoteUrl, plexHost }) {
