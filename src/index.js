@@ -914,7 +914,7 @@ app.post('/user-settings/access', requireActualAdmin, (req, res) => {
     restrictGuests,
   };
   saveConfig({ ...config, general: nextGeneral });
-  res.redirect('/user-settings');
+  res.redirect('/settings?tab=user');
 });
 
 app.post('/settings/categories', requireSettingsAdmin, (req, res) => {
