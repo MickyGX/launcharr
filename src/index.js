@@ -1193,7 +1193,14 @@ app.get('/settings/plex-users', requireSettingsAdmin, async (req, res) => {
   const plexApp = Array.isArray(config.apps)
     ? config.apps.find((appItem) => normalizeAppId(appItem?.id) === 'plex')
     : null;
-  const token = String(req.session?.authToken || plexApp?.plexToken || '').trim();
+  const admins = loadAdmins();
+  const ownerKey = admins[0] ? String(admins[0]).toLowerCase() : '';
+  const identifiers = [
+    req.session?.user?.username,
+    req.session?.user?.email,
+  ].filter(Boolean).map((value) => String(value).toLowerCase());
+  const isOwner = ownerKey ? identifiers.includes(ownerKey) : true;
+  const token = String((isOwner ? req.session?.authToken : '') || plexApp?.plexToken || '').trim();
   if (!token) return res.status(401).json({ error: 'Missing Plex token.' });
 
   try {
@@ -1216,9 +1223,7 @@ app.get('/settings/plex-users', requireSettingsAdmin, async (req, res) => {
     }
 
     const users = parsePlexUsers(xmlText);
-    const admins = loadAdmins();
     const coAdmins = loadCoAdmins();
-    const ownerKey = admins[0] ? String(admins[0]).toLowerCase() : '';
 
     const payload = users.map((user) => {
       const name = user.title || user.username || user.email || 'Plex User';
