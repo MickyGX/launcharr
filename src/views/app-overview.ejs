@@ -118,13 +118,6 @@
             <% }) %>
           </div>
         <% } %>
-        <% if (role === 'admin') { %>
-          <div class="nav-divider"></div>
-          <a class="nav-item" href="/settings">
-            <img class="nav-icon" src="/icons/settings.svg" alt="" />
-            <span class="nav-label">Settings</span>
-          </a>
-        <% } %>
       </div>
 
       <div class="dash-user">
@@ -141,16 +134,22 @@
           </div>
           <span class="user-pill-caret" aria-hidden="true"></span>
           <div class="user-menu" role="menu">
-            <a class="user-menu-item" href="/user-settings">
-              <img class="user-menu-icon" src="/icons/settings.svg" alt="" />
-              <span class="user-menu-text">User settings</span>
-            </a>
+            <% if (actualRole === 'admin') { %>
+              <a class="user-menu-item" href="/settings">
+                <img class="user-menu-icon" src="/icons/settings.svg" alt="" />
+                <span class="user-menu-text">Settings</span>
+              </a>
+            <% } %>
             <% if (actualRole === 'admin') { %>
               <a class="user-menu-item" href="/switch-view?role=<%= role === 'admin' ? 'user' : 'admin' %>">
                 <img class="user-menu-icon" src="/icons/window.svg" alt="" />
                 <span class="user-menu-text"><%= role === 'admin' ? 'Switch to user view' : 'Switch to admin view' %></span>
               </a>
             <% } %>
+            <a class="user-menu-item" href="/user-settings">
+              <img class="user-menu-icon" src="/icons/settings.svg" alt="" />
+              <span class="user-menu-text">User settings</span>
+            </a>
             <div class="user-menu-divider"></div>
             <a class="user-menu-item" href="/logout">
               <img class="user-menu-icon" src="/icons/logout.svg" alt="" />

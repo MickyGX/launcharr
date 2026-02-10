@@ -130,14 +130,19 @@ const DEFAULT_GENERAL_SETTINGS = {
   serverName: 'Launcharr',
   remoteUrl: '',
   localUrl: '',
+  restrictGuests: false,
 };
 
 function resolveGeneralSettings(config) {
   const raw = config && typeof config.general === 'object' ? config.general : {};
+  const restrictGuests = raw.restrictGuests === undefined
+    ? DEFAULT_GENERAL_SETTINGS.restrictGuests
+    : Boolean(raw.restrictGuests);
   return {
     serverName: String(raw.serverName || DEFAULT_GENERAL_SETTINGS.serverName || '').trim(),
     remoteUrl: String(raw.remoteUrl || DEFAULT_GENERAL_SETTINGS.remoteUrl || '').trim(),
     localUrl: String(raw.localUrl || DEFAULT_GENERAL_SETTINGS.localUrl || '').trim(),
+    restrictGuests,
   };
 }
 
@@ -566,7 +571,8 @@ app.get('/oauth/callback', async (req, res) => {
       action: 'login.callback',
       message: safeMessage(err) || 'Plex login callback failed.',
     });
-    res.status(500).send(`Login failed: ${safeMessage(err)}`);
+    const status = err?.status || 500;
+    res.status(status).send(`Login failed: ${safeMessage(err)}`);
   }
 });
 
@@ -579,7 +585,8 @@ app.get('/api/plex/pin/status', async (req, res) => {
     await completePlexLogin(req, authToken);
     return res.json({ ok: true });
   } catch (err) {
-    return res.status(500).json({ error: safeMessage(err) || 'PIN status check failed.' });
+    const status = err?.status || 500;
+    return res.status(status).json({ error: safeMessage(err) || 'PIN status check failed.' });
   }
 });
 
@@ -887,13 +894,27 @@ app.get('/user-settings', requireUser, (req, res) => {
   const actualRole = getActualRole(req);
   const navApps = getNavApps(apps, role, req, categoryOrder);
   const navCategories = buildNavCategories(navApps, categoryEntries);
+  const generalSettings = resolveGeneralSettings(config);
 
   res.render('user-settings', {
     user: req.session.user,
     role,
     actualRole,
     navCategories,
+    generalSettings,
   });
+});
+
+app.post('/user-settings/access', requireActualAdmin, (req, res) => {
+  const config = loadConfig();
+  const generalSettings = resolveGeneralSettings(config);
+  const restrictGuests = Boolean(req.body?.restrictGuests);
+  const nextGeneral = {
+    ...generalSettings,
+    restrictGuests,
+  };
+  saveConfig({ ...config, general: nextGeneral });
+  res.redirect('/user-settings');
 });
 
 app.post('/settings/categories', requireSettingsAdmin, (req, res) => {
@@ -1042,6 +1063,7 @@ app.post('/settings/apps', requireSettingsAdmin, (req, res) => {
 
 app.post('/settings/general', requireSettingsAdmin, (req, res) => {
   const config = loadConfig();
+  const generalSettings = resolveGeneralSettings(config);
   const serverName = String(req.body?.server_name || '').trim();
   const remoteUrl = String(req.body?.remote_url || '').trim();
   const localUrl = String(req.body?.local_url || '').trim();
@@ -1049,6 +1071,7 @@ app.post('/settings/general', requireSettingsAdmin, (req, res) => {
     serverName: serverName || DEFAULT_GENERAL_SETTINGS.serverName,
     remoteUrl,
     localUrl,
+    restrictGuests: generalSettings.restrictGuests,
   };
   saveConfig({ ...config, general: nextGeneral });
   res.redirect('/settings');
@@ -3819,6 +3842,19 @@ function requireAdmin(req, res, next) {
   res.status(403).send('Admin access required.');
 }
 
+function requireActualAdmin(req, res, next) {
+  const role = getActualRole(req);
+  if (role === 'admin') return next();
+  pushLog({
+    level: 'error',
+    app: 'system',
+    action: 'access.denied',
+    message: 'Admin access required.',
+    meta: { path: req.originalUrl || req.url || '' },
+  });
+  res.status(403).send('Admin access required.');
+}
+
 function requireSettingsAdmin(req, res, next) {
   const role = getEffectiveRole(req);
   if (role === 'admin') return next();
@@ -3872,6 +3908,13 @@ function resolveReturnPath(req, fallback = '/dashboard') {
 async function completePlexLogin(req, authToken) {
   const plexUser = await fetchPlexUser(authToken);
   const role = resolveRole(plexUser);
+  const config = loadConfig();
+  const apps = config.apps || [];
+  const generalSettings = resolveGeneralSettings(config);
+  const plexApp = apps.find((appItem) => normalizeAppId(appItem?.id) === 'plex');
+  let serverResource = null;
+  let serverToken = '';
+  let isServerOwner = false;
 
   if (!role) {
     pushLog({
@@ -3882,6 +3925,61 @@ async function completePlexLogin(req, authToken) {
       meta: { user: plexUser?.username || plexUser?.title || plexUser?.email || '' },
     });
     throw new Error('Access denied for this Plex user.');
+  }
+
+  if (plexApp) {
+    try {
+      const resources = await fetchPlexResources(authToken);
+      serverResource = resolvePlexServerResource(resources, {
+        machineId: String(plexApp?.plexMachine || '').trim(),
+        localUrl: plexApp?.localUrl,
+        remoteUrl: plexApp?.remoteUrl,
+        plexHost: plexApp?.plexHost,
+      });
+      serverToken = String(serverResource?.accessToken || '').trim();
+      isServerOwner = isPlexServerOwner(serverResource);
+      const debug = buildPlexResourceDebug(resources, {
+        machineId: String(plexApp?.plexMachine || '').trim(),
+        localUrl: plexApp?.localUrl,
+        remoteUrl: plexApp?.remoteUrl,
+        plexHost: plexApp?.plexHost,
+      });
+      pushLog({
+        level: 'info',
+        app: 'plex',
+        action: 'login.resources',
+        message: serverToken ? 'Plex server token resolved.' : 'Plex server token not resolved.',
+        meta: debug,
+      });
+    } catch (err) {
+      pushLog({
+        level: 'error',
+        app: 'plex',
+        action: 'login.resources',
+        message: safeMessage(err) || 'Failed to resolve Plex server resources.',
+      });
+      if (generalSettings.restrictGuests) {
+        const denied = new Error('Access restricted to Plex server users.');
+        denied.status = 403;
+        throw denied;
+      }
+    }
+  }
+
+  if (generalSettings.restrictGuests && plexApp) {
+    const hasAccess = Boolean(serverResource && String(serverResource.accessToken || '').trim());
+    if (!hasAccess) {
+      pushLog({
+        level: 'error',
+        app: 'plex',
+        action: 'login.denied',
+        message: 'Blocked Plex guest user login.',
+        meta: { user: plexUser?.username || plexUser?.title || plexUser?.email || '' },
+      });
+      const denied = new Error('Access restricted to Plex server users.');
+      denied.status = 403;
+      throw denied;
+    }
   }
 
   const rawAvatar = plexUser.thumb || plexUser.avatar || plexUser.photo || null;
@@ -3900,54 +3998,23 @@ async function completePlexLogin(req, authToken) {
   req.session.plexServerToken = null;
   req.session.pinId = null;
 
-  try {
-    const config = loadConfig();
-    const apps = config.apps || [];
-    const plexApp = apps.find((appItem) => normalizeAppId(appItem?.id) === 'plex');
-    if (plexApp) {
-      const resources = await fetchPlexResources(authToken);
-      const serverResource = resolvePlexServerResource(resources, {
-        machineId: String(plexApp?.plexMachine || '').trim(),
-        localUrl: plexApp?.localUrl,
-        remoteUrl: plexApp?.remoteUrl,
-        plexHost: plexApp?.plexHost,
-      });
-      const serverToken = String(serverResource?.accessToken || '').trim();
-      const isServerOwner = isPlexServerOwner(serverResource);
-      const debug = buildPlexResourceDebug(resources, {
-        machineId: String(plexApp?.plexMachine || '').trim(),
-        localUrl: plexApp?.localUrl,
-        remoteUrl: plexApp?.remoteUrl,
-        plexHost: plexApp?.plexHost,
-      });
+  if (serverToken) {
+    req.session.plexServerToken = serverToken;
+    if (role === 'admin' && isServerOwner && serverToken !== plexApp.plexToken) {
+      const nextApps = apps.map((appItem) => (normalizeAppId(appItem?.id) === 'plex'
+        ? { ...appItem, plexToken: serverToken }
+        : appItem
+      ));
+      saveConfig({ ...config, apps: nextApps });
+    } else if (role === 'admin' && !isServerOwner && serverToken !== plexApp.plexToken) {
       pushLog({
         level: 'info',
         app: 'plex',
-        action: 'login.resources',
-        message: serverToken ? 'Plex server token resolved.' : 'Plex server token not resolved.',
-        meta: debug,
+        action: 'token.save',
+        message: 'Skipped Plex token update; only server owner can update token.',
+        meta: { user: req.session?.user?.username || '' },
       });
-      if (serverToken) {
-        req.session.plexServerToken = serverToken;
-        if (role === 'admin' && isServerOwner && serverToken !== plexApp.plexToken) {
-          const nextApps = apps.map((appItem) => (normalizeAppId(appItem?.id) === 'plex'
-            ? { ...appItem, plexToken: serverToken }
-            : appItem
-          ));
-          saveConfig({ ...config, apps: nextApps });
-        } else if (role === 'admin' && !isServerOwner && serverToken !== plexApp.plexToken) {
-          pushLog({
-            level: 'info',
-            app: 'plex',
-            action: 'token.save',
-            message: 'Skipped Plex token update; only server owner can update token.',
-            meta: { user: req.session?.user?.username || '' },
-          });
-        }
-      }
     }
-  } catch (err) {
-    req.session.plexServerToken = null;
   }
 
   pushLog({

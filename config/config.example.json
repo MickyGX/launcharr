@@ -2,7 +2,8 @@
   "general": {
     "serverName": "Launcharr",
     "remoteUrl": "",
-    "localUrl": ""
+    "localUrl": "",
+    "restrictGuests": false
   },
   "apps": [],
   "categories": [

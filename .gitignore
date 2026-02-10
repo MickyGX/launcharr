@@ -37,3 +37,6 @@ public/icons/custom/
 
 # Seekarr staging area
 seekarr/
+
+# Local private files
+private/

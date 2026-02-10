@@ -24,3 +24,4 @@ docker-compose.override.yml
 docker-compose.local.yml
 public/icons/custom
 seekarr
+private

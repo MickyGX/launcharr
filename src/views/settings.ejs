@@ -117,11 +117,6 @@
             <% }) %>
           </div>
         <% } %>
-        <div class="nav-divider"></div>
-        <a class="nav-item active" href="/settings">
-          <img class="nav-icon" src="/icons/settings.svg" alt="" />
-          <span class="nav-label">Settings</span>
-        </a>
       </div>
 
       <div class="dash-user">
@@ -138,16 +133,22 @@
           </div>
           <span class="user-pill-caret" aria-hidden="true"></span>
           <div class="user-menu" role="menu">
-            <a class="user-menu-item" href="/user-settings">
-              <img class="user-menu-icon" src="/icons/settings.svg" alt="" />
-              <span class="user-menu-text">User settings</span>
-            </a>
+            <% if (actualRole === 'admin') { %>
+              <a class="user-menu-item" href="/settings">
+                <img class="user-menu-icon" src="/icons/settings.svg" alt="" />
+                <span class="user-menu-text">Settings</span>
+              </a>
+            <% } %>
             <% if (actualRole === 'admin') { %>
               <a class="user-menu-item" href="/switch-view?role=<%= role === 'admin' ? 'user' : 'admin' %>">
                 <img class="user-menu-icon" src="/icons/window.svg" alt="" />
                 <span class="user-menu-text"><%= role === 'admin' ? 'Switch to user view' : 'Switch to admin view' %></span>
               </a>
             <% } %>
+            <a class="user-menu-item" href="/user-settings">
+              <img class="user-menu-icon" src="/icons/settings.svg" alt="" />
+              <span class="user-menu-text">User settings</span>
+            </a>
             <div class="user-menu-divider"></div>
             <a class="user-menu-item" href="/logout">
               <img class="user-menu-icon" src="/icons/logout.svg" alt="" />
@@ -733,6 +734,19 @@
           <span class="panel-sub">Plex users and access roles</span>
         </div>
         <div class="settings-form settings-users">
+          <div class="settings-card">
+            <div class="settings-card-title">Access control</div>
+            <div class="settings-card-sub">Limit sign-in to Plex server users.</div>
+            <form method="post" action="/user-settings/access">
+              <label class="field">
+                <span>Restrict guest users</span>
+                <input type="checkbox" name="restrictGuests" <%= generalSettings.restrictGuests ? 'checked' : '' %> />
+              </label>
+              <div class="settings-card-actions">
+                <button class="ghost-button" type="submit">Save access settings</button>
+              </div>
+            </form>
+          </div>
           <div class="settings-users-actions">
             <button class="primary-button" type="button" id="fetchPlexUsersBtn">Fetch users</button>
             <button class="primary-button" type="button" id="savePlexRolesBtn" disabled>Save roles</button>
