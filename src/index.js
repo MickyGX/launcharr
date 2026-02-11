@@ -231,6 +231,54 @@ function slugifyId(value) {
     .slice(0, 32);
 }
 
+function saveCustomIcon(iconDataUrl, targetDir, nameHint = '') {
+  if (!iconDataUrl) return { iconPath: '' };
+  const match = String(iconDataUrl).match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+  if (!match) return { iconPath: '' };
+  const mime = match[1].toLowerCase();
+  const data = match[2];
+  const extMap = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/svg+xml': 'svg',
+    'image/webp': 'webp',
+  };
+  const ext = extMap[mime];
+  if (!ext) return { iconPath: '' };
+  const baseName = String(nameHint || '').replace(/\.[^/.]+$/, '').trim();
+  const nameSlug = slugifyId(baseName);
+  if (!nameSlug) return { iconPath: '' };
+  try {
+    if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+    const filename = `${nameSlug}.${ext}`;
+    const fullPath = path.join(targetDir, filename);
+    const buffer = Buffer.from(data, 'base64');
+    fs.writeFileSync(fullPath, buffer);
+    return { iconPath: filename };
+  } catch (err) {
+    return { iconPath: '' };
+  }
+}
+
+function deleteCustomIcon(iconPath, allowedBases) {
+  const safePath = String(iconPath || '').trim();
+  if (!safePath.startsWith('/icons/')) return false;
+  const filename = path.basename(safePath);
+  const baseMatch = allowedBases.find((base) => safePath.startsWith(base));
+  if (!baseMatch) return false;
+  const relativeBase = baseMatch.replace(/^\/+/, '');
+  const absoluteDir = path.join(__dirname, '..', 'public', relativeBase);
+  const fullPath = path.join(absoluteDir, filename);
+  if (!fullPath.startsWith(absoluteDir)) return false;
+  try {
+    if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
 function saveCustomAppIcon(iconDataUrl, appId, nameHint = '') {
   if (!iconDataUrl || !appId) return { iconPath: '', iconData: '' };
   const match = String(iconDataUrl).match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
@@ -247,7 +295,7 @@ function saveCustomAppIcon(iconDataUrl, appId, nameHint = '') {
   const ext = extMap[mime];
   if (!ext) return { iconPath: '', iconData: iconDataUrl };
   try {
-    const dir = path.join(__dirname, '..', 'public', 'icons', 'custom');
+    const dir = path.join(__dirname, '..', 'public', 'icons', 'custom', 'apps');
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     const nameSlug = slugifyId(nameHint) || 'custom-app';
     const filename = `${nameSlug}-${appId}.${ext}`;
@@ -333,8 +381,8 @@ app.set('views', path.join(__dirname, 'views'));
 app.set('trust proxy', true);
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.use(express.urlencoded({ extended: false }));
-app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: false, limit: '25mb' }));
+app.use(express.json({ limit: '25mb' }));
 app.use(
   cookieSession({
     name: 'launcharr_session',
@@ -622,14 +670,14 @@ app.get('/dashboard', requireUser, (req, res) => {
       }))
     )
     .sort((a, b) => {
-      const categoryDelta = rankCategory(a.category) - rankCategory(b.category);
-      if (categoryDelta !== 0) return categoryDelta;
       const favouriteDelta = (b.element.favourite ? 1 : 0) - (a.element.favourite ? 1 : 0);
       if (favouriteDelta !== 0) return favouriteDelta;
-      const appOrderDelta = (a.app.order || 0) - (b.app.order || 0);
-      if (appOrderDelta !== 0) return appOrderDelta;
+      const categoryDelta = rankCategory(a.category) - rankCategory(b.category);
+      if (categoryDelta !== 0) return categoryDelta;
       const orderDelta = (a.element.order || 0) - (b.element.order || 0);
       if (orderDelta !== 0) return orderDelta;
+      const appOrderDelta = (a.app.order || 0) - (b.app.order || 0);
+      if (appOrderDelta !== 0) return appOrderDelta;
       return String(a.element.name || '').localeCompare(String(b.element.name || ''));
     })
     .map((item) => ({
@@ -843,26 +891,143 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
   const categoryEntries = resolveCategoryEntries(config, apps);
   const categoryOrder = categoryEntries.map((entry) => entry.name);
   const categoryIcons = getCategoryIconOptions();
+  const appIcons = getAppIconOptions(apps);
   const arrDashboardCombine = resolveArrDashboardCombineSettings(config, apps);
   const arrCombinedQueueDisplay = resolveCombinedQueueDisplaySettings(config, 'arrCombinedQueueDisplay');
   const downloaderCombinedQueueDisplay = resolveCombinedQueueDisplaySettings(config, 'downloaderCombinedQueueDisplay');
   const downloaderDashboardCombine = resolveDownloaderDashboardCombineSettings(config, apps);
+  const dashboardCombinedOrder = (config && typeof config.dashboardCombinedOrder === 'object' && config.dashboardCombinedOrder)
+    ? config.dashboardCombinedOrder
+    : {};
   const logSettings = resolveLogSettings(config);
   const generalSettings = resolveGeneralSettings(config);
   const rankCategory = buildCategoryRank(categoryOrder);
   const role = getEffectiveRole(req);
   const actualRole = getActualRole(req);
   const settingsApps = [...apps].sort((a, b) => {
-    const categoryDelta = rankCategory(a.category) - rankCategory(b.category);
-    if (categoryDelta !== 0) return categoryDelta;
     const favouriteDelta = (b.favourite ? 1 : 0) - (a.favourite ? 1 : 0);
     if (favouriteDelta !== 0) return favouriteDelta;
+    const categoryDelta = rankCategory(a.category) - rankCategory(b.category);
+    if (categoryDelta !== 0) return categoryDelta;
     const orderDelta = (a.order || 0) - (b.order || 0);
     if (orderDelta !== 0) return orderDelta;
     return String(a.name || '').localeCompare(String(b.name || ''));
   });
+  const baseDashboardElements = settingsApps.flatMap((appItem) => {
+    const hasOverviewAccess = canAccess(appItem, role, 'overview');
+    if (!hasOverviewAccess && !DOWNLOADER_APP_IDS.includes(appItem.id)) return [];
+    const elements = mergeOverviewElementSettings(appItem);
+    return elements.map((element) => ({
+      appId: appItem.id,
+      appName: appItem.name,
+      appOrder: appItem.order || 0,
+      category: appItem.category || 'Tools',
+      element,
+      appAccess: hasOverviewAccess,
+    }));
+  });
+
+  const applyCombinedDashboardElements = (items, options) => {
+    const {
+      appIds = [],
+      sections = [],
+      combineMap = {},
+      labelPrefix,
+      iconPath,
+      combinedType,
+    } = options;
+    let updated = items.map((item) => ({ ...item }));
+    sections.forEach((section) => {
+      const availableAppIds = new Set(
+        updated
+          .filter((item) => item.element?.id === section.elementId)
+          .map((item) => item.appId)
+      );
+      const combinedAppIds = appIds.filter(
+        (appId) => availableAppIds.has(appId) && Boolean(combineMap?.[section.key]?.[appId])
+      );
+      const hasCombinedGroup = combinedAppIds.length >= 2;
+      const leaderId = combinedAppIds[0];
+      const leaderItem = updated.find((item) =>
+        (leaderId ? item.appId === leaderId : appIds.includes(item.appId))
+        && item.element?.id === section.elementId
+      );
+      if (!leaderItem) return;
+      const combinedName = `${labelPrefix} ${leaderItem.element?.name || section.elementId}`;
+      if (hasCombinedGroup) {
+        updated = updated.map((item) => {
+          if (combinedAppIds.includes(item.appId) && item.element?.id === section.elementId) {
+            return {
+              ...item,
+              combinedDisabled: true,
+              combinedGroup: section.key,
+              combinedType,
+            };
+          }
+          return item;
+        });
+      }
+      updated.push({
+        ...leaderItem,
+        displayName: combinedName,
+        iconPath,
+        combined: true,
+        combinedType,
+        combinedSection: section.key,
+        combinedDisabled: false,
+        combinedInactive: !hasCombinedGroup,
+      });
+    });
+    return updated;
+  };
+
+  const combinedDashboardElements = applyCombinedDashboardElements(
+    applyCombinedDashboardElements(baseDashboardElements, {
+      appIds: ARR_APP_IDS,
+      sections: ARR_COMBINE_SECTIONS,
+      combineMap: arrDashboardCombine,
+      labelPrefix: 'Combined Arr',
+      iconPath: '/icons/arr-suite.svg',
+      combinedType: 'arr',
+    }),
+    {
+      appIds: DOWNLOADER_APP_IDS,
+      sections: DOWNLOADER_COMBINE_SECTIONS,
+      combineMap: downloaderDashboardCombine,
+      labelPrefix: 'Combined Download',
+      iconPath: '/icons/download.svg',
+      combinedType: 'downloader',
+    }
+  );
+
+  const getCombinedOrderKey = (item) => {
+    if (!item || !item.combined) return '';
+    const section = item.combinedSection || item.element?.id || 'unknown';
+    return `combined:${item.combinedType || 'mixed'}:${section}`;
+  };
+  const getDashboardOrder = (item) => {
+    if (item?.combined) {
+      const combinedKey = getCombinedOrderKey(item);
+      const combinedValue = Number(dashboardCombinedOrder?.[combinedKey]);
+      if (Number.isFinite(combinedValue)) return combinedValue;
+    }
+    const orderValue = Number(item?.element?.order);
+    return Number.isFinite(orderValue) ? orderValue : 0;
+  };
+  const dashboardElements = combinedDashboardElements.sort((a, b) => {
+    const orderDelta = getDashboardOrder(a) - getDashboardOrder(b);
+    if (orderDelta !== 0) return orderDelta;
+    const appNameDelta = String(a.appName || '').localeCompare(String(b.appName || ''));
+    if (appNameDelta !== 0) return appNameDelta;
+    return String(a.element.name || '').localeCompare(String(b.element.name || ''));
+  });
   const navApps = getNavApps(apps, role, req, categoryOrder);
   const navCategories = buildNavCategories(navApps, categoryEntries);
+  const systemIconDefaults = getDefaultSystemIconOptions();
+  const systemIconCustom = getCustomSystemIconOptions();
+  const appIconDefaults = getDefaultAppIconOptions(apps);
+  const appIconCustom = getCustomAppIconOptions();
+
   res.render('settings', {
     user: req.session.user,
     admins,
@@ -870,10 +1035,18 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     categories: categoryOrder,
     categoryEntries,
     categoryIcons,
+    appIcons,
+    tautulliCards: mergeTautulliCardSettings(apps.find((appItem) => appItem.id === 'tautulli')),
+    dashboardElements,
+    dashboardCombinedOrder,
+    systemIconDefaults,
+    systemIconCustom,
+    appIconDefaults,
+    appIconCustom,
     arrApps: settingsApps.filter((appItem) => ARR_APP_IDS.includes(appItem.id)),
     arrDashboardCombine,
     arrCombinedQueueDisplay,
-    downloaderApps: settingsApps.filter((appItem) => DOWNLOADER_APP_IDS.includes(appItem.id)),
+    downloaderApps: apps.filter((appItem) => DOWNLOADER_APP_IDS.includes(appItem.id)),
     downloaderDashboardCombine,
     downloaderCombinedQueueDisplay,
     logSettings,
@@ -883,6 +1056,85 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     role,
     actualRole,
   });
+});
+
+app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
+  const config = loadConfig();
+  const shouldUpdateTautulliCards = Boolean(req.body.tautulliCardsForm);
+  const dashboardCombinedOrder = {};
+  Object.entries(req.body || {}).forEach(([key, value]) => {
+    if (!key.startsWith('dashboard_combined_') || !key.endsWith('_order')) return;
+    const raw = Number(value);
+    if (!Number.isFinite(raw)) return;
+    const bodyKey = key.slice('dashboard_combined_'.length, -'_order'.length);
+    const parts = bodyKey.split('_');
+    if (parts.length < 2) return;
+    const combinedType = parts.shift();
+    const combinedSection = parts.join('_');
+    const mapKey = `combined:${combinedType}:${combinedSection}`;
+    dashboardCombinedOrder[mapKey] = raw;
+  });
+  const apps = (config.apps || []).map((appItem) => ({
+    ...appItem,
+    overviewElements: buildDashboardElementsFromRequest(appItem, req.body),
+    tautulliCards: shouldUpdateTautulliCards
+      ? buildTautulliCardsFromDashboardRequest(appItem, req.body)
+      : appItem.tautulliCards,
+  }));
+  const arrDashboardCombine = resolveArrDashboardCombineSettings(config, apps);
+  ARR_COMBINE_SECTIONS.forEach((section) => {
+    arrDashboardCombine[section.key] = arrDashboardCombine[section.key] || {};
+    apps
+      .filter((appItem) => ARR_APP_IDS.includes(appItem.id))
+      .forEach((appItem) => {
+        const field = `arr_combine_${section.key}_${appItem.id}`;
+        arrDashboardCombine[section.key][appItem.id] = Boolean(req.body[field]);
+      });
+  });
+  const downloaderDashboardCombine = resolveDownloaderDashboardCombineSettings(config, apps);
+  DOWNLOADER_COMBINE_SECTIONS.forEach((section) => {
+    downloaderDashboardCombine[section.key] = downloaderDashboardCombine[section.key] || {};
+    apps
+      .filter((appItem) => DOWNLOADER_APP_IDS.includes(appItem.id))
+      .forEach((appItem) => {
+        const field = `downloader_combine_${section.key}_${appItem.id}`;
+        downloaderDashboardCombine[section.key][appItem.id] = Boolean(req.body[field]);
+      });
+  });
+  const arrCombinedQueueDisplay = resolveCombinedQueueDisplaySettings(config, 'arrCombinedQueueDisplay');
+  arrCombinedQueueDisplay.queueShowDetail = Boolean(req.body.arr_combined_queue_col_detail);
+  arrCombinedQueueDisplay.queueShowSubDetail = Boolean(req.body.arr_combined_queue_col_subdetail);
+  arrCombinedQueueDisplay.queueShowSize = Boolean(req.body.arr_combined_queue_col_size);
+  arrCombinedQueueDisplay.queueShowProtocol = Boolean(req.body.arr_combined_queue_col_protocol);
+  arrCombinedQueueDisplay.queueShowTimeLeft = Boolean(req.body.arr_combined_queue_col_timeleft);
+  arrCombinedQueueDisplay.queueShowProgress = Boolean(req.body.arr_combined_queue_col_progress);
+  const arrQueueRows = Number(req.body.arr_combined_queue_visible_rows);
+  if (Number.isFinite(arrQueueRows)) {
+    arrCombinedQueueDisplay.queueVisibleRows = Math.max(5, Math.min(50, arrQueueRows));
+  }
+
+  const downloaderCombinedQueueDisplay = resolveCombinedQueueDisplaySettings(config, 'downloaderCombinedQueueDisplay');
+  downloaderCombinedQueueDisplay.queueShowDetail = Boolean(req.body.downloader_combined_queue_col_detail);
+  downloaderCombinedQueueDisplay.queueShowSubDetail = Boolean(req.body.downloader_combined_queue_col_subdetail);
+  downloaderCombinedQueueDisplay.queueShowSize = Boolean(req.body.downloader_combined_queue_col_size);
+  downloaderCombinedQueueDisplay.queueShowProtocol = Boolean(req.body.downloader_combined_queue_col_protocol);
+  downloaderCombinedQueueDisplay.queueShowTimeLeft = Boolean(req.body.downloader_combined_queue_col_timeleft);
+  downloaderCombinedQueueDisplay.queueShowProgress = Boolean(req.body.downloader_combined_queue_col_progress);
+  const downloaderQueueRows = Number(req.body.downloader_combined_queue_visible_rows);
+  if (Number.isFinite(downloaderQueueRows)) {
+    downloaderCombinedQueueDisplay.queueVisibleRows = Math.max(5, Math.min(50, downloaderQueueRows));
+  }
+
+  saveConfig({
+    ...config,
+    apps,
+    arrDashboardCombine,
+    downloaderDashboardCombine,
+    arrCombinedQueueDisplay,
+    downloaderCombinedQueueDisplay,
+    dashboardCombinedOrder,
+  });
+  res.redirect('/settings');
 });
 
 app.get('/user-settings', requireUser, (req, res) => {
@@ -1061,6 +1313,32 @@ app.post('/settings/apps', requireSettingsAdmin, (req, res) => {
   res.redirect('/settings');
 });
 
+app.post('/settings/icons/upload', requireSettingsAdmin, (req, res) => {
+  const iconType = String(req.body?.icon_type || '').trim().toLowerCase();
+  const iconData = String(req.body?.icon_data || '').trim();
+  const iconName = String(req.body?.icon_name || '').trim();
+  const iconBase = iconName.replace(/\.[^/.]+$/, '').trim();
+  if (!iconBase) {
+    res.redirect('/settings?tab=custom&iconError=1');
+    return;
+  }
+  const targetDir = iconType === 'app'
+    ? path.join(__dirname, '..', 'public', 'icons', 'custom', 'apps')
+    : path.join(__dirname, '..', 'public', 'icons', 'custom', 'system');
+  saveCustomIcon(iconData, targetDir, iconBase);
+  res.redirect('/settings?tab=custom');
+});
+
+app.post('/settings/icons/delete', requireSettingsAdmin, (req, res) => {
+  const iconType = String(req.body?.icon_type || '').trim().toLowerCase();
+  const iconPath = String(req.body?.icon_path || '').trim();
+  const allowedBases = iconType === 'app'
+    ? ['/icons/custom/apps', '/icons/custom']
+    : ['/icons/custom/system'];
+  deleteCustomIcon(iconPath, allowedBases);
+  res.redirect('/settings?tab=custom');
+});
+
 app.post('/settings/general', requireSettingsAdmin, (req, res) => {
   const config = loadConfig();
   const generalSettings = resolveGeneralSettings(config);
@@ -1082,6 +1360,7 @@ app.post('/settings/custom-apps', requireSettingsAdmin, (req, res) => {
   const name = String(req.body?.name || '').trim();
   const category = String(req.body?.category || '').trim();
   const iconData = String(req.body?.iconData || '').trim();
+  const iconPath = String(req.body?.iconPath || '').trim();
   if (!name) return res.status(400).json({ error: 'Missing app name.' });
 
   const categoryOrder = resolveCategoryOrder(config, config.apps || [], { includeAppCategories: false });
@@ -1093,8 +1372,13 @@ app.post('/settings/custom-apps', requireSettingsAdmin, (req, res) => {
 
   const slug = slugifyId(name) || 'custom-app';
   const id = `custom-${slug}-${crypto.randomBytes(3).toString('hex')}`;
-  const iconResult = iconData ? saveCustomAppIcon(iconData, id, name) : { iconPath: '', iconData: '' };
-  const iconValue = iconResult.iconPath || iconResult.iconData || '';
+  let iconValue = '';
+  if (iconPath) {
+    iconValue = iconPath;
+  } else if (iconData) {
+    const iconResult = saveCustomAppIcon(iconData, id, name);
+    iconValue = iconResult.iconPath || iconResult.iconData || '';
+  }
 
   const apps = Array.isArray(config.apps) ? config.apps : [];
   const maxOrder = Math.max(0, ...apps.filter((app) => app.category === resolvedCategory).map((app) => Number(app.order) || 0));
@@ -1152,6 +1436,7 @@ app.post('/settings/custom-apps/update', requireSettingsAdmin, (req, res) => {
   const name = String(req.body?.name || '').trim();
   const category = String(req.body?.category || '').trim();
   const iconData = String(req.body?.iconData || '').trim();
+  const iconPath = String(req.body?.iconPath || '').trim();
   if (!id) return res.status(400).json({ error: 'Missing app id.' });
   if (!name) return res.status(400).json({ error: 'Missing app name.' });
 
@@ -1168,7 +1453,19 @@ app.post('/settings/custom-apps/update', requireSettingsAdmin, (req, res) => {
 
   const current = apps[appIndex];
   let iconValue = current.icon || '';
-  if (iconData) {
+  if (iconPath) {
+    if (iconValue.startsWith('/icons/custom/')) {
+      const iconFile = path.join(__dirname, '..', 'public', iconValue.replace(/^\/+/, ''));
+      if (fs.existsSync(iconFile)) {
+        try {
+          fs.unlinkSync(iconFile);
+        } catch (err) {
+          // ignore delete errors
+        }
+      }
+    }
+    iconValue = iconPath;
+  } else if (iconData) {
     if (iconValue.startsWith('/icons/custom/')) {
       const iconPath = path.join(__dirname, '..', 'public', iconValue.replace(/^\/+/, ''));
       if (fs.existsSync(iconPath)) {
@@ -2649,16 +2946,132 @@ function resolveCategoryOrder(config, apps = [], options = {}) {
   return resolveCategoryEntries(config, apps, options).map((entry) => entry.name);
 }
 
-function getCategoryIconOptions() {
+function listIconFiles(dir, baseUrl) {
+  try {
+    return fs
+      .readdirSync(dir)
+      .filter((name) => /\.(svg|png|jpe?g|webp)$/i.test(name))
+      .map((name) => `${baseUrl}/${name}`);
+  } catch (err) {
+    return [];
+  }
+}
+
+function getDefaultSystemIconOptions() {
   const iconsDir = path.join(__dirname, '..', 'public', 'icons');
+  const excluded = new Set([
+    'launcharr-icon.png',
+    'launcharr.svg',
+    'appsa.png',
+    'appsa.svg',
+    'app-arr.svg',
+    'arr-suite.svg',
+    'prowlarr.svg',
+    'prowlarr.png',
+    'pulsarr.svg',
+    'pulsarr.png',
+    'plex.svg',
+    'plex.png',
+    'radarr.svg',
+    'radarr.png',
+    'sonarr.svg',
+    'sonarr.png',
+    'lidarr.svg',
+    'lidarr.png',
+    'readarr.svg',
+    'readarr.png',
+    'tautulli.svg',
+    'tautulli.png',
+    'transmission.svg',
+    'transmission.png',
+    'huntarr.svg',
+    'huntarr.png',
+    'cleanuparr.svg',
+    'cleanuparr.png',
+    'nzbget.svg',
+  ]);
   try {
     return fs
       .readdirSync(iconsDir)
-      .filter((name) => /\.(svg|png)$/i.test(name))
+      .filter((name) => /\.svg$/i.test(name))
+      .filter((name) => !excluded.has(name))
       .map((name) => `/icons/${name}`);
   } catch (err) {
     return [];
   }
+}
+
+function getCustomSystemIconOptions() {
+  const dir = path.join(__dirname, '..', 'public', 'icons', 'custom', 'system');
+  return listIconFiles(dir, '/icons/custom/system');
+}
+
+function migrateLegacyCustomAppIcons() {
+  const legacyDir = path.join(__dirname, '..', 'public', 'icons', 'custom');
+  const targetDir = path.join(__dirname, '..', 'public', 'icons', 'custom', 'apps');
+  try {
+    if (!fs.existsSync(legacyDir)) return;
+    if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+    fs.readdirSync(legacyDir).forEach((name) => {
+      const legacyPath = path.join(legacyDir, name);
+      const stat = fs.statSync(legacyPath);
+      if (!stat.isFile()) return;
+      if (!/\.(svg|png|jpe?g|webp)$/i.test(name)) return;
+      const targetPath = path.join(targetDir, name);
+      if (fs.existsSync(targetPath)) {
+        fs.unlinkSync(legacyPath);
+        return;
+      }
+      fs.renameSync(legacyPath, targetPath);
+    });
+  } catch (err) {
+    return;
+  }
+}
+
+function getCategoryIconOptions() {
+  return [...getDefaultSystemIconOptions(), ...getCustomSystemIconOptions()];
+}
+
+function getDefaultAppIconOptions(apps = []) {
+  const iconsDir = path.join(__dirname, '..', 'public', 'icons');
+  const appIds = (Array.isArray(apps) ? apps : [])
+    .map((appItem) => String(appItem?.id || '').trim().toLowerCase())
+    .filter(Boolean);
+  const seen = new Set();
+  const options = [];
+  appIds.forEach((appId) => {
+    const pngPath = path.join(iconsDir, `${appId}.png`);
+    const svgPath = path.join(iconsDir, `${appId}.svg`);
+    if (fs.existsSync(pngPath)) {
+      options.push(`/icons/${appId}.png`);
+      seen.add(`/icons/${appId}.png`);
+    } else if (fs.existsSync(svgPath)) {
+      options.push(`/icons/${appId}.svg`);
+      seen.add(`/icons/${appId}.svg`);
+    }
+  });
+  try {
+    fs.readdirSync(iconsDir)
+      .filter((name) => /\.png$/i.test(name))
+      .forEach((name) => {
+        const url = `/icons/${name}`;
+        if (!seen.has(url)) options.push(url);
+      });
+  } catch (err) {
+    return options;
+  }
+  return options;
+}
+
+function getCustomAppIconOptions() {
+  migrateLegacyCustomAppIcons();
+  const appsDir = path.join(__dirname, '..', 'public', 'icons', 'custom', 'apps');
+  return listIconFiles(appsDir, '/icons/custom/apps');
+}
+
+function getAppIconOptions(apps = []) {
+  return [...getDefaultAppIconOptions(apps), ...getCustomAppIconOptions()];
 }
 
 function buildCategoryRank(categoryOrder) {
@@ -2752,6 +3165,70 @@ function buildOverviewElementsFromRequest(appItem, body) {
   });
 }
 
+function buildDashboardElementsFromRequest(appItem, body) {
+  const elements = getOverviewElements(appItem);
+  if (!elements.length) return appItem.overviewElements;
+  const existingSettings = new Map(
+    mergeOverviewElementSettings(appItem).map((item) => [item.id, item])
+  );
+  return elements.map((element, index) => {
+    const prefix = `dashboard_${appItem.id}_${element.id}_`;
+    const isPresent = Boolean(body[`${prefix}present`]);
+    if (!isPresent) {
+      const fallback = existingSettings.get(element.id);
+      if (fallback) {
+        return {
+          id: element.id,
+          enable: Boolean(fallback.enable),
+          dashboard: Boolean(fallback.dashboard),
+          favourite: Boolean(fallback.favourite),
+          showSubtitle: Boolean(fallback.showSubtitle),
+          showMeta: Boolean(fallback.showMeta),
+          showPill: Boolean(fallback.showPill),
+          showTypeIcon: Boolean(fallback.showTypeIcon),
+          showViewIcon: Boolean(fallback.showViewIcon),
+          showUsername: Boolean(fallback.showUsername),
+          queueShowDetail: fallback.queueShowDetail !== undefined ? Boolean(fallback.queueShowDetail) : undefined,
+          queueShowSubDetail: fallback.queueShowSubDetail !== undefined ? Boolean(fallback.queueShowSubDetail) : undefined,
+          queueShowSize: fallback.queueShowSize !== undefined ? Boolean(fallback.queueShowSize) : undefined,
+          queueShowProtocol: fallback.queueShowProtocol !== undefined ? Boolean(fallback.queueShowProtocol) : undefined,
+          queueShowTimeLeft: fallback.queueShowTimeLeft !== undefined ? Boolean(fallback.queueShowTimeLeft) : undefined,
+          queueShowProgress: fallback.queueShowProgress !== undefined ? Boolean(fallback.queueShowProgress) : undefined,
+          queueVisibleRows: fallback.queueVisibleRows,
+          order: Number.isFinite(fallback.order) ? fallback.order : index + 1,
+        };
+      }
+    }
+    const orderValue = body[`${prefix}order`];
+    const parsedOrder = Number(orderValue);
+    const isQueue = element.id === 'activity-queue';
+    const queueRowsValue = Number(body[`${prefix}queue_visible_rows`]);
+    const queueVisibleRows = Number.isFinite(queueRowsValue)
+      ? Math.max(5, Math.min(50, queueRowsValue))
+      : undefined;
+    return {
+      id: element.id,
+      enable: Boolean(body[`${prefix}enable`]),
+      dashboard: Boolean(body[`${prefix}dashboard`]),
+      favourite: Boolean(body[`${prefix}favourite`]),
+      showSubtitle: Boolean(body[`${prefix}showSubtitle`]),
+      showMeta: Boolean(body[`${prefix}showMeta`]),
+      showPill: Boolean(body[`${prefix}showPill`]),
+      showTypeIcon: Boolean(body[`${prefix}showTypeIcon`]),
+      showViewIcon: Boolean(body[`${prefix}showViewIcon`]),
+      showUsername: Boolean(body[`${prefix}showUsername`]),
+      queueShowDetail: isQueue ? Boolean(body[`${prefix}queue_col_detail`]) : undefined,
+      queueShowSubDetail: isQueue ? Boolean(body[`${prefix}queue_col_subdetail`]) : undefined,
+      queueShowSize: isQueue ? Boolean(body[`${prefix}queue_col_size`]) : undefined,
+      queueShowProtocol: isQueue ? Boolean(body[`${prefix}queue_col_protocol`]) : undefined,
+      queueShowTimeLeft: isQueue ? Boolean(body[`${prefix}queue_col_timeLeft`]) : undefined,
+      queueShowProgress: isQueue ? Boolean(body[`${prefix}queue_col_progress`]) : undefined,
+      queueVisibleRows,
+      order: Number.isFinite(parsedOrder) ? parsedOrder : index + 1,
+    };
+  });
+}
+
 function getTautulliCards(appItem) {
   if (!appItem || appItem.id !== 'tautulli') return [];
   return TAUTULLI_WATCH_CARDS;
@@ -2789,6 +3266,28 @@ function buildTautulliCardsFromRequest(appItem, body) {
     return {
       id: card.id,
       enable: Boolean(body[`tautulli_card_enable_${card.id}`]),
+      order: Number.isFinite(parsedOrder) ? parsedOrder : index + 1,
+    };
+  });
+}
+
+function buildTautulliCardsFromDashboardRequest(appItem, body) {
+  const cards = getTautulliCards(appItem);
+  if (!cards.length) return appItem.tautulliCards;
+  const candidates = ['watch-stats', 'watch-stats-wheel'];
+  const activePrefix = candidates.find((prefix) =>
+    cards.some((card) =>
+      body[`dashboard_tautulli_card_enable_${prefix}_${card.id}`] !== undefined
+      || body[`dashboard_tautulli_card_order_${prefix}_${card.id}`] !== undefined
+    )
+  );
+  if (!activePrefix) return appItem.tautulliCards;
+  return cards.map((card, index) => {
+    const orderValue = body[`dashboard_tautulli_card_order_${activePrefix}_${card.id}`];
+    const parsedOrder = Number(orderValue);
+    return {
+      id: card.id,
+      enable: Boolean(body[`dashboard_tautulli_card_enable_${activePrefix}_${card.id}`]),
       order: Number.isFinite(parsedOrder) ? parsedOrder : index + 1,
     };
   });
@@ -3299,53 +3798,37 @@ function mergeAppDefaults(defaultApps, overrideApps) {
 function mergeCategoryDefaults(defaultCategories, overrideCategories) {
   const defaults = normalizeCategoryEntries(defaultCategories);
   const overrides = normalizeCategoryEntries(overrideCategories);
-  const overrideMap = new Map(
-    overrides
+  const defaultMap = new Map(
+    defaults
       .filter((entry) => entry?.name)
       .map((entry) => [String(entry.name).toLowerCase(), entry])
   );
+  const seen = new Set();
+  const ordered = overrides
+    .filter((entry) => entry?.name)
+    .map((entry) => {
+      const key = String(entry.name).toLowerCase();
+      const base = defaultMap.get(key);
+      seen.add(key);
+      if (!base) return entry;
+      const mergedEntry = { ...base, ...entry };
+      const iconValue = String(entry.icon || '').trim();
+      if (!iconValue || iconValue === '/icons/category.svg') {
+        mergedEntry.icon = base.icon;
+      }
+      return mergedEntry;
+    });
 
-  const merged = defaults.map((entry) => {
-    const override = overrideMap.get(String(entry.name).toLowerCase());
-    if (!override) return entry;
-    const mergedEntry = { ...entry, ...override };
-    const iconValue = String(override.icon || '').trim();
-    if (!iconValue || iconValue === '/icons/category.svg') {
-      mergedEntry.icon = entry.icon;
-    }
-    return mergedEntry;
-  });
-
-  const defaultKeys = new Set(defaults.map((entry) => String(entry.name).toLowerCase()));
-  const custom = overrides.filter((entry) => {
+  const missingDefaults = defaults.filter((entry) => {
     const key = String(entry.name || '').toLowerCase();
-    return key && !defaultKeys.has(key);
+    return key && !seen.has(key);
   });
 
-  return [...merged, ...custom];
+  return [...ordered, ...missingDefaults];
 }
 
 function buildCategoryOverrides(defaultCategories, mergedCategories) {
-  const defaults = normalizeCategoryEntries(defaultCategories);
-  const merged = normalizeCategoryEntries(mergedCategories);
-  const defaultMap = new Map(defaults.map((entry) => [String(entry.name).toLowerCase(), entry]));
-
-  return merged
-    .map((entry) => {
-      const key = String(entry.name || '').toLowerCase();
-      if (!key) return null;
-      const base = defaultMap.get(key);
-      if (!base) return entry;
-      const override = { name: entry.name };
-      Object.keys(entry).forEach((field) => {
-        if (field === 'name') return;
-        if (!deepEqual(entry[field], base[field])) {
-          override[field] = entry[field];
-        }
-      });
-      return Object.keys(override).length > 1 ? override : null;
-    })
-    .filter(Boolean);
+  return normalizeCategoryEntries(mergedCategories);
 }
 
 function buildAppOverrides(defaultApps, mergedApps) {
