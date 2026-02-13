@@ -4,6 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Launcharr · Dashboard</title>
+  <script>
+    (function() {
+      try {
+        var stored = localStorage.getItem("launcharr-theme");
+        var prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+        var mode = stored || (prefersLight ? "day" : "night");
+        document.documentElement.dataset.theme = mode;
+      } catch (e) {}
+    })();
+  </script>
   <link rel="stylesheet" href="/styles.css" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" type="image/png" href="/icons/launcharr-icon.png" />
@@ -442,7 +452,7 @@
                 </div>
               </section>
             <% } %>
-            <% if (['sonarr', 'radarr', 'lidarr', 'readarr'].includes(item.app.id) && item.element.id === 'downloading-soon' && !item.arrCombinedSkip) { %>
+            <% if (['sonarr', 'radarr', 'lidarr', 'readarr'].includes(item.app.id) && item.element.id === 'downloading-soon') { %>
               <%
                 const isCombined = Boolean(item.arrCombined);
                 const combinedApps = isCombined ? item.arrCombined.appIds : [];
@@ -503,7 +513,7 @@
                 </div>
               </section>
             <% } %>
-            <% if (['sonarr', 'radarr', 'lidarr', 'readarr'].includes(item.app.id) && item.element.id === 'recently-downloaded' && !item.arrCombinedSkip) { %>
+            <% if (['sonarr', 'radarr', 'lidarr', 'readarr'].includes(item.app.id) && item.element.id === 'recently-downloaded') { %>
               <%
                 const isCombined = Boolean(item.arrCombined);
                 const combinedApps = isCombined ? item.arrCombined.appIds : [];
@@ -573,7 +583,7 @@
                 </div>
               </section>
             <% } %>
-            <% if (['sonarr', 'radarr', 'lidarr', 'readarr'].includes(item.app.id) && item.element.id === 'activity-queue' && !item.arrCombinedSkip) { %>
+            <% if (['sonarr', 'radarr', 'lidarr', 'readarr'].includes(item.app.id) && item.element.id === 'activity-queue') { %>
               <%
                 const isCombined = Boolean(item.arrCombined);
                 const combinedApps = isCombined ? item.arrCombined.appIds : [];
@@ -650,7 +660,7 @@
                 </div>
               </section>
             <% } %>
-            <% if (['transmission', 'nzbget'].includes(item.app.id) && item.element.id === 'activity-queue' && !item.downloaderCombinedSkip) { %>
+            <% if (['transmission', 'nzbget'].includes(item.app.id) && item.element.id === 'activity-queue') { %>
               <%
                 const isCombined = Boolean(item.downloaderCombined);
                 const moduleId = isCombined ? 'downloaderscombined-activity-queue' : (item.app.id + '-activity-queue');
@@ -1084,10 +1094,12 @@
       sync();
     });
 
-    document.querySelectorAll('.plex-collapse-btn[data-collapse-global="true"]').forEach((button) => {
-      button.addEventListener('click', () => {
-        const targetId = button.getAttribute('data-target');
-        const section = targetId ? document.getElementById(targetId) : null;
+    document.querySelectorAll('.plex-collapse-btn').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        const section = button.closest('.plex-module');
         if (!section) return;
         section.classList.toggle('plex-collapsed');
       });

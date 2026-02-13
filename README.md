@@ -1,12 +1,10 @@
 # Launcharr
 
-A Plex-authenticated homepage for the Arr suite and download clients.
+A Plex-authenticated homepage for the Arr suite and download clients innspired by Organizr and Pulsarr.
 
 ## Quick start
 
 Docker
-
-Using docker run -
 
 Create and run the container with the following command:
 

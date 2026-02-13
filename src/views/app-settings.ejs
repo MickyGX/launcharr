@@ -4,6 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Launcharr · <%= app.name %> Settings</title>
+  <script>
+    (function() {
+      try {
+        var stored = localStorage.getItem("launcharr-theme");
+        var prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+        var mode = stored || (prefersLight ? "day" : "night");
+        document.documentElement.dataset.theme = mode;
+      } catch (e) {}
+    })();
+  </script>
   <link rel="stylesheet" href="/styles.css" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" type="image/png" href="/icons/launcharr-icon.png" />
@@ -147,8 +157,8 @@
               </a>
             <% } %>
             <a class="user-menu-item" href="/user-settings">
-              <img class="user-menu-icon" src="/icons/settings.svg" alt="" />
-              <span class="user-menu-text">User settings</span>
+              <img class="user-menu-icon" src="/icons/user-profile.svg" alt="" />
+              <span class="user-menu-text">User profile</span>
             </a>
             <div class="user-menu-divider"></div>
             <a class="user-menu-item" href="/logout">
@@ -285,173 +295,6 @@
         </form>
       </div>
 
-      <% if (overviewItems.length) { %>
-        <div class="dash-panel<%= app.id === 'plex' ? ' plex-settings-panel' : '' %>">
-          <div class="panel-header">
-            <h2>Overview Display</h2>
-            <span class="panel-sub">Category inherits from <%= app.category || 'Apps' %></span>
-          </div>
-          <form method="post" action="/apps/<%= app.id %>/settings" class="settings-form">
-            <input type="hidden" name="overviewElementsForm" value="1" />
-            <% if (app.id === 'tautulli' && tautulliItems.length) { %>
-              <input type="hidden" name="tautulliCardsForm" value="1" />
-            <% } %>
-            <div class="settings-table settings-table--elements">
-              <div class="settings-row settings-head settings-row--elements settings-row--with-expand">
-                <div>
-                  <img class="settings-head-icon" src="/icons/overview.svg" alt="" />
-                  <span class="settings-head-label">Name</span>
-                </div>
-                <div>
-                  <img class="settings-head-icon" src="/icons/enable.svg" alt="" />
-                  <span class="settings-head-label">Enable</span>
-                </div>
-                <div>
-                  <img class="settings-head-icon" src="/icons/dashboard.svg" alt="" />
-                  <span class="settings-head-label">Dashboard</span>
-                </div>
-                <div>
-                  <img class="settings-head-icon" src="/icons/favourite.svg" alt="" />
-                  <span class="settings-head-label">Favourite</span>
-                </div>
-                <div class="settings-cell--blank" aria-hidden="true"></div>
-              </div>
-              <% overviewItems.forEach((element, index) => { %>
-                <% const orderValue = Number.isFinite(element.order) ? element.order : index + 1; %>
-                <% const showWatchCardsToggle = app.id === 'tautulli' && (element.id === 'watch-stats' || element.id === 'watch-stats-wheel') && tautulliItems.length; %>
-                <% const showElementOptions = !showWatchCardsToggle; %>
-                <div class="settings-row settings-row--elements settings-row--with-expand settings-row--draggable">
-                  <div class="settings-element">
-                    <button class="order-button settings-drag-handle" type="button" title="Drag to reorder" aria-label="Drag to reorder">&#x2630;</button>
-                    <span class="settings-element-name"><%= element.name %></span>
-                  </div>
-                  <div class="settings-cell">
-                    <input type="checkbox" name="element_enable_<%= element.id %>" <%= element.enable ? 'checked' : '' %> />
-                  </div>
-                  <div class="settings-cell">
-                    <input type="checkbox" name="element_dashboard_<%= element.id %>" <%= element.dashboard ? 'checked' : '' %> />
-                  </div>
-                  <div class="settings-cell">
-                    <input class="settings-radio" type="checkbox" name="element_favourite_<%= element.id %>" <%= element.favourite ? 'checked' : '' %> />
-                  </div>
-                  <input type="hidden" class="settings-order-input" name="element_order_<%= element.id %>" value="<%= orderValue %>" />
-                  <div class="settings-cell settings-expand-cell">
-                    <% if (showElementOptions) { %>
-                      <button class="settings-expand-toggle settings-inline-toggle settings-element-options-toggle" type="button" data-target="elementOptions-<%= element.id %>" aria-label="Toggle carousel display options" aria-expanded="false">
-                        <img class="settings-expand-icon" src="/icons/expand.svg" alt="" />
-                      </button>
-                    <% } %>
-                    <% if (showWatchCardsToggle) { %>
-                      <button class="settings-expand-toggle settings-inline-toggle settings-element-options-toggle" type="button" data-target="watchCardsPanel-<%= element.id %>" aria-label="Toggle watch cards display settings" aria-expanded="false">
-                        <img class="settings-expand-icon" src="/icons/expand.svg" alt="" />
-                      </button>
-                    <% } %>
-                  </div>
-                </div>
-                <% if (showElementOptions) { %>
-                  <div class="settings-collapsible is-collapsed settings-inline-collapsible" id="elementOptions-<%= element.id %>">
-                    <div class="settings-card">
-                      <% if (element.id === 'activity-queue') { %>
-                        <div class="settings-card-title">Queue Display Options</div>
-                        <div class="settings-grid">
-                          <label class="radio-pill">
-                            <input type="checkbox" name="element_queue_col_detail_<%= element.id %>" <%= element.queueShowDetail !== false ? 'checked' : '' %> />
-                            <span><%= element.queueDetailLabel || 'Detail' %></span>
-                          </label>
-                          <label class="radio-pill">
-                            <input type="checkbox" name="element_queue_col_subdetail_<%= element.id %>" <%= element.queueShowSubDetail !== false ? 'checked' : '' %> />
-                            <span><%= element.queueSubDetailLabel || 'Sub-detail' %></span>
-                          </label>
-                          <label class="radio-pill">
-                            <input type="checkbox" name="element_queue_col_size_<%= element.id %>" <%= element.queueShowSize !== false ? 'checked' : '' %> />
-                            <span>Size</span>
-                          </label>
-                          <label class="radio-pill">
-                            <input type="checkbox" name="element_queue_col_protocol_<%= element.id %>" <%= element.queueShowProtocol !== false ? 'checked' : '' %> />
-                            <span>Protocol</span>
-                          </label>
-                          <label class="radio-pill">
-                            <input type="checkbox" name="element_queue_col_timeLeft_<%= element.id %>" <%= element.queueShowTimeLeft !== false ? 'checked' : '' %> />
-                            <span>Time Left</span>
-                          </label>
-                          <label class="radio-pill">
-                            <input type="checkbox" name="element_queue_col_progress_<%= element.id %>" <%= element.queueShowProgress !== false ? 'checked' : '' %> />
-                            <span>Progress</span>
-                          </label>
-                        </div>
-                        <div class="settings-grid" style="margin-top:12px;">
-                          <label class="field">
-                            <span>Visible items in queue</span>
-                            <input
-                              type="number"
-                              min="5"
-                              max="50"
-                              step="1"
-                              name="element_queue_visible_rows_<%= element.id %>"
-                              value="<%= element.queueVisibleRows || 10 %>"
-                            />
-                          </label>
-                        </div>
-                      <% } else { %>
-                        <div class="settings-card-title">Carousel Display Options</div>
-                        <div class="settings-grid">
-                          <label class="radio-pill">
-                            <input type="checkbox" name="element_showSubtitle_<%= element.id %>" <%= element.showSubtitle !== false ? 'checked' : '' %> />
-                            <span>Subtitle</span>
-                          </label>
-                          <label class="radio-pill">
-                            <input type="checkbox" name="element_showMeta_<%= element.id %>" <%= element.showMeta !== false ? 'checked' : '' %> />
-                            <span>Meta</span>
-                          </label>
-                          <label class="radio-pill">
-                            <input type="checkbox" name="element_showPill_<%= element.id %>" <%= element.showPill !== false ? 'checked' : '' %> />
-                            <span>Pill</span>
-                          </label>
-                          <label class="radio-pill">
-                            <input type="checkbox" name="element_showTypeIcon_<%= element.id %>" <%= element.showTypeIcon !== false ? 'checked' : '' %> />
-                            <span>Type Icon</span>
-                          </label>
-                          <label class="radio-pill">
-                            <input type="checkbox" name="element_showViewIcon_<%= element.id %>" <%= element.showViewIcon !== false ? 'checked' : '' %> />
-                            <span>View Icon</span>
-                          </label>
-                          <label class="radio-pill">
-                            <input type="checkbox" name="element_showUsername_<%= element.id %>" <%= element.showUsername !== false ? 'checked' : '' %> />
-                            <span>Username</span>
-                          </label>
-                        </div>
-                      <% } %>
-                    </div>
-                  </div>
-                <% } %>
-                <% if (showWatchCardsToggle) { %>
-                  <div class="settings-collapsible is-collapsed settings-inline-collapsible settings-inline-watch-config" id="watchCardsPanel-<%= element.id %>">
-                    <div class="settings-table settings-table--tautulli-cards">
-                      <% tautulliItems.forEach((item, index) => { %>
-                        <% const orderValue = Number.isFinite(item.order) ? item.order : index + 1; %>
-                        <div class="settings-row settings-row--tautulli-cards settings-row--draggable">
-                          <div class="settings-element">
-                            <button class="order-button settings-drag-handle" type="button" title="Drag to reorder" aria-label="Drag to reorder">&#x2630;</button>
-                            <span class="settings-element-name"><%= item.name %></span>
-                          </div>
-                          <div class="settings-cell">
-                            <input type="checkbox" name="tautulli_card_enable_<%= item.id %>" <%= item.enable ? 'checked' : '' %> />
-                          </div>
-                          <div class="settings-cell settings-cell--blank" aria-hidden="true"></div>
-                          <div class="settings-cell settings-cell--blank" aria-hidden="true"></div>
-                          <input type="hidden" class="settings-order-input" name="tautulli_card_order_<%= item.id %>" value="<%= orderValue %>" />
-                          <div class="settings-cell settings-cell--blank" aria-hidden="true"></div>
-                        </div>
-                      <% }) %>
-                    </div>
-                  </div>
-                <% } %>
-              <% }) %>
-            </div>
-            <button class="primary-button" type="submit">Save display settings</button>
-          </form>
-        </div>
-      <% } %>
     </section>
   </div>
   <script>

@@ -4,6 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Launcharr · <%= app.name %> Overview</title>
+  <script>
+    (function() {
+      try {
+        var stored = localStorage.getItem("launcharr-theme");
+        var prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+        var mode = stored || (prefersLight ? "day" : "night");
+        document.documentElement.dataset.theme = mode;
+      } catch (e) {}
+    })();
+  </script>
   <link rel="stylesheet" href="/styles.css" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" type="image/png" href="/icons/launcharr-icon.png" />
@@ -147,8 +157,8 @@
               </a>
             <% } %>
             <a class="user-menu-item" href="/user-settings">
-              <img class="user-menu-icon" src="/icons/settings.svg" alt="" />
-              <span class="user-menu-text">User settings</span>
+              <img class="user-menu-icon" src="/icons/user-profile.svg" alt="" />
+              <span class="user-menu-text">User profile</span>
             </a>
             <div class="user-menu-divider"></div>
             <a class="user-menu-item" href="/logout">
@@ -160,7 +170,7 @@
       </div>
     </aside>
 
-    <section class="dash-main bar-flush">
+    <section class="dash-main">
       <% 
         const menu = app.menu || {};
         const overview = menu.overview || {};
@@ -178,7 +188,7 @@
           <img class="toggle-icon" src="/icons/sidebar-toggle.svg" alt="" />
         </button>
         <div class="main-window-title">
-          <img class="main-window-icon" src="<%= ['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'cleanuparr', 'huntarr', 'transmission'].includes(app.id) ? '/icons/' + app.id + '.png' : '/icons/' + app.id + '.svg' %>" alt="" onerror="this.src='/icons/app.svg'" />
+          <img class="main-window-icon" src="<%= app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(app.id) ? '/icons/' + app.id + '.png' : '/icons/' + app.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
           <span class="main-window-app"><%= app.name %></span>
           <span class="main-window-rest">| Overview</span>
         </div>

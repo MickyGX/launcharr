@@ -4,6 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Launcharr · Setup</title>
+  <script>
+    (function() {
+      try {
+        var stored = localStorage.getItem("launcharr-theme");
+        var prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+        var mode = stored || (prefersLight ? "day" : "night");
+        document.documentElement.dataset.theme = mode;
+      } catch (e) {}
+    })();
+  </script>
   <link rel="stylesheet" href="/styles.css" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" type="image/png" href="/icons/launcharr-icon.png" />
@@ -17,35 +27,41 @@
   <div class="login-planet"></div>
 
   <main class="login-wrap">
-    <div class="login-card">
-      <div class="login-title">
-        <img src="/icons/launcharr-icon.png" alt="" />
-        <span>Launcharr</span>
+    <div class="login-hero">
+      <div class="login-brand">
+        <span class="login-brand-mark">
+          <img src="/icons/launcharr-icon.png" alt="Launcharr" />
+        </span>
+        <div class="login-brand-title">Launcharr</div>
+        <div class="login-brand-subtitle">Arr suite control deck</div>
       </div>
-      <p>Create the master admin account to finish setup.</p>
-      <% if (error) { %>
-        <div class="login-error"><%= error %></div>
-      <% } %>
-      <form class="login-form" method="post" action="/setup">
-        <label class="login-field">
-          <span>Username</span>
-          <input class="login-input" type="text" name="username" value="<%= values?.username || '' %>" autocomplete="username" required />
-        </label>
-        <label class="login-field">
-          <span>Email</span>
-          <input class="login-input" type="email" name="email" value="<%= values?.email || '' %>" autocomplete="email" required />
-        </label>
-        <label class="login-field">
-          <span>Password (min <%= minPassword %> chars)</span>
-          <input class="login-input" type="password" name="password" autocomplete="new-password" required />
-        </label>
-        <label class="login-field">
-          <span>Confirm password</span>
-          <input class="login-input" type="password" name="confirmPassword" autocomplete="new-password" required />
-        </label>
-        <button class="primary-button" type="submit">Create admin</button>
-      </form>
-      <div class="login-sub">You can still use Plex SSO after setup.</div>
+      <div class="login-card">
+        <div class="login-card-title">Create admin</div>
+        <div class="login-card-sub">Finish setup to unlock your dashboard</div>
+        <% if (error) { %>
+          <div class="login-error"><%= error %></div>
+        <% } %>
+        <form class="login-form" method="post" action="/setup">
+          <label class="login-field">
+            <span>Username</span>
+            <input class="login-input" type="text" name="username" value="<%= values?.username || '' %>" autocomplete="username" required />
+          </label>
+          <label class="login-field">
+            <span>Email</span>
+            <input class="login-input" type="email" name="email" value="<%= values?.email || '' %>" autocomplete="email" required />
+          </label>
+          <label class="login-field">
+            <span>Password (min <%= minPassword %> chars)</span>
+            <input class="login-input" type="password" name="password" autocomplete="new-password" required />
+          </label>
+          <label class="login-field">
+            <span>Confirm password</span>
+            <input class="login-input" type="password" name="confirmPassword" autocomplete="new-password" required />
+          </label>
+          <button class="primary-button" type="submit">Create admin</button>
+        </form>
+        <div class="login-sub">You can still use Plex SSO after setup.</div>
+      </div>
     </div>
   </main>
   <script src="/pwa.js"></script>

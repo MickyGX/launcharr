@@ -3,7 +3,17 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Launcharr · User Settings</title>
+  <title>Launcharr · User Profile</title>
+  <script>
+    (function() {
+      try {
+        var stored = localStorage.getItem("launcharr-theme");
+        var prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+        var mode = stored || (prefersLight ? "day" : "night");
+        document.documentElement.dataset.theme = mode;
+      } catch (e) {}
+    })();
+  </script>
   <link rel="stylesheet" href="/styles.css" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" type="image/png" href="/icons/launcharr-icon.png" />
@@ -146,8 +156,8 @@
               </a>
             <% } %>
             <a class="user-menu-item" href="/user-settings">
-              <img class="user-menu-icon" src="/icons/settings.svg" alt="" />
-              <span class="user-menu-text">User settings</span>
+              <img class="user-menu-icon" src="/icons/user-profile.svg" alt="" />
+              <span class="user-menu-text">User profile</span>
             </a>
             <div class="user-menu-divider"></div>
             <a class="user-menu-item" href="/logout">
@@ -165,8 +175,8 @@
           <img class="toggle-icon" src="/icons/sidebar-toggle.svg" alt="" />
         </button>
         <div class="main-window-title">
-          <img class="main-window-icon" src="/icons/settings.svg" alt="" />
-          <span class="main-window-app">User settings</span>
+          <img class="main-window-icon" src="/icons/user-profile.svg" alt="" />
+          <span class="main-window-app">User Profile</span>
         </div>
         <div class="main-window-spacer"></div>
         <div class="main-window-status">
@@ -176,7 +186,7 @@
 
       <div class="dash-panel">
         <div class="panel-header">
-          <h2>User settings</h2>
+          <h2>User Profile</h2>
           <span class="panel-sub">Profile and view mode</span>
         </div>
         <div class="settings-form">
@@ -196,12 +206,17 @@
             <div class="settings-card">
               <div class="settings-card-title">View mode</div>
               <div class="settings-card-sub">Preview user access without leaving your account</div>
-              <div class="settings-card-lines">
-                <div class="settings-card-line"><span>Currently viewing</span><strong><%= role === 'admin' ? 'Admin view' : 'User view' %></strong></div>
-              </div>
-              <div class="settings-card-actions">
-                <a class="ghost-button" href="/switch-view?role=<%= role === 'admin' ? 'user' : 'admin' %>"><%= role === 'admin' ? 'Switch to user view' : 'Switch to admin view' %></a>
-              </div>
+              <form method="get" action="/switch-view" class="settings-access-form" id="viewModeForm">
+                <input type="hidden" name="role" value="<%= role === 'admin' ? 'user' : 'admin' %>" />
+                <div class="settings-access-row">
+                  <label class="settings-toggle">
+                    <input type="checkbox" id="viewModeToggle" <%= role === 'admin' ? 'checked' : '' %> />
+                    <span class="settings-toggle-slider" aria-hidden="true"></span>
+                    <span class="settings-toggle-text"><%= role === 'admin' ? 'Admin view' : 'User view' %></span>
+                  </label>
+                  <button class="primary-button" type="submit"><%= role === 'admin' ? 'Switch to user view' : 'Switch to admin view' %></button>
+                </div>
+              </form>
             </div>
           <% } %>
         </div>
@@ -346,6 +361,14 @@
       if (event.key !== 'Escape') return;
       closeUserMenus();
     });
+
+    const viewModeForm = document.getElementById('viewModeForm');
+    const viewModeToggle = document.getElementById('viewModeToggle');
+    if (viewModeForm && viewModeToggle) {
+      viewModeToggle.addEventListener('change', () => {
+        viewModeForm.submit();
+      });
+    }
   </script>
   <script src="/version-badge.js"></script>
   <script src="/pwa.js"></script>

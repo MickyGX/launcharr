@@ -80,10 +80,10 @@ const APP_OVERVIEW_ELEMENTS = {
     { id: 'search', name: 'Indexer Search' },
   ],
   transmission: [
-    { id: 'activity-queue', name: 'Activity Queue' },
+    { id: 'activity-queue', name: 'Download Queue' },
   ],
   nzbget: [
-    { id: 'activity-queue', name: 'Activity Queue' },
+    { id: 'activity-queue', name: 'Download Queue' },
   ],
 };
 const PLEX_DISCOVERY_WATCHLISTED_URL = 'https://watch.plex.tv/discover/list/top_watchlisted';
@@ -111,6 +111,7 @@ const LOG_PATH = process.env.LOG_PATH || path.join(DATA_DIR, 'logs.json');
 const DEFAULT_LOG_SETTINGS = {
   maxEntries: 250,
   maxDays: 7,
+  visibleRows: 10,
 };
 
 const VERSION_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -175,6 +176,104 @@ function resolveLocalUsers(config) {
 
 function hasLocalAdmin(config) {
   return resolveLocalUsers(config).some((user) => user.role === 'admin');
+}
+
+function normalizeUserKey(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function resolveUserLogins(config) {
+  const raw = config && typeof config.userLogins === 'object' ? config.userLogins : {};
+  const plex = raw && typeof raw.plex === 'object' ? raw.plex : {};
+  const launcharr = raw && typeof raw.launcharr === 'object' ? raw.launcharr : {};
+  return { plex, launcharr };
+}
+
+function updateUserLogins(config, { identifier, plex, launcharr }) {
+  const key = normalizeUserKey(identifier);
+  if (!key) return config;
+  const store = resolveUserLogins(config);
+  const now = new Date().toISOString();
+  const next = {
+    plex: { ...store.plex },
+    launcharr: { ...store.launcharr },
+  };
+  if (plex) next.plex[key] = typeof plex === 'string' ? plex : now;
+  if (launcharr) next.launcharr[key] = typeof launcharr === 'string' ? launcharr : now;
+  return { ...config, userLogins: next };
+}
+
+function normalizePlexLastSeen(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const numeric = Number(raw);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    const ms = numeric > 1e12 ? numeric : numeric * 1000;
+    return new Date(ms).toISOString();
+  }
+  const parsed = Date.parse(raw);
+  if (!Number.isNaN(parsed)) return new Date(parsed).toISOString();
+  return '';
+}
+
+function resolvePlexHistoryLastSeen(xmlText) {
+  const map = {};
+  const tags = String(xmlText || '').match(/<[^>]+>/g) || [];
+  tags.forEach((tag) => {
+    if (!/(accountID|userID|userId|accountId|username|user)=/i.test(tag)) return;
+    if (!/(viewedAt|lastViewedAt|viewed_at|last_viewed_at)=/i.test(tag)) return;
+    const attrs = {};
+    tag.replace(/(\w+)="([^"]*)"/g, (_m, key, value) => {
+      attrs[key] = value;
+      return '';
+    });
+    const rawSeen = attrs.viewedAt || attrs.lastViewedAt || attrs.viewed_at || attrs.last_viewed_at || '';
+    const seenIso = normalizePlexLastSeen(rawSeen);
+    if (!seenIso) return;
+    const keys = [
+      attrs.accountID,
+      attrs.accountId,
+      attrs.userID,
+      attrs.userId,
+      attrs.user,
+      attrs.username,
+    ]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean);
+    keys.forEach((key) => {
+      const existing = map[key];
+      if (!existing || new Date(existing) < new Date(seenIso)) {
+        map[key] = seenIso;
+      }
+      const lower = key.toLowerCase();
+      const existingLower = map[lower];
+      if (!existingLower || new Date(existingLower) < new Date(seenIso)) {
+        map[lower] = seenIso;
+      }
+    });
+  });
+  return map;
+}
+
+async function fetchPlexHistoryLastSeenMap(baseUrl, token) {
+  if (!baseUrl || !token) return {};
+  const paths = ['/status/sessions/history/all', '/status/sessions/history'];
+  for (let index = 0; index < paths.length; index += 1) {
+    const url = new URL(paths[index], baseUrl);
+    url.searchParams.set('X-Plex-Token', token);
+    url.searchParams.set('sort', 'viewedAt:desc');
+    url.searchParams.set('count', '2000');
+    try {
+      const res = await fetch(url.toString(), { headers: { Accept: 'application/xml' } });
+      const xmlText = await res.text();
+      if (!res.ok) continue;
+      const map = resolvePlexHistoryLastSeen(xmlText);
+      if (Object.keys(map).length) return map;
+    } catch (err) {
+      continue;
+    }
+  }
+  return {};
 }
 
 function hashPassword(password, salt) {
@@ -312,9 +411,11 @@ function resolveLogSettings(config) {
   const raw = config && typeof config.logs === 'object' ? config.logs : {};
   const maxEntries = Number(raw.maxEntries);
   const maxDays = Number(raw.maxDays);
+  const visibleRows = Number(raw.visibleRows);
   return {
     maxEntries: Number.isFinite(maxEntries) && maxEntries > 0 ? Math.floor(maxEntries) : DEFAULT_LOG_SETTINGS.maxEntries,
     maxDays: Number.isFinite(maxDays) && maxDays > 0 ? Math.floor(maxDays) : DEFAULT_LOG_SETTINGS.maxDays,
+    visibleRows: Number.isFinite(visibleRows) && visibleRows > 0 ? Math.floor(visibleRows) : DEFAULT_LOG_SETTINGS.visibleRows,
   };
 }
 
@@ -444,6 +545,11 @@ app.post('/login', (req, res) => {
   }
 
   setSessionUser(req, match, 'local');
+  const loginConfig = updateUserLogins(config, {
+    identifier: match.email || match.username,
+    launcharr: true,
+  });
+  if (loginConfig !== config) saveConfig(loginConfig);
   return res.redirect('/dashboard');
 });
 
@@ -649,17 +755,27 @@ app.get('/dashboard', requireUser, (req, res) => {
   const arrCombinedQueueDisplay = resolveCombinedQueueDisplaySettings(config, 'arrCombinedQueueDisplay');
   const downloaderCombinedQueueDisplay = resolveCombinedQueueDisplaySettings(config, 'downloaderCombinedQueueDisplay');
   const downloaderDashboardCombine = resolveDownloaderDashboardCombineSettings(config, apps);
+  const dashboardCombinedSettings = (config && typeof config.dashboardCombinedSettings === 'object' && config.dashboardCombinedSettings)
+    ? config.dashboardCombinedSettings
+    : {};
+  const dashboardCombinedOrder = (config && typeof config.dashboardCombinedOrder === 'object' && config.dashboardCombinedOrder)
+    ? config.dashboardCombinedOrder
+    : {};
   const role = getEffectiveRole(req);
   const actualRole = getActualRole(req);
   const navApps = getNavApps(apps, role, req, categoryOrder);
   const navCategories = buildNavCategories(navApps, categoryEntries);
   const rankCategory = buildCategoryRank(categoryOrder);
 
-  const dashboardModules = apps
-    .filter((appItem) => canAccess(appItem, role, 'overview'))
+  const accessibleApps = apps.filter((appItem) => canAccess(appItem, role, 'overview'));
+  const appById = new Map(accessibleApps.map((appItem) => [appItem.id, appItem]));
+  const elementsByAppId = new Map(
+    accessibleApps.map((appItem) => [appItem.id, mergeOverviewElementSettings(appItem)])
+  );
+  const dashboardModules = accessibleApps
     .map((appItem) => ({
       app: appItem,
-      elements: mergeOverviewElementSettings(appItem).filter((item) => item.enable && item.dashboard),
+      elements: (elementsByAppId.get(appItem.id) || []).filter((item) => item.enable && item.dashboard),
     }))
     .filter((entry) => entry.elements.length)
     .flatMap((entry) =>
@@ -670,68 +786,105 @@ app.get('/dashboard', requireUser, (req, res) => {
       }))
     )
     .sort((a, b) => {
-      const favouriteDelta = (b.element.favourite ? 1 : 0) - (a.element.favourite ? 1 : 0);
-      if (favouriteDelta !== 0) return favouriteDelta;
-      const categoryDelta = rankCategory(a.category) - rankCategory(b.category);
-      if (categoryDelta !== 0) return categoryDelta;
       const orderDelta = (a.element.order || 0) - (b.element.order || 0);
       if (orderDelta !== 0) return orderDelta;
-      const appOrderDelta = (a.app.order || 0) - (b.app.order || 0);
-      if (appOrderDelta !== 0) return appOrderDelta;
       return String(a.element.name || '').localeCompare(String(b.element.name || ''));
     })
     .map((item) => ({
       ...item,
       arrCombined: null,
-      arrCombinedSkip: false,
       downloaderCombined: null,
-      downloaderCombinedSkip: false,
     }));
 
+  const buildSectionModules = (appIds, elementId) => appIds
+    .map((appId) => {
+      const app = appById.get(appId);
+      if (!app) return null;
+      const elements = elementsByAppId.get(appId) || [];
+      const element = elements.find((item) => item.id === elementId);
+      if (!element) return null;
+      return {
+        app,
+        element,
+        category: app.category || 'Tools',
+      };
+    })
+    .filter(Boolean);
+
   ARR_COMBINE_SECTIONS.forEach((section) => {
-    const sectionModules = dashboardModules.filter((item) =>
-      ARR_APP_IDS.includes(item.app.id) &&
-      item.element.id === section.elementId
-    );
+    const combinedKey = `combined:arr:${section.key}`;
+    const combinedSettings = dashboardCombinedSettings[combinedKey];
+    if (combinedSettings && (!combinedSettings.enable || !combinedSettings.dashboard)) return;
+    const sectionModules = buildSectionModules(ARR_APP_IDS, section.elementId);
     const combinedModules = sectionModules.filter((item) =>
       Boolean(arrDashboardCombine?.[section.key]?.[item.app.id])
     );
-    if (combinedModules.length < 2) return;
+    const combinedApps = combinedModules.length ? combinedModules : sectionModules;
+    if (!combinedApps.length) return;
 
-    const leader = combinedModules[0];
-    leader.arrCombined = {
-      sectionKey: section.key,
-      elementId: section.elementId,
-      appIds: combinedModules.map((item) => item.app.id),
-      appNames: combinedModules.map((item) => item.app.name),
+    const leader = combinedApps[0];
+    const combinedEntry = {
+      ...leader,
+      arrCombined: {
+        sectionKey: section.key,
+        elementId: section.elementId,
+        appIds: combinedApps.map((item) => item.app.id),
+        appNames: combinedApps.map((item) => item.app.name),
+      },
+      downloaderCombined: null,
     };
-
-    combinedModules.slice(1).forEach((item) => {
-      item.arrCombinedSkip = true;
-    });
+    const insertIndex = dashboardModules.findIndex((item) =>
+      ARR_APP_IDS.includes(item.app.id) && item.element.id === section.elementId
+    );
+    dashboardModules.splice(insertIndex === -1 ? dashboardModules.length : insertIndex, 0, combinedEntry);
   });
 
   DOWNLOADER_COMBINE_SECTIONS.forEach((section) => {
-    const sectionModules = dashboardModules.filter((item) =>
-      DOWNLOADER_APP_IDS.includes(item.app.id) &&
-      item.element.id === section.elementId
-    );
+    const combinedKey = `combined:downloader:${section.key}`;
+    const combinedSettings = dashboardCombinedSettings[combinedKey];
+    if (combinedSettings && (!combinedSettings.enable || !combinedSettings.dashboard)) return;
+    const sectionModules = buildSectionModules(DOWNLOADER_APP_IDS, section.elementId);
     const combinedModules = sectionModules.filter((item) =>
       Boolean(downloaderDashboardCombine?.[section.key]?.[item.app.id])
     );
-    if (combinedModules.length < 2) return;
+    const combinedApps = combinedModules.length ? combinedModules : sectionModules;
+    if (!combinedApps.length) return;
 
-    const leader = combinedModules[0];
-    leader.downloaderCombined = {
-      sectionKey: section.key,
-      elementId: section.elementId,
-      appIds: combinedModules.map((item) => item.app.id),
-      appNames: combinedModules.map((item) => item.app.name),
+    const leader = combinedApps[0];
+    const combinedEntry = {
+      ...leader,
+      downloaderCombined: {
+        sectionKey: section.key,
+        elementId: section.elementId,
+        appIds: combinedApps.map((item) => item.app.id),
+        appNames: combinedApps.map((item) => item.app.name),
+      },
+      arrCombined: null,
     };
+    const insertIndex = dashboardModules.findIndex((item) =>
+      DOWNLOADER_APP_IDS.includes(item.app.id) && item.element.id === section.elementId
+    );
+    dashboardModules.splice(insertIndex === -1 ? dashboardModules.length : insertIndex, 0, combinedEntry);
+  });
 
-    combinedModules.slice(1).forEach((item) => {
-      item.downloaderCombinedSkip = true;
-    });
+  const getCombinedOrderKey = (item) => {
+    if (item?.arrCombined) return `combined:arr:${item.arrCombined.sectionKey}`;
+    if (item?.downloaderCombined) return `combined:downloader:${item.downloaderCombined.sectionKey}`;
+    return '';
+  };
+  const getDashboardOrder = (item) => {
+    const combinedKey = getCombinedOrderKey(item);
+    if (combinedKey) {
+      const combinedValue = Number(dashboardCombinedOrder?.[combinedKey]);
+      if (Number.isFinite(combinedValue)) return combinedValue;
+    }
+    const orderValue = Number(item?.element?.order);
+    return Number.isFinite(orderValue) ? orderValue : 0;
+  };
+  dashboardModules.sort((a, b) => {
+    const orderDelta = getDashboardOrder(a) - getDashboardOrder(b);
+    if (orderDelta !== 0) return orderDelta;
+    return String(a.element?.name || '').localeCompare(String(b.element?.name || ''));
   });
 
   res.render('dashboard', {
@@ -899,6 +1052,9 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
   const dashboardCombinedOrder = (config && typeof config.dashboardCombinedOrder === 'object' && config.dashboardCombinedOrder)
     ? config.dashboardCombinedOrder
     : {};
+  const dashboardCombinedSettings = (config && typeof config.dashboardCombinedSettings === 'object' && config.dashboardCombinedSettings)
+    ? config.dashboardCombinedSettings
+    : {};
   const logSettings = resolveLogSettings(config);
   const generalSettings = resolveGeneralSettings(config);
   const rankCategory = buildCategoryRank(categoryOrder);
@@ -943,30 +1099,19 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
           .filter((item) => item.element?.id === section.elementId)
           .map((item) => item.appId)
       );
-      const combinedAppIds = appIds.filter(
+      let combinedAppIds = appIds.filter(
         (appId) => availableAppIds.has(appId) && Boolean(combineMap?.[section.key]?.[appId])
       );
-      const hasCombinedGroup = combinedAppIds.length >= 2;
-      const leaderId = combinedAppIds[0];
+      if (!combinedAppIds.length) {
+        combinedAppIds = appIds.filter((appId) => availableAppIds.has(appId));
+      }
+      const leaderId = combinedAppIds[0] || appIds.find((appId) => availableAppIds.has(appId));
       const leaderItem = updated.find((item) =>
         (leaderId ? item.appId === leaderId : appIds.includes(item.appId))
         && item.element?.id === section.elementId
       );
       if (!leaderItem) return;
       const combinedName = `${labelPrefix} ${leaderItem.element?.name || section.elementId}`;
-      if (hasCombinedGroup) {
-        updated = updated.map((item) => {
-          if (combinedAppIds.includes(item.appId) && item.element?.id === section.elementId) {
-            return {
-              ...item,
-              combinedDisabled: true,
-              combinedGroup: section.key,
-              combinedType,
-            };
-          }
-          return item;
-        });
-      }
       updated.push({
         ...leaderItem,
         displayName: combinedName,
@@ -974,8 +1119,7 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
         combined: true,
         combinedType,
         combinedSection: section.key,
-        combinedDisabled: false,
-        combinedInactive: !hasCombinedGroup,
+        combinedApps: combinedAppIds,
       });
     });
     return updated;
@@ -986,7 +1130,7 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
       appIds: ARR_APP_IDS,
       sections: ARR_COMBINE_SECTIONS,
       combineMap: arrDashboardCombine,
-      labelPrefix: 'Combined Arr',
+      labelPrefix: 'Combined',
       iconPath: '/icons/arr-suite.svg',
       combinedType: 'arr',
     }),
@@ -994,7 +1138,7 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
       appIds: DOWNLOADER_APP_IDS,
       sections: DOWNLOADER_COMBINE_SECTIONS,
       combineMap: downloaderDashboardCombine,
-      labelPrefix: 'Combined Download',
+      labelPrefix: 'Combined',
       iconPath: '/icons/download.svg',
       combinedType: 'downloader',
     }
@@ -1039,6 +1183,7 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     tautulliCards: mergeTautulliCardSettings(apps.find((appItem) => appItem.id === 'tautulli')),
     dashboardElements,
     dashboardCombinedOrder,
+    dashboardCombinedSettings,
     systemIconDefaults,
     systemIconCustom,
     appIconDefaults,
@@ -1073,6 +1218,21 @@ app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
     const combinedSection = parts.join('_');
     const mapKey = `combined:${combinedType}:${combinedSection}`;
     dashboardCombinedOrder[mapKey] = raw;
+  });
+  const dashboardCombinedSettings = {};
+  ARR_COMBINE_SECTIONS.forEach((section) => {
+    const mapKey = `combined:arr:${section.key}`;
+    dashboardCombinedSettings[mapKey] = {
+      enable: Boolean(req.body[`dashboard_combined_arr_${section.key}_enable`]),
+      dashboard: Boolean(req.body[`dashboard_combined_arr_${section.key}_dashboard`]),
+    };
+  });
+  DOWNLOADER_COMBINE_SECTIONS.forEach((section) => {
+    const mapKey = `combined:downloader:${section.key}`;
+    dashboardCombinedSettings[mapKey] = {
+      enable: Boolean(req.body[`dashboard_combined_downloader_${section.key}_enable`]),
+      dashboard: Boolean(req.body[`dashboard_combined_downloader_${section.key}_dashboard`]),
+    };
   });
   const apps = (config.apps || []).map((appItem) => ({
     ...appItem,
@@ -1133,6 +1293,7 @@ app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
     arrCombinedQueueDisplay,
     downloaderCombinedQueueDisplay,
     dashboardCombinedOrder,
+    dashboardCombinedSettings,
   });
   res.redirect('/settings');
 });
@@ -1496,9 +1657,11 @@ app.post('/settings/logs', requireSettingsAdmin, (req, res) => {
   const config = loadConfig();
   const maxEntries = Number(req.body?.log_max_entries);
   const maxDays = Number(req.body?.log_max_days);
+  const visibleRows = Number(req.body?.log_visible_rows);
   const nextSettings = {
     maxEntries: Number.isFinite(maxEntries) && maxEntries > 0 ? Math.floor(maxEntries) : DEFAULT_LOG_SETTINGS.maxEntries,
     maxDays: Number.isFinite(maxDays) && maxDays > 0 ? Math.floor(maxDays) : DEFAULT_LOG_SETTINGS.maxDays,
+    visibleRows: Number.isFinite(visibleRows) && visibleRows > 0 ? Math.floor(visibleRows) : DEFAULT_LOG_SETTINGS.visibleRows,
   };
   const nextConfig = { ...config, logs: nextSettings };
   saveConfig(nextConfig);
@@ -1542,13 +1705,58 @@ app.get('/settings/plex-users', requireSettingsAdmin, async (req, res) => {
       return res.status(plexRes.status).json({ error: 'Failed to fetch Plex users.' });
     }
 
-    const users = parsePlexUsers(xmlText);
+    const machineId = String(plexApp?.plexMachine || '').trim();
+    const users = parsePlexUsers(xmlText, { machineId });
     const coAdmins = loadCoAdmins();
+    const loginStore = resolveUserLogins(config);
+    let plexHistory = {};
+    if (plexApp) {
+      const sessionServerToken = String(req.session?.plexServerToken || '').trim();
+      let serverToken = sessionServerToken || String(plexApp.plexToken || '').trim();
+      if (!serverToken) {
+        const sessionToken = String(req.session?.authToken || '').trim();
+        if (sessionToken) {
+          try {
+            const resources = await fetchPlexResources(sessionToken);
+            serverToken = resolvePlexServerToken(resources, {
+              machineId,
+              localUrl: plexApp?.localUrl,
+              remoteUrl: plexApp?.remoteUrl,
+              plexHost: plexApp?.plexHost,
+            }) || '';
+          } catch (err) {
+            serverToken = '';
+          }
+        }
+      }
+      if (serverToken) {
+        const candidates = uniqueList([
+          normalizeBaseUrl(resolveLaunchUrl(plexApp, req)),
+          normalizeBaseUrl(plexApp.localUrl || ''),
+          normalizeBaseUrl(plexApp.remoteUrl || ''),
+          normalizeBaseUrl(plexApp.url || ''),
+        ]).filter(Boolean);
+        for (let index = 0; index < candidates.length; index += 1) {
+          const baseUrl = candidates[index];
+          plexHistory = await fetchPlexHistoryLastSeenMap(baseUrl, serverToken);
+          if (Object.keys(plexHistory).length) break;
+        }
+      }
+    }
+    const hasPlexHistory = Object.keys(plexHistory).length > 0;
 
     const payload = users.map((user) => {
       const name = user.title || user.username || user.email || 'Plex User';
       const identifier = user.email || user.username || user.title || user.id || name;
-      const identLower = String(identifier).toLowerCase();
+      const identLower = normalizeUserKey(identifier);
+      const historySeen = plexHistory[String(user.id || '').trim()]
+        || plexHistory[String(user.uuid || '').trim()]
+        || plexHistory[identLower]
+        || '';
+      const lastPlexSeen = hasPlexHistory
+        ? historySeen
+        : (normalizePlexLastSeen(user.lastSeenAt) || loginStore.plex?.[identLower] || '');
+      const lastLauncharrLogin = loginStore.launcharr?.[identLower] || '';
       let role = 'user';
       let locked = false;
 
@@ -1567,6 +1775,8 @@ app.get('/settings/plex-users', requireSettingsAdmin, async (req, res) => {
         username: user.username || '',
         email: user.email || '',
         identifier,
+        lastPlexSeen,
+        lastLauncharrLogin,
         role,
         locked,
       };
@@ -3546,13 +3756,11 @@ function resolveAppLaunchMode(appItem, menu) {
 
 function resolveEffectiveLaunchMode(appItem, req, menu) {
   const configured = resolveAppLaunchMode(appItem, menu);
-  if (shouldForceLocalNewTab(appItem, configured, req)) return 'new-tab';
   return configured;
 }
 
 function shouldForceLocalNewTab(appItem, mode, req) {
-  if (appItem?.id !== 'tautulli' || mode !== 'iframe') return false;
-  return isLocalHost(getRequestHost(req));
+  return false;
 }
 
 function getRequestHost(req) {
@@ -4481,6 +4689,13 @@ async function completePlexLogin(req, authToken) {
   req.session.plexServerToken = null;
   req.session.pinId = null;
 
+  const loginIdentifier = plexUser.email || plexUser.username || plexUser.title || plexUser.id || '';
+  let nextConfig = updateUserLogins(config, {
+    identifier: loginIdentifier,
+    launcharr: true,
+  });
+  let configUpdated = nextConfig !== config;
+
   if (serverToken) {
     req.session.plexServerToken = serverToken;
     if (role === 'admin' && isServerOwner && serverToken !== plexApp.plexToken) {
@@ -4488,7 +4703,8 @@ async function completePlexLogin(req, authToken) {
         ? { ...appItem, plexToken: serverToken }
         : appItem
       ));
-      saveConfig({ ...config, apps: nextApps });
+      nextConfig = { ...nextConfig, apps: nextApps };
+      configUpdated = true;
     } else if (role === 'admin' && !isServerOwner && serverToken !== plexApp.plexToken) {
       pushLog({
         level: 'info',
@@ -4498,6 +4714,10 @@ async function completePlexLogin(req, authToken) {
         meta: { user: req.session?.user?.username || '' },
       });
     }
+  }
+
+  if (configUpdated) {
+    saveConfig(nextConfig);
   }
 
   pushLog({
@@ -4674,21 +4894,44 @@ async function fetchLatestDockerTag() {
   return parsed[0].name;
 }
 
-function parsePlexUsers(xmlText) {
+function parsePlexUsers(xmlText, options = {}) {
+  const machineId = String(options.machineId || '').trim();
   const users = [];
-  const matches = String(xmlText || '').match(/<User\b[^>]*>/g) || [];
-  matches.forEach((tag) => {
+  const blocks = String(xmlText || '').match(/<User\b[^>]*>[\s\S]*?<\/User>/g) || [];
+  blocks.forEach((block) => {
+    const userTagMatch = block.match(/<User\b[^>]*>/);
+    if (!userTagMatch) return;
     const attrs = {};
-    tag.replace(/(\w+)="([^"]*)"/g, (_m, key, value) => {
+    userTagMatch[0].replace(/(\w+)="([^"]*)"/g, (_m, key, value) => {
       attrs[key] = value;
       return '';
     });
+    const serverTags = block.match(/<Server\b[^>]*>/g) || [];
+    const servers = serverTags.map((tag) => {
+      const serverAttrs = {};
+      tag.replace(/(\w+)="([^"]*)"/g, (_m, key, value) => {
+        serverAttrs[key] = value;
+        return '';
+      });
+      return serverAttrs;
+    });
+    let serverMatch = null;
+    if (machineId) {
+      serverMatch = servers.find((server) => String(server.machineIdentifier || '') === machineId) || null;
+    }
+    if (!serverMatch) {
+      serverMatch = servers.find((server) => String(server.owned || '') === '1') || null;
+    }
+    if (!serverMatch) {
+      serverMatch = servers[0] || null;
+    }
     users.push({
       id: attrs.id || attrs.uuid || '',
       uuid: attrs.uuid || '',
       username: attrs.username || '',
       email: attrs.email || '',
       title: attrs.title || '',
+      lastSeenAt: serverMatch?.lastSeenAt || serverMatch?.last_seen_at || '',
     });
   });
   return users;

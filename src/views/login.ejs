@@ -4,6 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Launcharr · Login</title>
+  <script>
+    (function() {
+      try {
+        var stored = localStorage.getItem("launcharr-theme");
+        var prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+        var mode = stored || (prefersLight ? "day" : "night");
+        document.documentElement.dataset.theme = mode;
+      } catch (e) {}
+    })();
+  </script>
   <link rel="stylesheet" href="/styles.css" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" type="image/png" href="/icons/launcharr-icon.png" />
@@ -17,31 +27,40 @@
   <div class="login-planet"></div>
 
   <main class="login-wrap">
-    <div class="login-card">
-      <div class="login-title">
-        <img src="/icons/launcharr-icon.png" alt="" />
-        <span>Launcharr</span>
+    <div class="login-hero">
+      <div class="login-brand">
+        <span class="login-brand-mark">
+          <img src="/icons/launcharr-icon.png" alt="Launcharr" />
+        </span>
+        <div class="login-brand-title">Launcharr</div>
+        <div class="login-brand-subtitle">Arr suite control deck</div>
       </div>
-      <% if (error) { %>
-        <div class="login-error"><%= error %></div>
-      <% } %>
-      <% if (allowLocalLogin) { %>
-        <form class="login-form" method="post" action="/login">
-          <label class="login-field">
-            <span>Username or email</span>
-            <input class="login-input" type="text" name="username" autocomplete="username" required />
-          </label>
-          <label class="login-field">
-            <span>Password</span>
-            <input class="login-input" type="password" name="password" autocomplete="current-password" required />
-          </label>
-          <button class="primary-button" type="submit">Sign in</button>
-        </form>
-        <div class="login-divider">or</div>
-      <% } %>
-      <p>Sign in with Plex to access your dashboard.</p>
-      <a class="primary-button" href="/auth/plex">Login with Plex</a>
-      <div class="login-sub">Plex SSO required</div>
+      <div class="login-card">
+        <div class="login-card-title">Sign in</div>
+        <div class="login-card-sub">Access your dashboard</div>
+        <% if (error) { %>
+          <div class="login-error"><%= error %></div>
+        <% } %>
+        <% if (allowLocalLogin) { %>
+          <form class="login-form" method="post" action="/login">
+            <label class="login-field">
+              <span>Username or email</span>
+              <input class="login-input" type="text" name="username" autocomplete="username" required />
+            </label>
+            <label class="login-field">
+              <span>Password</span>
+              <input class="login-input" type="password" name="password" autocomplete="current-password" required />
+            </label>
+            <button class="primary-button" type="submit">Sign in</button>
+          </form>
+          <div class="login-divider">or sign in with</div>
+        <% } %>
+        <a class="plex-button" href="/auth/plex" aria-label="Sign in with Plex">
+          <img src="/icons/plex-login-white.svg" alt="" />
+          <span class="sr-only">Sign in with Plex</span>
+        </a>
+        <div class="login-sub">Plex SSO required</div>
+      </div>
     </div>
   </main>
   <script src="/pwa.js"></script>

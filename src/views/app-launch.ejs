@@ -4,6 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Launcharr · <%= app.name %> Launch</title>
+  <script>
+    (function() {
+      try {
+        var stored = localStorage.getItem("launcharr-theme");
+        var prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+        var mode = stored || (prefersLight ? "day" : "night");
+        document.documentElement.dataset.theme = mode;
+      } catch (e) {}
+    })();
+  </script>
   <link rel="stylesheet" href="/styles.css" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" type="image/png" href="/icons/launcharr-icon.png" />
@@ -12,7 +22,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="apple-touch-icon" href="/icons/launcharr-icon.png" />
 </head>
-<body class="dash-body">
+<body class="dash-body launch-page">
   <div class="dash-frame">
     <aside class="dash-sidebar">
       <div class="dash-brand">
@@ -147,8 +157,8 @@
               </a>
             <% } %>
             <a class="user-menu-item" href="/user-settings">
-              <img class="user-menu-icon" src="/icons/settings.svg" alt="" />
-              <span class="user-menu-text">User settings</span>
+              <img class="user-menu-icon" src="/icons/user-profile.svg" alt="" />
+              <span class="user-menu-text">User profile</span>
             </a>
             <div class="user-menu-divider"></div>
             <a class="user-menu-item" href="/logout">
