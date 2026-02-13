@@ -1885,6 +1885,11 @@ app.post('/apps/:id/settings', requireAdmin, (req, res) => {
   if (!isDisplayOnlyUpdate && req.params.id === 'plex' && plexAdminUser) {
     saveAdmins([plexAdminUser]);
   }
+  const fromSettings = String(req.query?.from || req.body?.from || '').trim().toLowerCase();
+  if (fromSettings === 'settings' || fromSettings === '1' || fromSettings === 'true') {
+    const appId = encodeURIComponent(String(req.params.id || '').trim());
+    return res.redirect(`/settings?tab=app&app=${appId}`);
+  }
   res.redirect(`/apps/${req.params.id}/settings`);
 });
 

@@ -39,25 +39,30 @@
     status.appendChild(toggle);
   }
 
+  const switchViewLink = document.querySelector('.user-menu-item[href^="/switch-view?role="]');
+  const inAdminView = Boolean(switchViewLink && /[?&]role=user(?:&|$)/.test(switchViewLink.getAttribute('href') || ''));
+  if (!inAdminView) return;
+
   fetch('/api/version')
     .then((res) => res.json())
     .then((data) => {
       const current = String(data?.current || '').trim();
       const latest = String(data?.latest || '').trim();
       if (!current) return;
+      const compactLabel = Boolean(window.matchMedia && window.matchMedia('(max-width: 980px)').matches);
 
       const wrap = document.createElement('div');
       wrap.className = 'version-badge';
 
       const currentSpan = document.createElement('span');
       currentSpan.className = 'version-pill';
-      currentSpan.textContent = `Current ${current}`;
+      currentSpan.textContent = compactLabel ? current : `Current ${current}`;
       wrap.appendChild(currentSpan);
 
       if (latest && latest !== current) {
         const latestSpan = document.createElement('span');
         latestSpan.className = 'version-pill version-pill--latest';
-        latestSpan.textContent = `Latest ${latest}`;
+        latestSpan.textContent = compactLabel ? latest : `Latest ${latest}`;
         wrap.appendChild(latestSpan);
       }
 
