@@ -1,4 +1,4 @@
-const CACHE_NAME = 'launcharr-static-v34';
+const CACHE_NAME = 'launcharr-static-v35';
 const STATIC_ASSETS = [
   '/manifest.webmanifest',
   '/styles.css',

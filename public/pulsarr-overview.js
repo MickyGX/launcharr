@@ -57,6 +57,7 @@
   const hasRequests = Boolean(modules.requests.viewport && modules.requests.track);
   const hasWatchlisted = Boolean(modules.watchlisted.viewport && modules.watchlisted.track);
   if (!hasRequests && !hasWatchlisted) return;
+  const CACHE_TTL_MS = 5 * 60 * 1000;
 
   const modal = {
     backdrop: document.getElementById('pulsarrModalBackdrop'),
@@ -77,7 +78,7 @@
       renderCard: (item) => renderCard(item, requestsDisplaySettings),
     });
     modules.requests.statusFilter?.addEventListener('change', loadRecentRequests);
-    modules.requests.limitFilter?.addEventListener('change', loadRecentRequests);
+    modules.requests.limitFilter?.addEventListener('change', applyRequestFilters);
     loadRecentRequests();
   }
 
@@ -144,6 +145,44 @@
 
   function toArray(value) {
     return Array.isArray(value) ? value : [];
+  }
+
+  function safeJsonParse(value) {
+    try {
+      return JSON.parse(value);
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  function cacheRead(key) {
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) return null;
+      const parsed = safeJsonParse(raw);
+      if (!parsed || typeof parsed !== 'object') return null;
+      if (!Array.isArray(parsed.items) || typeof parsed.ts !== 'number') return null;
+      if ((Date.now() - parsed.ts) > CACHE_TTL_MS) return null;
+      return parsed.items;
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  function cacheWrite(key, items) {
+    try {
+      window.localStorage.setItem(key, JSON.stringify({ ts: Date.now(), items }));
+    } catch (_err) {
+      // ignore localStorage issues
+    }
+  }
+
+  function requestsCacheKey(limit, status) {
+    return 'launcharr:pulsarr:recent-requests:v1:limit:' + String(limit) + ':status:' + String(status || '');
+  }
+
+  function watchlistedCacheKey(limit) {
+    return 'launcharr:pulsarr:most-watchlisted:v1:limit:' + String(limit);
   }
 
   function findTmdbIdFromGuids(guids) {
@@ -289,6 +328,16 @@
     const resolvedType = typeValue.includes('show') || typeValue.includes('tv') ? 'show' : 'movie';
     const count = Number(entry?.count ?? entry?.watched ?? entry?.plays ?? 0) || 0;
     const users = Array.isArray(entry?.users) ? entry.users.length : 0;
+    const createdAtRaw = entry?.createdAt
+      || entry?.created_at
+      || entry?.requestDate
+      || entry?.request_date
+      || entry?.addedAt
+      || entry?.added_at
+      || entry?.firstRequested
+      || entry?.first_requested
+      || entry?.date
+      || '';
     return {
       title: String(entry?.title || entry?.name || 'Unknown Title'),
       subtitle: resolvedType === 'show' ? 'TV Show' : 'Movie',
@@ -297,6 +346,7 @@
       pill: count > 0 ? String(count) + ' watched' : 'Top',
       score: count,
       mediaType: resolvedType,
+      createdAt: new Date(createdAtRaw).getTime(),
       overview: String(entry?.overview || entry?.description || ''),
       tmdbId: findTmdbIdFromGuids(entry?.guids),
       imdbId: findImdbIdFromGuids(entry?.guids),
@@ -608,7 +658,8 @@
   function applyRequestFilters() {
     if (!modules.requests.carousel) return;
     const statusValue = statusFilterValue(modules.requests.statusFilter?.value || 'all');
-    const limit = Number(modules.requests.limitFilter?.value || 20) || 20;
+    const limitValue = Number(modules.requests.limitFilter?.value || 20);
+    const limit = Number.isFinite(limitValue) && limitValue > 0 ? limitValue : 20;
     const filtered = modules.requests.items
       .filter((item) => {
         if (statusValue === 'all') return true;
@@ -622,7 +673,8 @@
   function applyWatchlistedFilters() {
     if (!modules.watchlisted.carousel) return;
     const typeValue = String(modules.watchlisted.typeFilter?.value || 'all');
-    const limit = Number(modules.watchlisted.limitFilter?.value || 20) || 20;
+    const limitValue = Number(modules.watchlisted.limitFilter?.value || 20);
+    const limit = Number.isFinite(limitValue) && limitValue > 0 ? limitValue : 20;
     const filtered = modules.watchlisted.items
       .filter((item) => typeValue === 'all' || item.mediaType === typeValue)
       .slice(0, limit);
@@ -631,17 +683,31 @@
 
   async function loadRecentRequests() {
     if (!hasRequests) return;
-    modules.requests.track.innerHTML = '<div class="plex-empty">Loading...</div>';
 
     try {
-      const limit = Number(modules.requests.limitFilter?.value || 20) || 20;
+      const limitValue = Number(modules.requests.limitFilter?.value || 20);
+      const limit = Number.isFinite(limitValue) && limitValue > 0 ? limitValue : 20;
       const status = statusParamValue(modules.requests.statusFilter?.value || '');
+      const cacheKey = requestsCacheKey(limit, status);
+      const cachedRecords = cacheRead(cacheKey);
+
+      if (cachedRecords) {
+        modules.requests.items = cachedRecords
+          .map(normalizeRequest)
+          .map((item) => ({ ...item, sectionId: 'recent-requests' }))
+          .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        applyRequestFilters();
+      } else {
+        modules.requests.track.innerHTML = '<div class="plex-empty">Loading...</div>';
+      }
+
       const payload = await fetchJson(withParams('/api/pulsarr/stats/recent-requests', { limit, status }));
       const records = toArray(payload?.results).length
         ? toArray(payload.results)
         : (toArray(payload?.items).length
           ? toArray(payload.items)
           : (toArray(payload?.data).length ? toArray(payload.data) : toArray(payload)));
+      cacheWrite(cacheKey, records);
 
       modules.requests.items = records
         .map(normalizeRequest)
@@ -655,30 +721,72 @@
 
   async function loadMostWatchlisted() {
     if (!hasWatchlisted) return;
-    modules.watchlisted.track.innerHTML = '<div class="plex-empty">Loading...</div>';
 
     try {
-      const limit = Math.max(50, Number(modules.watchlisted.limitFilter?.value || 20) || 20);
-      const moviePayload = await fetchJson(withParams('/api/pulsarr/stats/movies', { limit, offset: 0, days: 30 }));
-      const showPayload = await fetchJson(withParams('/api/pulsarr/stats/shows', { limit, offset: 0, days: 30 }));
+      const limitValue = Number(modules.watchlisted.limitFilter?.value || 20);
+      const limit = Number.isFinite(limitValue) && limitValue > 0 ? limitValue : 20;
+      const cacheKey = watchlistedCacheKey(limit);
+      const cachedRecords = cacheRead(cacheKey);
 
-      const movieRecords = toArray(moviePayload?.results).length
-        ? toArray(moviePayload.results)
-        : (toArray(moviePayload?.items).length
-          ? toArray(moviePayload.items)
-          : (toArray(moviePayload?.data).length ? toArray(moviePayload.data) : toArray(moviePayload)));
-      const showRecords = toArray(showPayload?.results).length
-        ? toArray(showPayload.results)
-        : (toArray(showPayload?.items).length
-          ? toArray(showPayload.items)
-          : (toArray(showPayload?.data).length ? toArray(showPayload.data) : toArray(showPayload)));
+      const extractRecords = (payload) => (
+        toArray(payload?.results).length
+          ? toArray(payload.results)
+          : (toArray(payload?.items).length
+            ? toArray(payload.items)
+            : (toArray(payload?.data).length ? toArray(payload.data) : toArray(payload)))
+      );
 
-      modules.watchlisted.items = movieRecords
-        .map((item) => normalizeWatchlistedEntry(item, 'movie'))
-        .concat(showRecords.map((item) => normalizeWatchlistedEntry(item, 'show')))
-        .map((item) => ({ ...item, sectionId: 'most-watchlisted' }))
-        .sort((a, b) => (b.score || 0) - (a.score || 0));
-      applyWatchlistedFilters();
+      if (cachedRecords) {
+        const moviesCached = cachedRecords
+          .filter((item) => item && item.__mediaType === 'movie')
+          .map((item) => normalizeWatchlistedEntry(item, 'movie'));
+        const showsCached = cachedRecords
+          .filter((item) => item && item.__mediaType === 'show')
+          .map((item) => normalizeWatchlistedEntry(item, 'show'));
+        modules.watchlisted.items = moviesCached
+          .concat(showsCached)
+          .map((item) => ({ ...item, sectionId: 'most-watchlisted' }))
+          .sort((a, b) => (b.score || 0) - (a.score || 0));
+        applyWatchlistedFilters();
+      } else {
+        modules.watchlisted.track.innerHTML = '<div class="plex-empty">Loading...</div>';
+      }
+
+      let movieItems = [];
+      let showItems = [];
+      let successCount = 0;
+
+      const applyMergedItems = () => {
+        modules.watchlisted.items = movieItems
+          .concat(showItems)
+          .map((item) => ({ ...item, sectionId: 'most-watchlisted' }))
+          .sort((a, b) => (b.score || 0) - (a.score || 0));
+        applyWatchlistedFilters();
+      };
+
+      const moviePromise = fetchJson(withParams('/api/pulsarr/stats/movies', { limit, offset: 0, days: 30 }))
+        .then((moviePayload) => {
+          const movieRecords = extractRecords(moviePayload);
+          movieItems = movieRecords.map((item) => normalizeWatchlistedEntry(item, 'movie'));
+          successCount += 1;
+          applyMergedItems();
+        });
+
+      const showPromise = fetchJson(withParams('/api/pulsarr/stats/shows', { limit, offset: 0, days: 30 }))
+        .then((showPayload) => {
+          const showRecords = extractRecords(showPayload);
+          showItems = showRecords.map((item) => normalizeWatchlistedEntry(item, 'show'));
+          successCount += 1;
+          applyMergedItems();
+        });
+
+      await Promise.allSettled([moviePromise, showPromise]);
+      if (!successCount) {
+        throw new Error('Failed to load watchlisted items');
+      }
+      const cachePayload = movieItems.map((item) => ({ ...(item.raw || {}), __mediaType: 'movie' }))
+        .concat(showItems.map((item) => ({ ...(item.raw || {}), __mediaType: 'show' })));
+      cacheWrite(cacheKey, cachePayload);
     } catch (err) {
       modules.watchlisted.track.innerHTML = '<div class="plex-empty">Unable to load ' + escapeHtml(appName) + ' most watchlisted: ' + escapeHtml(err.message || '') + '</div>';
     }

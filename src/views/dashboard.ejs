@@ -56,7 +56,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/styles.css?v=<%= assetVersion %>" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" type="image/png" href="/icons/launcharr-icon.png" />
   <meta name="theme-color" content="#1cc6c2" />
@@ -118,7 +118,7 @@
                                 <span>App settings</span>
                               </a>
                             <% } %>
-                            <% if (appItem.menuAccess.overview && role === 'admin') { %>
+                            <% if (appItem.menuAccess.activity) { %>
                               <a class="nav-subitem" href="/apps/<%= appItem.id %>/activity">
                                 <img class="nav-subicon" src="/icons/activity-queue.svg" alt="" />
                                 <span>Activity</span>
@@ -156,7 +156,7 @@
                           <span>App settings</span>
                         </a>
                       <% } %>
-                      <% if (appItem.menuAccess.overview && role === 'admin') { %>
+                      <% if (appItem.menuAccess.activity) { %>
                         <a class="nav-subitem" href="/apps/<%= appItem.id %>/activity">
                           <img class="nav-subicon" src="/icons/activity-queue.svg" alt="" />
                           <span>Activity</span>
@@ -194,7 +194,7 @@
             <% if (actualRole === 'admin') { %>
               <a class="user-menu-item" href="/switch-view?role=<%= role === 'admin' ? 'user' : 'admin' %>">
                 <img class="user-menu-icon" src="/icons/window.svg" alt="" />
-                <span class="user-menu-text"><%= role === 'admin' ? 'Switch to user view' : 'Switch to admin view' %></span>
+                <span class="user-menu-text"><%= role === 'admin' ? 'User view' : 'Admin view' %></span>
               </a>
             <% } %>
             <a class="user-menu-item" href="/user-settings">
@@ -292,11 +292,11 @@
                       </select>
                     </div>
 
-                    <div class="plex-select plex-xsmall" title="Limit">
-                      <select id="plexRecentLimitSelect">
-                        <option value="10">10</option>
-                        <option value="20" selected>20</option>
-                        <option value="50">50</option>
+                    <div class="plex-select plex-icon plex-filter-window" title="Window">
+                      <select id="plexRecentWindowFilter" aria-label="Window">
+                        <option value="today">Today</option>
+                        <option value="week">Week</option>
+                        <option value="month" selected>Month</option>
                       </select>
                     </div>
 
@@ -339,14 +339,6 @@
                         <option value="all" selected>All</option>
                         <option value="movie">Movies</option>
                         <option value="show">TV</option>
-                      </select>
-                    </div>
-
-                    <div class="plex-select plex-xsmall" title="Limit">
-                      <select id="plexWatchlistedLimitSelect">
-                        <option value="10">10</option>
-                        <option value="20" selected>20</option>
-                        <option value="50">50</option>
                       </select>
                     </div>
 
@@ -483,7 +475,7 @@
                     <div class="prowlarr-row prowlarr-row--head">
                       <div>Name</div>
                       <div>Peers</div>
-                      <div>Size</div>
+                      <div>Quality</div>
                       <div>Protocol</div>
                       <div>Action</div>
                     </div>
@@ -597,11 +589,11 @@
                       </select>
                     </div>
 
-                    <div class="plex-select plex-xsmall" title="Limit">
-                      <select id="<%= controlPrefix %>LimitSelect">
-                        <option value="10">10</option>
-                        <option value="20" selected>20</option>
-                        <option value="50">50</option>
+                    <div class="plex-select plex-icon plex-filter-window" title="Window">
+                      <select id="<%= controlPrefix %>WindowFilter" aria-label="Window">
+                        <option value="today">Today</option>
+                        <option value="week">Week</option>
+                        <option value="month" selected>Month</option>
                       </select>
                     </div>
 
@@ -687,13 +679,13 @@
                 <div class="plex-panel queue-panel">
                   <div class="queue-table <%= queueClasses %>" style="--queue-visible-rows:<%= queueVisibleRows %>">
                     <div class="queue-row header">
-                      <div>Title</div>
-                      <div><%= isCombined ? 'Detail' : (item.app.id === 'lidarr' ? 'Album' : (item.app.id === 'readarr' ? 'Author' : (item.app.id === 'radarr' ? 'Year' : 'Episode'))) %></div>
-                      <div><%= isCombined ? 'Sub-detail' : (item.app.id === 'lidarr' ? 'Track' : (item.app.id === 'readarr' ? 'Book' : (item.app.id === 'radarr' ? 'Studio' : 'Episode Title'))) %></div>
-                      <div>Size</div>
-                      <div>Protocol</div>
-                      <div>Time Left</div>
-                      <div>Progress</div>
+                      <div class="queue-col-title">Title</div>
+                      <div class="queue-col-detail"><%= isCombined ? 'Detail' : (item.app.id === 'lidarr' ? 'Album' : (item.app.id === 'readarr' ? 'Author' : (item.app.id === 'radarr' ? 'Year' : 'Episode'))) %></div>
+                      <div class="queue-col-subdetail"><%= isCombined ? 'Sub-detail' : (item.app.id === 'lidarr' ? 'Track' : (item.app.id === 'readarr' ? 'Book' : (item.app.id === 'radarr' ? 'Studio' : 'Episode Title'))) %></div>
+                      <div class="queue-col-size">Quality</div>
+                      <div class="queue-col-protocol">Protocol</div>
+                      <div class="queue-col-time">Time Left</div>
+                      <div class="queue-col-progress">Progress</div>
                     </div>
                     <div id="<%= controlPrefix %>Body" class="queue-body">
                       <div class="queue-empty">Loading…</div>
@@ -789,13 +781,13 @@
                 <div class="plex-panel queue-panel">
                   <div class="queue-table <%= queueClasses %>" style="--queue-visible-rows:<%= queueVisibleRows %>">
                     <div class="queue-row header">
-                      <div>Title</div>
-                      <div><%= detailLabel %></div>
-                      <div><%= subDetailLabel %></div>
-                      <div>Size</div>
-                      <div>Protocol</div>
-                      <div>Time Left</div>
-                      <div>Progress</div>
+                      <div class="queue-col-title">Title</div>
+                      <div class="queue-col-detail"><%= detailLabel %></div>
+                      <div class="queue-col-subdetail"><%= subDetailLabel %></div>
+                      <div class="queue-col-size">Size</div>
+                      <div class="queue-col-protocol">Protocol</div>
+                      <div class="queue-col-time">Time Left</div>
+                      <div class="queue-col-progress">Progress</div>
                     </div>
                     <div id="<%= controlPrefix %>Body" class="queue-body">
                       <div class="queue-empty">Loading…</div>
@@ -828,10 +820,11 @@
                       </select>
                     </div>
 
-                    <div class="plex-select plex-xsmall" title="Limit">
-                      <select id="pulsarrRequestsLimitSelect">
+                    <div class="plex-select plex-icon plex-filter-window" title="Limit">
+                      <select id="pulsarrRequestsLimitSelect" aria-label="Limit">
                         <option value="10">10</option>
                         <option value="20" selected>20</option>
+                        <option value="30">30</option>
                         <option value="50">50</option>
                       </select>
                     </div>
@@ -878,10 +871,11 @@
                       </select>
                     </div>
 
-                    <div class="plex-select plex-xsmall" title="Limit">
-                      <select id="pulsarrWatchlistedLimitSelect">
+                    <div class="plex-select plex-icon plex-filter-window" title="Limit">
+                      <select id="pulsarrWatchlistedLimitSelect" aria-label="Limit">
                         <option value="10">10</option>
                         <option value="20" selected>20</option>
+                        <option value="30">30</option>
                         <option value="50">50</option>
                       </select>
                     </div>
@@ -1045,12 +1039,29 @@
 
     applySidebarState();
     mobileQuery.addEventListener('change', applySidebarState);
+    const autoOpenSingleAppMenuItem = <%= autoOpenSingleAppMenuItem ? 'true' : 'false' %>;
     const accordion = document.querySelectorAll('.nav-accordion-item');
     accordion.forEach((item) => {
       const trigger = item.querySelector('.nav-accordion-trigger');
       if (!trigger) return;
       trigger.addEventListener('click', (event) => {
         event.stopPropagation();
+        const isCategoryTrigger = trigger.classList.contains('nav-accordion-trigger--category');
+        if (autoOpenSingleAppMenuItem && !isCategoryTrigger) {
+          const panel = Array.from(item.children).find((child) => child.classList && child.classList.contains('nav-accordion-panel'));
+          const directLinks = panel
+            ? Array.from(panel.children).filter((child) => typeof child.matches === 'function' && child.matches('a.nav-subitem[href]'))
+            : [];
+          if (directLinks.length === 1) {
+            const [onlyLink] = directLinks;
+            if (onlyLink.target === '_blank') {
+              window.open(onlyLink.href, '_blank', 'noopener,noreferrer');
+            } else {
+              window.location.href = onlyLink.href;
+            }
+            return;
+          }
+        }
         const parentAccordion = item.closest('.nav-accordion');
         const siblings = parentAccordion
           ? Array.from(parentAccordion.children).filter((child) => child.classList.contains('nav-accordion-item'))
@@ -1171,7 +1182,7 @@
             }, {})
         }) %>;
       </script>
-      <script src="/plex-overview.js"></script>
+      <script src="/plex-overview.js?v=<%= assetVersion %>"></script>
     <% } %>
   <% } %>
   <% if (dashboardModules.some((item) => item.app.id === 'tautulli')) { %>
@@ -1187,12 +1198,19 @@
           statsCards: activeTautulliCards
         }) %>;
       </script>
-      <script src="/tautulli-overview.js"></script>
+      <script src="/tautulli-overview.js?v=<%= assetVersion %>"></script>
     <% } %>
   <% } %>
   <% if (dashboardModules.some((item) => ['sonarr', 'radarr', 'lidarr', 'readarr'].includes(item.app.id) && (item.element.id === 'downloading-soon' || item.element.id === 'recently-downloaded' || item.element.id === 'activity-queue'))) { %>
     <%
       const arrOverviewApps = [];
+      const arrSourceApps = [];
+      const addArrSourceApp = (candidate) => {
+        if (!candidate || !['sonarr', 'radarr', 'lidarr', 'readarr'].includes(candidate.id)) return;
+        if (arrSourceApps.some((appItem) => appItem.id === candidate.id)) return;
+        arrSourceApps.push(candidate);
+      };
+      (Array.isArray(apps) ? apps : []).forEach(addArrSourceApp);
       const arrCombinedConfigs = [];
       const combinedPrefixByElement = {
         'downloading-soon': 'arrcombinedsoon',
@@ -1203,6 +1221,7 @@
         .filter((item) => ['sonarr', 'radarr', 'lidarr', 'readarr'].includes(item.app.id))
         .forEach((item) => {
           if (!arrOverviewApps.some((appItem) => appItem.id === item.app.id)) arrOverviewApps.push(item.app);
+          addArrSourceApp(item.app);
           if (item.arrCombined && !arrCombinedConfigs.some((configItem) => configItem.elementId === item.arrCombined.elementId)) {
             const includeSoon = item.arrCombined.elementId === 'downloading-soon';
             const includeRecent = item.arrCombined.elementId === 'recently-downloaded';
@@ -1225,7 +1244,7 @@
                 },
               },
               sources: item.arrCombined.appIds
-                .map((appId) => arrOverviewApps.find((appItem) => appItem.id === appId))
+                .map((appId) => arrSourceApps.find((appItem) => appItem.id === appId))
                 .filter(Boolean)
                 .map((arrApp) => ({
                   appId: arrApp.id,
@@ -1269,7 +1288,7 @@
         ) %>;
         window.ARR_OVERVIEW_COMBINED_CONFIGS = <%- JSON.stringify(arrCombinedConfigs) %>;
       </script>
-      <script src="/arr-overview.js"></script>
+      <script src="/arr-overview.js?v=<%= assetVersion %>"></script>
     <% } %>
   <% } %>
   <% if (dashboardModules.some((item) => ['transmission', 'nzbget'].includes(item.app.id) && item.element.id === 'activity-queue')) { %>
@@ -1303,7 +1322,7 @@
       <script>
         window.DOWNLOADER_QUEUE_CONFIGS = <%- JSON.stringify(downloaderQueueApps) %>;
       </script>
-      <script src="/downloaders-queue.js"></script>
+      <script src="/downloaders-queue.js?v=<%= assetVersion %>"></script>
     <% } %>
   <% } %>
   <% if (dashboardModules.some((item) => item.app.id === 'pulsarr' && (item.element.id === 'recent-requests' || item.element.id === 'most-watchlisted'))) { %>
@@ -1331,7 +1350,7 @@
             }, {})
         }) %>;
       </script>
-      <script src="/pulsarr-overview.js"></script>
+      <script src="/pulsarr-overview.js?v=<%= assetVersion %>"></script>
     <% } %>
   <% } %>
   <% if (dashboardModules.some((item) => item.app.id === 'prowlarr' && item.element.id === 'search')) { %>
@@ -1357,10 +1376,10 @@
             }, {})
         }) %>;
       </script>
-      <script src="/prowlarr-overview.js"></script>
+      <script src="/prowlarr-overview.js?v=<%= assetVersion %>"></script>
     <% } %>
   <% } %>
-  <script src="/version-badge.js"></script>
-  <script src="/pwa.js"></script>
+  <script src="/version-badge.js?v=<%= assetVersion %>"></script>
+  <script src="/pwa.js?v=<%= assetVersion %>"></script>
 </body>
 </html>

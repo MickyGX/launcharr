@@ -132,6 +132,18 @@ const DEFAULT_GENERAL_SETTINGS = {
   remoteUrl: '',
   localUrl: '',
   restrictGuests: false,
+  autoOpenSingleAppMenuItem: false,
+  hideSidebarAppSettingsLink: false,
+  hideSidebarActivityLink: false,
+};
+
+const DEFAULT_NOTIFICATION_SETTINGS = {
+  appriseEnabled: false,
+  appriseApiUrl: '',
+  appriseMode: 'targets',
+  appriseConfigKey: '',
+  appriseTargets: '',
+  appriseTag: '',
 };
 
 function resolveGeneralSettings(config) {
@@ -139,12 +151,134 @@ function resolveGeneralSettings(config) {
   const restrictGuests = raw.restrictGuests === undefined
     ? DEFAULT_GENERAL_SETTINGS.restrictGuests
     : Boolean(raw.restrictGuests);
+  const autoOpenSingleAppMenuItem = raw.autoOpenSingleAppMenuItem === undefined
+    ? DEFAULT_GENERAL_SETTINGS.autoOpenSingleAppMenuItem
+    : Boolean(raw.autoOpenSingleAppMenuItem);
+  const hideSidebarAppSettingsLink = raw.hideSidebarAppSettingsLink === undefined
+    ? DEFAULT_GENERAL_SETTINGS.hideSidebarAppSettingsLink
+    : Boolean(raw.hideSidebarAppSettingsLink);
+  const hideSidebarActivityLink = raw.hideSidebarActivityLink === undefined
+    ? DEFAULT_GENERAL_SETTINGS.hideSidebarActivityLink
+    : Boolean(raw.hideSidebarActivityLink);
   return {
     serverName: String(raw.serverName || DEFAULT_GENERAL_SETTINGS.serverName || '').trim(),
     remoteUrl: String(raw.remoteUrl || DEFAULT_GENERAL_SETTINGS.remoteUrl || '').trim(),
     localUrl: String(raw.localUrl || DEFAULT_GENERAL_SETTINGS.localUrl || '').trim(),
     restrictGuests,
+    autoOpenSingleAppMenuItem,
+    hideSidebarAppSettingsLink,
+    hideSidebarActivityLink,
   };
+}
+
+function resolveNotificationSettings(config) {
+  const raw = config && typeof config.notifications === 'object' ? config.notifications : {};
+  const rawMode = String(raw.appriseMode || DEFAULT_NOTIFICATION_SETTINGS.appriseMode || '').trim().toLowerCase();
+  return {
+    appriseEnabled: raw.appriseEnabled === undefined
+      ? DEFAULT_NOTIFICATION_SETTINGS.appriseEnabled
+      : Boolean(raw.appriseEnabled),
+    appriseApiUrl: String(raw.appriseApiUrl || DEFAULT_NOTIFICATION_SETTINGS.appriseApiUrl || '').trim(),
+    appriseMode: rawMode === 'config-key' ? 'config-key' : 'targets',
+    appriseConfigKey: String(raw.appriseConfigKey || DEFAULT_NOTIFICATION_SETTINGS.appriseConfigKey || '').trim(),
+    appriseTargets: String(raw.appriseTargets || DEFAULT_NOTIFICATION_SETTINGS.appriseTargets || '').trim(),
+    appriseTag: String(raw.appriseTag || DEFAULT_NOTIFICATION_SETTINGS.appriseTag || '').trim(),
+  };
+}
+
+function parseAppriseTargets(value) {
+  return String(value || '')
+    .split(/[\n,]/)
+    .map((entry) => String(entry || '').trim())
+    .filter(Boolean);
+}
+
+function normalizeAppriseApiBaseUrl(value) {
+  let raw = String(value || '').trim();
+  if (!raw) return '';
+  if (!/^https?:\/\//i.test(raw)) raw = `http://${raw}`;
+  try {
+    const parsed = new URL(raw);
+    const pathname = String(parsed.pathname || '')
+      .replace(/\/notify(?:\/.*)?$/i, '')
+      .replace(/\/+$/, '');
+    parsed.pathname = pathname || '';
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.toString().replace(/\/$/, '');
+  } catch (err) {
+    return '';
+  }
+}
+
+function normalizeAppriseNotifyUrl(value) {
+  const base = normalizeAppriseApiBaseUrl(value);
+  if (!base) return '';
+  return `${base}/notify`;
+}
+
+function normalizeAppriseNotifyKeyUrl(value, key) {
+  const base = normalizeAppriseApiBaseUrl(value);
+  const token = String(key || '').trim();
+  if (!base || !token) return '';
+  return `${base}/notify/${encodeURIComponent(token)}`;
+}
+
+async function sendAppriseNotification(settings, payload = {}) {
+  if (!settings?.appriseEnabled) throw new Error('Apprise notifications are disabled.');
+  const mode = String(settings?.appriseMode || 'targets').trim().toLowerCase() === 'config-key'
+    ? 'config-key'
+    : 'targets';
+  const title = String(payload.title || 'Launcharr Notification').trim();
+  const body = String(payload.body || '').trim();
+  const tag = String(payload.tag || settings?.appriseTag || '').trim();
+  const requestBody = {
+    title: title || 'Launcharr Notification',
+    body: body || 'Launcharr test notification.',
+    type: 'info',
+    format: 'text',
+  };
+
+  let notifyUrl = '';
+  if (mode === 'config-key') {
+    const configKey = String(settings?.appriseConfigKey || '').trim();
+    if (!configKey) throw new Error('Apprise config key is required when mode is Config Key.');
+    notifyUrl = normalizeAppriseNotifyKeyUrl(settings?.appriseApiUrl, configKey);
+  } else {
+    notifyUrl = normalizeAppriseNotifyUrl(settings?.appriseApiUrl);
+    const urls = parseAppriseTargets(settings?.appriseTargets);
+    if (!urls.length) throw new Error('Add at least one Apprise target URL.');
+    requestBody.urls = urls;
+  }
+
+  if (!notifyUrl) throw new Error('Apprise API URL is required.');
+  if (tag) requestBody.tag = tag;
+
+  let response = null;
+  try {
+    response = await fetch(notifyUrl, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+  } catch (err) {
+    const cause = err && typeof err === 'object' ? err.cause : null;
+    const details = [String(err?.message || 'fetch failed').trim()].filter(Boolean);
+    if (cause && typeof cause === 'object') {
+      if (cause.code) details.push(`code=${cause.code}`);
+      if (cause.address) details.push(`address=${cause.address}`);
+      if (cause.port) details.push(`port=${cause.port}`);
+    }
+    throw new Error(`Failed to reach Apprise API (${details.join(', ')})`);
+  }
+
+  if (!response.ok) {
+    const message = String(await response.text() || '').trim();
+    throw new Error(message || `Apprise request failed (${response.status}).`);
+  }
 }
 
 function normalizeLocalUsers(items) {
@@ -484,6 +618,12 @@ app.set('trust proxy', true);
 app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use(express.urlencoded({ extended: false, limit: '25mb' }));
 app.use(express.json({ limit: '25mb' }));
+app.use((req, res, next) => {
+  res.locals.assetVersion = normalizeVersionTag(APP_VERSION || '') || String(APP_VERSION || 'dev');
+  const generalSettings = resolveGeneralSettings(loadConfig());
+  res.locals.autoOpenSingleAppMenuItem = Boolean(generalSettings.autoOpenSingleAppMenuItem);
+  next();
+});
 app.use(
   cookieSession({
     name: 'launcharr_session',
@@ -1057,6 +1197,9 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     : {};
   const logSettings = resolveLogSettings(config);
   const generalSettings = resolveGeneralSettings(config);
+  const notificationSettings = resolveNotificationSettings(config);
+  const notificationResult = String(req.query?.notificationResult || '').trim();
+  const notificationError = String(req.query?.notificationError || '').trim();
   const rankCategory = buildCategoryRank(categoryOrder);
   const role = getEffectiveRole(req);
   const actualRole = getActualRole(req);
@@ -1196,6 +1339,9 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     downloaderCombinedQueueDisplay,
     logSettings,
     generalSettings,
+    notificationSettings,
+    notificationResult,
+    notificationError,
     navCategories,
     coAdmins: loadCoAdmins(),
     role,
@@ -1318,7 +1464,15 @@ app.get('/user-settings', requireUser, (req, res) => {
   });
 });
 
+// DEPRECATED: Legacy endpoint kept for compatibility with older clients.
+// Remove in v0.3.0 after confirming no callers remain.
 app.post('/user-settings/access', requireActualAdmin, (req, res) => {
+  pushLog({
+    level: 'warning',
+    app: 'settings',
+    action: 'user-settings.access.deprecated',
+    message: 'Deprecated endpoint /user-settings/access was used. Remove in v0.3.0.',
+  });
   const config = loadConfig();
   const generalSettings = resolveGeneralSettings(config);
   const restrictGuests = Boolean(req.body?.restrictGuests);
@@ -1502,18 +1656,79 @@ app.post('/settings/icons/delete', requireSettingsAdmin, (req, res) => {
 
 app.post('/settings/general', requireSettingsAdmin, (req, res) => {
   const config = loadConfig();
-  const generalSettings = resolveGeneralSettings(config);
   const serverName = String(req.body?.server_name || '').trim();
   const remoteUrl = String(req.body?.remote_url || '').trim();
   const localUrl = String(req.body?.local_url || '').trim();
+  const restrictGuests = Boolean(req.body?.restrictGuests);
+  const autoOpenSingleAppMenuItem = Boolean(req.body?.autoOpenSingleAppMenuItem);
+  const hideSidebarAppSettingsLink = Boolean(req.body?.hideSidebarAppSettingsLink);
+  const hideSidebarActivityLink = Boolean(req.body?.hideSidebarActivityLink);
   const nextGeneral = {
     serverName: serverName || DEFAULT_GENERAL_SETTINGS.serverName,
     remoteUrl,
     localUrl,
-    restrictGuests: generalSettings.restrictGuests,
+    restrictGuests,
+    autoOpenSingleAppMenuItem,
+    hideSidebarAppSettingsLink,
+    hideSidebarActivityLink,
   };
   saveConfig({ ...config, general: nextGeneral });
   res.redirect('/settings');
+});
+
+function buildNotificationSettingsFromBody(body, currentSettings = DEFAULT_NOTIFICATION_SETTINGS) {
+  const fallback = currentSettings || DEFAULT_NOTIFICATION_SETTINGS;
+  const rawMode = String(body?.apprise_mode || fallback.appriseMode || '').trim().toLowerCase();
+  return {
+    appriseEnabled: Boolean(body?.apprise_enabled),
+    appriseApiUrl: String(body?.apprise_api_url || fallback.appriseApiUrl || '').trim(),
+    appriseMode: rawMode === 'config-key' ? 'config-key' : 'targets',
+    appriseConfigKey: String(body?.apprise_config_key || fallback.appriseConfigKey || '').trim(),
+    appriseTargets: String(body?.apprise_targets || fallback.appriseTargets || '').trim(),
+    appriseTag: String(body?.apprise_tag || fallback.appriseTag || '').trim(),
+  };
+}
+
+app.post('/settings/notifications', requireSettingsAdmin, (req, res) => {
+  const config = loadConfig();
+  const currentSettings = resolveNotificationSettings(config);
+  const nextSettings = buildNotificationSettingsFromBody(req.body, currentSettings);
+  saveConfig({ ...config, notifications: nextSettings });
+  res.redirect('/settings?tab=notifications&notificationResult=saved');
+});
+
+app.post('/settings/notifications/test', requireSettingsAdmin, async (req, res) => {
+  const config = loadConfig();
+  const currentSettings = resolveNotificationSettings(config);
+  const nextSettings = buildNotificationSettingsFromBody(req.body, currentSettings);
+  saveConfig({ ...config, notifications: nextSettings });
+
+  try {
+    const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    await sendAppriseNotification(nextSettings, {
+      title: 'Launcharr test notification',
+      body: `Launcharr sent this Apprise test notification at ${timestamp}.`,
+      tag: nextSettings.appriseTag,
+    });
+    pushLog({
+      level: 'info',
+      app: 'settings',
+      action: 'notifications.apprise.test',
+      message: 'Apprise test notification sent successfully.',
+    });
+    res.redirect('/settings?tab=notifications&notificationResult=test-ok');
+  } catch (err) {
+    const errorMessage = String(err?.message || 'Unknown Apprise error.').trim();
+    pushLog({
+      level: 'error',
+      app: 'settings',
+      action: 'notifications.apprise.test',
+      message: 'Apprise test notification failed.',
+      meta: { error: errorMessage },
+    });
+    const encoded = encodeURIComponent(errorMessage.slice(0, 240));
+    res.redirect(`/settings?tab=notifications&notificationResult=test-error&notificationError=${encoded}`);
+  }
 });
 
 app.post('/settings/custom-apps', requireSettingsAdmin, (req, res) => {
@@ -2837,8 +3052,7 @@ app.get('/switch-view', requireUser, (req, res) => {
       const host = req.headers.host || '';
       const url = new URL(referrer, `http://${host}`);
       const path = url.pathname || '';
-      if (path === '/settings'
-        || (path.startsWith('/apps/') && path.endsWith('/settings'))
+      if ((path.startsWith('/apps/') && path.endsWith('/settings'))
         || (path.startsWith('/apps/') && path.endsWith('/activity'))) {
         return res.redirect(fallback);
       }
@@ -2939,7 +3153,7 @@ function compareSemver(a, b) {
   return a.patch - b.patch;
 }
 
-function getNavApps(apps, role, req, categoryOrder = DEFAULT_CATEGORY_ORDER) {
+function getNavApps(apps, role, req, categoryOrder = DEFAULT_CATEGORY_ORDER, generalSettings = resolveGeneralSettings(loadConfig())) {
   const rankCategory = buildCategoryRank(categoryOrder);
   const isFavourite = (appItem) => Boolean(appItem?.favourite || appItem?.favorite);
   const orderValue = (value) => {
@@ -2948,12 +3162,20 @@ function getNavApps(apps, role, req, categoryOrder = DEFAULT_CATEGORY_ORDER) {
   };
 
   return apps
-    .map((appItem) => ({
-      ...appItem,
-      launchMode: resolveAppLaunchMode(appItem, normalizeMenu(appItem)),
-      effectiveLaunchMode: resolveEffectiveLaunchMode(appItem, req),
-      menuAccess: getMenuAccess(appItem, role),
-    }))
+    .map((appItem) => {
+      const access = getMenuAccess(appItem, role);
+      const menuAccess = {
+        ...access,
+        settings: access.settings && !generalSettings.hideSidebarAppSettingsLink,
+        activity: access.overview && role === 'admin' && !generalSettings.hideSidebarActivityLink,
+      };
+      return {
+        ...appItem,
+        launchMode: resolveAppLaunchMode(appItem, normalizeMenu(appItem)),
+        effectiveLaunchMode: resolveEffectiveLaunchMode(appItem, req),
+        menuAccess,
+      };
+    })
     .filter((appItem) => hasAnyMenuAccess(appItem.menuAccess))
     .sort((a, b) => {
       const favouriteDelta = (isFavourite(b) ? 1 : 0) - (isFavourite(a) ? 1 : 0);
@@ -3020,7 +3242,7 @@ function buildNavCategories(navApps, categoryEntries) {
 
 function hasAnyMenuAccess(access) {
   if (!access) return false;
-  return Boolean(access.overview || access.launch || access.settings);
+  return Boolean(access.overview || access.launch || access.settings || access.activity);
 }
 
 function canAccess(appItem, role, key) {
@@ -4552,7 +4774,7 @@ function requireActualAdmin(req, res, next) {
 }
 
 function requireSettingsAdmin(req, res, next) {
-  const role = getEffectiveRole(req);
+  const role = getActualRole(req);
   if (role === 'admin') return next();
   pushLog({
     level: 'error',

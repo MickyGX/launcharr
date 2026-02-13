@@ -119,7 +119,7 @@
                                 <span>App settings</span>
                               </a>
                             <% } %>
-                            <% if (appItem.menuAccess.overview && role === 'admin') { %>
+                            <% if (appItem.menuAccess.activity) { %>
                               <a class="nav-subitem<%= appItem.id === app.id && page === 'activity' ? ' active' : '' %>" href="/apps/<%= appItem.id %>/activity">
                                 <img class="nav-subicon" src="/icons/activity-queue.svg" alt="" />
                                 <span>Activity</span>
@@ -157,7 +157,7 @@
                           <span>App settings</span>
                         </a>
                       <% } %>
-                      <% if (appItem.menuAccess.overview && role === 'admin') { %>
+                      <% if (appItem.menuAccess.activity) { %>
                         <a class="nav-subitem<%= appItem.id === app.id && page === 'activity' ? ' active' : '' %>" href="/apps/<%= appItem.id %>/activity">
                           <img class="nav-subicon" src="/icons/activity-queue.svg" alt="" />
                           <span>Activity</span>
@@ -195,7 +195,7 @@
             <% if (actualRole === 'admin') { %>
               <a class="user-menu-item" href="/switch-view?role=<%= role === 'admin' ? 'user' : 'admin' %>">
                 <img class="user-menu-icon" src="/icons/window.svg" alt="" />
-                <span class="user-menu-text"><%= role === 'admin' ? 'Switch to user view' : 'Switch to admin view' %></span>
+                <span class="user-menu-text"><%= role === 'admin' ? 'User view' : 'Admin view' %></span>
               </a>
             <% } %>
             <a class="user-menu-item" href="/user-settings">
@@ -395,12 +395,29 @@
 
     applySidebarState();
     mobileQuery.addEventListener('change', applySidebarState);
+    const autoOpenSingleAppMenuItem = <%= autoOpenSingleAppMenuItem ? 'true' : 'false' %>;
     const accordion = document.querySelectorAll('.nav-accordion-item');
     accordion.forEach((item) => {
       const trigger = item.querySelector('.nav-accordion-trigger');
       if (!trigger) return;
       trigger.addEventListener('click', (event) => {
         event.stopPropagation();
+        const isCategoryTrigger = trigger.classList.contains('nav-accordion-trigger--category');
+        if (autoOpenSingleAppMenuItem && !isCategoryTrigger) {
+          const panel = Array.from(item.children).find((child) => child.classList && child.classList.contains('nav-accordion-panel'));
+          const directLinks = panel
+            ? Array.from(panel.children).filter((child) => typeof child.matches === 'function' && child.matches('a.nav-subitem[href]'))
+            : [];
+          if (directLinks.length === 1) {
+            const [onlyLink] = directLinks;
+            if (onlyLink.target === '_blank') {
+              window.open(onlyLink.href, '_blank', 'noopener,noreferrer');
+            } else {
+              window.location.href = onlyLink.href;
+            }
+            return;
+          }
+        }
         const parentAccordion = item.closest('.nav-accordion');
         const siblings = parentAccordion
           ? Array.from(parentAccordion.children).filter((child) => child.classList.contains('nav-accordion-item'))

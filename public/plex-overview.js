@@ -722,7 +722,7 @@
     const SECTION_IDS = { movie: '1', show: '2' };
 
     const elType = document.getElementById('plexRecentTypeFilter');
-    const elLimit = document.getElementById('plexRecentLimitSelect');
+    const elWindow = document.getElementById('plexRecentWindowFilter');
     const elPrev = document.getElementById('plexRecentPrevBtn');
     const elNext = document.getElementById('plexRecentNextBtn');
     const elViewport = document.getElementById('plexRecentViewport');
@@ -842,20 +842,32 @@
       return card;
     }
 
-    function sectionUrl(type, limit) {
+    function sectionUrl(type) {
       const key = type === 'show' ? 'show' : 'movie';
       const sectionId = SECTION_IDS[key] || SECTION_IDS.movie;
-      const size = Number(limit) || 20;
+      const size = 100;
       return baseUrl + '/library/sections/' + sectionId + '/recentlyAdded?X-Plex-Token=' + encodeURIComponent(token) + '&X-Plex-Container-Size=' + encodeURIComponent(String(size)) + '&includeGuids=1';
+    }
+
+    function withinWindowEpochSeconds(value, windowValue) {
+      const seconds = Number(value);
+      if (!Number.isFinite(seconds) || seconds <= 0) return true;
+      const ageMs = Date.now() - (seconds * 1000);
+      if (ageMs < 0) return true;
+      if (windowValue === 'today') return ageMs <= 86400000;
+      if (windowValue === 'week') return ageMs <= (7 * 86400000);
+      if (windowValue === 'month') return ageMs <= (31 * 86400000);
+      return true;
     }
 
     function loadRecent() {
       elTrack.innerHTML = '<div class="plex-empty">Loading…</div>';
       const type = elType ? elType.value : 'movie';
-      const limit = elLimit ? elLimit.value : '20';
+      const windowValue = elWindow ? String(elWindow.value || 'month') : 'month';
 
-      fetchXml(sectionUrl(type, limit), function (xmlText) {
-        const items = parseRecentlyAdded(xmlText);
+      fetchXml(sectionUrl(type), function (xmlText) {
+        const items = parseRecentlyAdded(xmlText)
+          .filter((it) => withinWindowEpochSeconds(it.addedAt, windowValue));
         carousel.setItems(items, renderCard, showDetailsModal);
       }, function (status) {
         elTrack.innerHTML = '<div class="plex-empty">Failed to load (Status ' + status + ')</div>';
@@ -863,7 +875,7 @@
     }
 
     if (elType) elType.addEventListener('change', loadRecent);
-    if (elLimit) elLimit.addEventListener('change', loadRecent);
+    if (elWindow) elWindow.addEventListener('change', loadRecent);
 
     window.addEventListener('resize', () => {
       carousel.updateLayout();
@@ -875,7 +887,6 @@
   // Plex Discover: Most Watchlisted This Week
   (function () {
     const elType = document.getElementById('plexWatchlistedTypeFilter');
-    const elLimit = document.getElementById('plexWatchlistedLimitSelect');
     const elPrev = document.getElementById('plexWatchlistedPrevBtn');
     const elNext = document.getElementById('plexWatchlistedNextBtn');
     const elViewport = document.getElementById('plexWatchlistedViewport');
@@ -1183,14 +1194,12 @@
 
     function filteredItems() {
       const type = elType ? elType.value : 'all';
-      const limit = Number(elLimit ? elLimit.value : 20) || 20;
       return sourceItems
         .filter((it) => {
           if (type === 'movie') return it.kind === 'movie';
           if (type === 'show') return it.kind === 'tv';
           return true;
-        })
-        .slice(0, limit);
+        });
     }
 
     function applyFilters() {
@@ -1210,7 +1219,6 @@
     }
 
     if (elType) elType.addEventListener('change', applyFilters);
-    if (elLimit) elLimit.addEventListener('change', applyFilters);
     // watchlist toggle handled inside the modal only
     window.addEventListener('resize', () => {
       carousel.updateLayout();

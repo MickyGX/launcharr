@@ -44,6 +44,7 @@
 
     const prefix = String(config.prefix || appId).trim() || appId;
     const appName = String(config.appName || appId).trim() || appId;
+    const table = document.querySelector('#' + prefix + '-activity-queue .queue-table');
     const body = document.getElementById(prefix + 'QueueBody');
     if (!body) return;
     const typeFilter = document.getElementById(prefix + 'QueueTypeFilter');
@@ -58,6 +59,8 @@
       sortDir: 'asc',
       sortIndex: 0,
     };
+
+    syncQueueTableLayout(table);
 
     typeFilter?.addEventListener('change', () => {
       if (isCombined && logo) {
@@ -144,7 +147,7 @@
         if (left > right) return state.sortDir === 'asc' ? 1 : -1;
         return 0;
       });
-      renderQueueRows(body, filtered);
+      renderQueueRows(body, filtered, table);
     }
 
     function queueSortValue(item, index) {
@@ -311,9 +314,61 @@
     return 'queued';
   }
 
-  function renderQueueRows(body, items) {
+  function queueColumnVisibility(table) {
+    if (!table) {
+      return {
+        detail: true,
+        subdetail: true,
+        size: true,
+        protocol: true,
+        timeleft: true,
+        progress: true,
+      };
+    }
+    return {
+      detail: !table.classList.contains('queue-hide-detail'),
+      subdetail: !table.classList.contains('queue-hide-subdetail'),
+      size: !table.classList.contains('queue-hide-size'),
+      protocol: !table.classList.contains('queue-hide-protocol'),
+      timeleft: !table.classList.contains('queue-hide-timeleft'),
+      progress: !table.classList.contains('queue-hide-progress'),
+    };
+  }
+
+  function buildQueueGridTemplate(visibility) {
+    const columns = ['minmax(220px, 1fr)'];
+    if (visibility.detail) columns.push('140px');
+    if (visibility.subdetail) columns.push('160px');
+    if (visibility.size) columns.push('130px');
+    if (visibility.protocol) columns.push('116px');
+    if (visibility.timeleft) columns.push('110px');
+    if (visibility.progress) columns.push('170px');
+    return columns.join(' ');
+  }
+
+  function setQueueColumnDisplay(table, selector, show) {
+    if (!table) return;
+    table.querySelectorAll(selector).forEach((cell) => {
+      cell.style.display = show ? '' : 'none';
+    });
+  }
+
+  function syncQueueTableLayout(table) {
+    if (!table) return;
+    const visibility = queueColumnVisibility(table);
+    table.style.setProperty('--queue-grid-template', buildQueueGridTemplate(visibility));
+    setQueueColumnDisplay(table, '.queue-col-detail', visibility.detail);
+    setQueueColumnDisplay(table, '.queue-col-subdetail', visibility.subdetail);
+    setQueueColumnDisplay(table, '.queue-col-size', visibility.size);
+    setQueueColumnDisplay(table, '.queue-col-protocol', visibility.protocol);
+    setQueueColumnDisplay(table, '.queue-col-time', visibility.timeleft);
+    setQueueColumnDisplay(table, '.queue-col-progress', visibility.progress);
+  }
+
+  function renderQueueRows(body, items, table) {
     if (!items.length) {
       body.innerHTML = '<div class="queue-empty">No items in queue.</div>';
+      syncQueueTableLayout(table);
       return;
     }
 
@@ -327,16 +382,17 @@
       const protocolClass = item.protocol === 'usenet' ? ' usenet' : '';
       return (
         '<div class="queue-row" data-index="' + index + '">' +
-          '<div>' + escapeHtml(item.title || 'Unknown') + '</div>' +
-          '<div class="queue-episode">' + episode + '</div>' +
-          '<div class="queue-ep-title">' + episodeTitle + '</div>' +
-          '<div><span class="queue-quality">' + quality + '</span></div>' +
-          '<div class="queue-protocol' + protocolClass + '">' + protocol + '</div>' +
-          '<div class="queue-time">' + timeLeft + '</div>' +
-          '<div class="queue-progress"><span style="width:' + progress + '%"></span></div>' +
+          '<div class="queue-col-title">' + escapeHtml(item.title || 'Unknown') + '</div>' +
+          '<div class="queue-col-detail queue-episode">' + episode + '</div>' +
+          '<div class="queue-col-subdetail queue-ep-title">' + episodeTitle + '</div>' +
+          '<div class="queue-col-size"><span class="queue-quality">' + quality + '</span></div>' +
+          '<div class="queue-col-protocol queue-protocol' + protocolClass + '">' + protocol + '</div>' +
+          '<div class="queue-col-time queue-time">' + timeLeft + '</div>' +
+          '<div class="queue-col-progress queue-progress"><span style="width:' + progress + '%"></span></div>' +
         '</div>'
       );
     }).join('');
+    syncQueueTableLayout(table);
   }
 
   function formatBytes(value) {

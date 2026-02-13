@@ -118,7 +118,7 @@
                                 <span>App settings</span>
                               </a>
                             <% } %>
-                            <% if (appItem.menuAccess.overview && role === 'admin') { %>
+                            <% if (appItem.menuAccess.activity) { %>
                               <a class="nav-subitem" href="/apps/<%= appItem.id %>/activity">
                                 <img class="nav-subicon" src="/icons/activity-queue.svg" alt="" />
                                 <span>Activity</span>
@@ -156,7 +156,7 @@
                           <span>App settings</span>
                         </a>
                       <% } %>
-                      <% if (appItem.menuAccess.overview && role === 'admin') { %>
+                      <% if (appItem.menuAccess.activity) { %>
                         <a class="nav-subitem" href="/apps/<%= appItem.id %>/activity">
                           <img class="nav-subicon" src="/icons/activity-queue.svg" alt="" />
                           <span>Activity</span>
@@ -194,7 +194,7 @@
             <% if (actualRole === 'admin') { %>
               <a class="user-menu-item" href="/switch-view?role=<%= role === 'admin' ? 'user' : 'admin' %>">
                 <img class="user-menu-icon" src="/icons/window.svg" alt="" />
-                <span class="user-menu-text"><%= role === 'admin' ? 'Switch to user view' : 'Switch to admin view' %></span>
+                <span class="user-menu-text"><%= role === 'admin' ? 'User view' : 'Admin view' %></span>
               </a>
             <% } %>
             <a class="user-menu-item" href="/user-settings">
@@ -248,6 +248,10 @@
           <img class="settings-tab-icon" src="/icons/user-profile.svg" alt="" />
           <span class="settings-tab-text">User</span>
         </button>
+        <button class="settings-tab-btn" type="button" data-tab="notifications">
+          <img class="settings-tab-icon" src="/icons/status.svg" alt="" />
+          <span class="settings-tab-text">Notifications</span>
+        </button>
         <button class="settings-tab-btn" type="button" data-tab="log">
           <img class="settings-tab-icon" src="/icons/activity-queue.svg" alt="" />
           <span class="settings-tab-text">Log</span>
@@ -286,6 +290,26 @@
                   value="<%= generalSettings?.localUrl || '' %>"
                   placeholder="http://192.168.0.2:3333"
                 />
+              </label>
+              <label class="settings-toggle">
+                <input type="checkbox" name="restrictGuests" <%= generalSettings?.restrictGuests ? 'checked' : '' %> />
+                <span class="settings-toggle-slider" aria-hidden="true"></span>
+                <span class="settings-toggle-text">Restrict guest users</span>
+              </label>
+              <label class="settings-toggle">
+                <input type="checkbox" name="autoOpenSingleAppMenuItem" <%= generalSettings?.autoOpenSingleAppMenuItem ? 'checked' : '' %> />
+                <span class="settings-toggle-slider" aria-hidden="true"></span>
+                <span class="settings-toggle-text">Auto-open single app submenu item</span>
+              </label>
+              <label class="settings-toggle">
+                <input type="checkbox" name="hideSidebarAppSettingsLink" <%= generalSettings?.hideSidebarAppSettingsLink ? 'checked' : '' %> />
+                <span class="settings-toggle-slider" aria-hidden="true"></span>
+                <span class="settings-toggle-text">Hide App settings link in sidebar</span>
+              </label>
+              <label class="settings-toggle">
+                <input type="checkbox" name="hideSidebarActivityLink" <%= generalSettings?.hideSidebarActivityLink ? 'checked' : '' %> />
+                <span class="settings-toggle-slider" aria-hidden="true"></span>
+                <span class="settings-toggle-text">Hide Activity link in sidebar</span>
               </label>
             </div>
             <button class="primary-button" type="submit">Save general settings</button>
@@ -668,7 +692,7 @@
                             </label>
                             <label class="radio-pill">
                               <input type="checkbox" name="arr_combined_queue_col_size" <%= arrCombinedQueueDisplay?.queueShowSize !== false ? 'checked' : '' %> />
-                              <span>Size</span>
+                              <span>Quality</span>
                             </label>
                             <label class="radio-pill">
                               <input type="checkbox" name="arr_combined_queue_col_protocol" <%= arrCombinedQueueDisplay?.queueShowProtocol !== false ? 'checked' : '' %> />
@@ -788,7 +812,7 @@
                           </label>
                           <label class="radio-pill">
                             <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_queue_col_size" <%= element.queueShowSize !== false ? 'checked' : '' %> />
-                            <span>Size</span>
+                            <span><%= ['transmission', 'nzbget'].includes(item.appId) ? 'Size' : 'Quality' %></span>
                           </label>
                           <label class="radio-pill">
                             <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_queue_col_protocol" <%= element.queueShowProtocol !== false ? 'checked' : '' %> />
@@ -973,7 +997,84 @@
               </div>
             </div>
           </div>
-        </div>
+      </div>
+      </div>
+
+      <div class="settings-tab-panel" data-tab="notifications">
+      <div class="dash-panel">
+        <form method="post" action="/settings/notifications" class="settings-form">
+          <div class="settings-card">
+            <div class="settings-card-title">Apprise Notifications</div>
+            <div class="settings-card-sub">Configure global notifications through Apprise API.</div>
+            <label class="settings-toggle">
+              <input type="checkbox" name="apprise_enabled" <%= notificationSettings?.appriseEnabled ? 'checked' : '' %> />
+              <span class="settings-toggle-slider" aria-hidden="true"></span>
+              <span class="settings-toggle-text">Enable Apprise notifications</span>
+            </label>
+            <label class="field">
+              <span>Apprise API URL</span>
+              <input
+                type="text"
+                name="apprise_api_url"
+                value="<%= notificationSettings?.appriseApiUrl || '' %>"
+                placeholder="http://apprise:8000"
+              />
+            </label>
+            <label class="field">
+              <span>Delivery Mode</span>
+              <select name="apprise_mode">
+                <option value="targets" <%= (notificationSettings?.appriseMode || 'targets') === 'targets' ? 'selected' : '' %>>Target URLs</option>
+                <option value="config-key" <%= notificationSettings?.appriseMode === 'config-key' ? 'selected' : '' %>>Config Key</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Apprise Config Key (Config Key mode)</span>
+              <input
+                type="text"
+                name="apprise_config_key"
+                value="<%= notificationSettings?.appriseConfigKey || '' %>"
+                placeholder="launcharr"
+              />
+            </label>
+            <label class="field">
+              <span>Apprise Target URLs (Target URLs mode)</span>
+              <textarea
+                name="apprise_targets"
+                rows="4"
+                placeholder="discord://...&#10;mailto://..."
+              ><%= notificationSettings?.appriseTargets || '' %></textarea>
+            </label>
+            <label class="field">
+              <span>Tag (optional)</span>
+              <input
+                type="text"
+                name="apprise_tag"
+                value="<%= notificationSettings?.appriseTag || '' %>"
+                placeholder="launcharr"
+              />
+            </label>
+            <%
+              const notifyResult = String(notificationResult || '').trim();
+              const notifyErrorText = String(notificationError || '').trim();
+              const notifyMessage = notifyResult === 'saved'
+                ? 'Notification settings saved.'
+                : (notifyResult === 'test-ok'
+                  ? 'Apprise test notification sent successfully.'
+                  : (notifyResult === 'test-error'
+                    ? `Apprise test failed: ${notifyErrorText || 'Unknown error.'}`
+                    : ''));
+              const notifyIsError = notifyResult === 'test-error';
+            %>
+            <% if (notifyMessage) { %>
+              <span class="settings-users-note<%= notifyIsError ? ' settings-users-note--error' : '' %>"><%= notifyMessage %></span>
+            <% } %>
+            <div class="settings-card-actions">
+              <button class="primary-button" type="submit">Save notification settings</button>
+              <button class="primary-button" type="submit" formaction="/settings/notifications/test" formmethod="post">Send test notification</button>
+            </div>
+          </div>
+        </form>
+      </div>
       </div>
 
       <div class="settings-tab-panel" data-tab="log">
@@ -1162,20 +1263,6 @@
       <div class="settings-tab-panel" data-tab="user">
       <div class="dash-panel">
         <div class="settings-form settings-users">
-          <div class="settings-card">
-            <div class="settings-card-title">Access control</div>
-            <div class="settings-card-sub">Limit sign-in to Plex server users.</div>
-            <form method="post" action="/user-settings/access" class="settings-access-form">
-              <div class="settings-access-row">
-                <label class="settings-toggle">
-                  <input type="checkbox" name="restrictGuests" <%= generalSettings.restrictGuests ? 'checked' : '' %> />
-                  <span class="settings-toggle-slider" aria-hidden="true"></span>
-                  <span class="settings-toggle-text">Restrict guest users</span>
-                </label>
-                <button class="primary-button" type="submit">Save access settings</button>
-              </div>
-            </form>
-          </div>
           <div class="settings-users-actions">
             <button class="primary-button" type="button" id="fetchPlexUsersBtn">Fetch users</button>
             <button class="primary-button" type="button" id="savePlexRolesBtn" disabled>Save roles</button>
@@ -1592,12 +1679,29 @@
 
     applySidebarState();
     mobileQuery.addEventListener('change', applySidebarState);
+    const autoOpenSingleAppMenuItem = <%= autoOpenSingleAppMenuItem ? 'true' : 'false' %>;
     const accordion = document.querySelectorAll('.nav-accordion-item');
     accordion.forEach((item) => {
       const trigger = item.querySelector('.nav-accordion-trigger');
       if (!trigger) return;
       trigger.addEventListener('click', (event) => {
         event.stopPropagation();
+        const isCategoryTrigger = trigger.classList.contains('nav-accordion-trigger--category');
+        if (autoOpenSingleAppMenuItem && !isCategoryTrigger) {
+          const panel = Array.from(item.children).find((child) => child.classList && child.classList.contains('nav-accordion-panel'));
+          const directLinks = panel
+            ? Array.from(panel.children).filter((child) => typeof child.matches === 'function' && child.matches('a.nav-subitem[href]'))
+            : [];
+          if (directLinks.length === 1) {
+            const [onlyLink] = directLinks;
+            if (onlyLink.target === '_blank') {
+              window.open(onlyLink.href, '_blank', 'noopener,noreferrer');
+            } else {
+              window.location.href = onlyLink.href;
+            }
+            return;
+          }
+        }
         const parentAccordion = item.closest('.nav-accordion');
         const siblings = parentAccordion
           ? Array.from(parentAccordion.children).filter((child) => child.classList.contains('nav-accordion-item'))

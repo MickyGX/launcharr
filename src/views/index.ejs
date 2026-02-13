@@ -100,7 +100,7 @@
             <% if (role === 'admin') { %>
               <a class="user-menu-item" href="/switch-view?role=<%= role === 'admin' ? 'user' : 'admin' %>">
                 <img class="user-menu-icon" src="/icons/window.svg" alt="" />
-                <span class="user-menu-text"><%= role === 'admin' ? 'Switch to user view' : 'Switch to admin view' %></span>
+                <span class="user-menu-text"><%= role === 'admin' ? 'User view' : 'Admin view' %></span>
               </a>
             <% } %>
             <a class="user-menu-item" href="/user-settings">

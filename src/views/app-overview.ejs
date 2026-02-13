@@ -119,7 +119,7 @@
                                 <span>App settings</span>
                               </a>
                             <% } %>
-                            <% if (appItem.menuAccess.overview && role === 'admin') { %>
+                            <% if (appItem.menuAccess.activity) { %>
                               <a class="nav-subitem<%= appItem.id === app.id ? (String(page || '') === 'activity' ? ' active' : '') : '' %>" href="/apps/<%= appItem.id %>/activity">
                                 <img class="nav-subicon" src="/icons/activity-queue.svg" alt="" />
                                 <span>Activity</span>
@@ -157,7 +157,7 @@
                           <span>App settings</span>
                         </a>
                       <% } %>
-                      <% if (appItem.menuAccess.overview && role === 'admin') { %>
+                      <% if (appItem.menuAccess.activity) { %>
                         <a class="nav-subitem<%= appItem.id === app.id ? (String(page || '') === 'activity' ? ' active' : '') : '' %>" href="/apps/<%= appItem.id %>/activity">
                           <img class="nav-subicon" src="/icons/activity-queue.svg" alt="" />
                           <span>Activity</span>
@@ -195,7 +195,7 @@
             <% if (actualRole === 'admin') { %>
               <a class="user-menu-item" href="/switch-view?role=<%= role === 'admin' ? 'user' : 'admin' %>">
                 <img class="user-menu-icon" src="/icons/window.svg" alt="" />
-                <span class="user-menu-text"><%= role === 'admin' ? 'Switch to user view' : 'Switch to admin view' %></span>
+                <span class="user-menu-text"><%= role === 'admin' ? 'User view' : 'Admin view' %></span>
               </a>
             <% } %>
             <a class="user-menu-item" href="/user-settings">
@@ -707,13 +707,13 @@
                 <div class="plex-panel queue-panel">
                   <div class="queue-table <%= queueClasses %>" style="--queue-visible-rows:<%= queueVisibleRows %>">
                     <div class="queue-row header">
-                      <div>Title</div>
-                      <div><%= appPrefix === 'lidarr' ? 'Album' : (appPrefix === 'readarr' ? 'Author' : (appPrefix === 'radarr' ? 'Year' : 'Episode')) %></div>
-                      <div><%= appPrefix === 'lidarr' ? 'Track' : (appPrefix === 'readarr' ? 'Book' : (appPrefix === 'radarr' ? 'Studio' : 'Episode Title')) %></div>
-                      <div>Size</div>
-                      <div>Protocol</div>
-                      <div>Time Left</div>
-                      <div>Progress</div>
+                      <div class="queue-col-title">Title</div>
+                      <div class="queue-col-detail"><%= appPrefix === 'lidarr' ? 'Album' : (appPrefix === 'readarr' ? 'Author' : (appPrefix === 'radarr' ? 'Year' : 'Episode')) %></div>
+                      <div class="queue-col-subdetail"><%= appPrefix === 'lidarr' ? 'Track' : (appPrefix === 'readarr' ? 'Book' : (appPrefix === 'radarr' ? 'Studio' : 'Episode Title')) %></div>
+                      <div class="queue-col-size">Quality</div>
+                      <div class="queue-col-protocol">Protocol</div>
+                      <div class="queue-col-time">Time Left</div>
+                      <div class="queue-col-progress">Progress</div>
                     </div>
                     <div id="<%= appPrefix %>QueueBody" class="queue-body">
                       <div class="queue-empty">Loading…</div>
@@ -806,13 +806,13 @@
                 <div class="plex-panel queue-panel">
                   <div class="queue-table <%= queueClasses %>" style="--queue-visible-rows:<%= queueVisibleRows %>">
                     <div class="queue-row header">
-                      <div>Title</div>
-                      <div><%= queueDetailLabel %></div>
-                      <div><%= queueSubDetailLabel %></div>
-                      <div>Size</div>
-                      <div>Protocol</div>
-                      <div>Time Left</div>
-                      <div>Progress</div>
+                      <div class="queue-col-title">Title</div>
+                      <div class="queue-col-detail"><%= queueDetailLabel %></div>
+                      <div class="queue-col-subdetail"><%= queueSubDetailLabel %></div>
+                      <div class="queue-col-size">Size</div>
+                      <div class="queue-col-protocol">Protocol</div>
+                      <div class="queue-col-time">Time Left</div>
+                      <div class="queue-col-progress">Progress</div>
                     </div>
                     <div id="<%= appPrefix %>QueueBody" class="queue-body">
                       <div class="queue-empty">Loading…</div>
@@ -1032,7 +1032,7 @@
                     <div class="prowlarr-row prowlarr-row--head">
                       <div>Name</div>
                       <div>Peers</div>
-                      <div>Size</div>
+                      <div>Quality</div>
                       <div>Protocol</div>
                       <div>Action</div>
                     </div>
@@ -1120,12 +1120,29 @@
 
     applySidebarState();
     mobileQuery.addEventListener('change', applySidebarState);
+    const autoOpenSingleAppMenuItem = <%= autoOpenSingleAppMenuItem ? 'true' : 'false' %>;
     const accordion = document.querySelectorAll('.nav-accordion-item');
     accordion.forEach((item) => {
       const trigger = item.querySelector('.nav-accordion-trigger');
       if (!trigger) return;
       trigger.addEventListener('click', (event) => {
         event.stopPropagation();
+        const isCategoryTrigger = trigger.classList.contains('nav-accordion-trigger--category');
+        if (autoOpenSingleAppMenuItem && !isCategoryTrigger) {
+          const panel = Array.from(item.children).find((child) => child.classList && child.classList.contains('nav-accordion-panel'));
+          const directLinks = panel
+            ? Array.from(panel.children).filter((child) => typeof child.matches === 'function' && child.matches('a.nav-subitem[href]'))
+            : [];
+          if (directLinks.length === 1) {
+            const [onlyLink] = directLinks;
+            if (onlyLink.target === '_blank') {
+              window.open(onlyLink.href, '_blank', 'noopener,noreferrer');
+            } else {
+              window.location.href = onlyLink.href;
+            }
+            return;
+          }
+        }
         const parentAccordion = item.closest('.nav-accordion');
         const siblings = parentAccordion
           ? Array.from(parentAccordion.children).filter((child) => child.classList.contains('nav-accordion-item'))

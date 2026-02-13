@@ -162,11 +162,12 @@
         nextBtn: document.getElementById(appId + 'RecentNextBtn'),
         mediaFilter: document.getElementById(appId + 'RecentMediaFilter'),
         typeFilter: document.getElementById(appId + 'RecentTypeFilter'),
-        limitFilter: document.getElementById(appId + 'RecentLimitSelect'),
+        windowFilter: document.getElementById(appId + 'RecentWindowFilter'),
         items: [],
         carousel: null,
       },
       queue: {
+        table: document.querySelector('#' + appId + '-activity-queue .queue-table'),
         body: document.getElementById(appId + 'QueueBody'),
         typeFilter: document.getElementById(appId + 'QueueTypeFilter'),
         sortHeaders: Array.from(document.querySelectorAll('#' + appId + '-activity-queue .queue-row.header > div')),
@@ -216,12 +217,13 @@
       });
       modules.recent.mediaFilter?.addEventListener('change', applyRecentFilters);
       modules.recent.typeFilter?.addEventListener('change', applyRecentFilters);
-      modules.recent.limitFilter?.addEventListener('change', applyRecentFilters);
+      modules.recent.windowFilter?.addEventListener('change', applyRecentFilters);
       if (isCombined) bindCombinedLogoToFilter(modules.recent.mediaFilter);
       loadRecent();
     }
 
     if (hasQueue) {
+      syncQueueTableLayout();
       modules.queue.typeFilter?.addEventListener('change', applyQueueFilters);
       if (isCombined) bindCombinedLogoToFilter(modules.queue.typeFilter);
       if (modules.queue.sortHeaders?.length) {
@@ -1329,10 +1331,20 @@
       if (!modules.recent.carousel) return;
       const mediaValue = String(modules.recent.mediaFilter?.value || 'all');
       const typeValue = String(modules.recent.typeFilter?.value || 'imported');
-      const limit = Number(modules.recent.limitFilter?.value || 20) || 20;
+      const windowValue = String(modules.recent.windowFilter?.value || 'month');
       const filtered = modules.recent.items
-        .filter((item) => (mediaValue === 'all' || item.kind === mediaValue) && (typeValue === 'all' || item.eventType === typeValue))
-        .slice(0, limit);
+        .filter((item) => {
+          if (mediaValue !== 'all' && item.kind !== mediaValue) return false;
+          if (typeValue !== 'all' && item.eventType !== typeValue) return false;
+          const timestamp = Number(item.timestamp || 0);
+          if (!Number.isFinite(timestamp) || timestamp <= 0) return true;
+          const ageMs = Date.now() - timestamp;
+          if (ageMs < 0) return true;
+          if (windowValue === 'today') return ageMs <= 86400000;
+          if (windowValue === 'week') return ageMs <= (7 * 86400000);
+          if (windowValue === 'month') return ageMs <= (31 * 86400000);
+          return true;
+        });
       modules.recent.carousel.setItems(filtered);
     }
 
@@ -1348,6 +1360,60 @@
         return 0;
       });
       renderQueueRows(filtered);
+    }
+
+    function queueColumnVisibility() {
+      const table = modules.queue.table;
+      if (!table) {
+        return {
+          detail: true,
+          subdetail: true,
+          size: true,
+          protocol: true,
+          timeleft: true,
+          progress: true,
+        };
+      }
+      return {
+        detail: !table.classList.contains('queue-hide-detail'),
+        subdetail: !table.classList.contains('queue-hide-subdetail'),
+        size: !table.classList.contains('queue-hide-size'),
+        protocol: !table.classList.contains('queue-hide-protocol'),
+        timeleft: !table.classList.contains('queue-hide-timeleft'),
+        progress: !table.classList.contains('queue-hide-progress'),
+      };
+    }
+
+    function buildQueueGridTemplate(visibility) {
+      const columns = ['minmax(220px, 1fr)'];
+      if (visibility.detail) columns.push('140px');
+      if (visibility.subdetail) columns.push('160px');
+      if (visibility.size) columns.push('130px');
+      if (visibility.protocol) columns.push('116px');
+      if (visibility.timeleft) columns.push('110px');
+      if (visibility.progress) columns.push('170px');
+      return columns.join(' ');
+    }
+
+    function setQueueColumnDisplay(selector, show) {
+      const table = modules.queue.table;
+      if (!table) return;
+      table.querySelectorAll(selector).forEach((cell) => {
+        cell.style.display = show ? '' : 'none';
+      });
+    }
+
+    function syncQueueTableLayout() {
+      const table = modules.queue.table;
+      if (!table) return;
+      const visibility = queueColumnVisibility();
+      table.style.setProperty('--queue-grid-template', buildQueueGridTemplate(visibility));
+      setQueueColumnDisplay('.queue-col-detail', visibility.detail);
+      setQueueColumnDisplay('.queue-col-subdetail', visibility.subdetail);
+      setQueueColumnDisplay('.queue-col-size', visibility.size);
+      setQueueColumnDisplay('.queue-col-protocol', visibility.protocol);
+      setQueueColumnDisplay('.queue-col-time', visibility.timeleft);
+      setQueueColumnDisplay('.queue-col-progress', visibility.progress);
     }
 
     function queueSortValue(item, index) {
@@ -1376,6 +1442,7 @@
       if (!hasQueue) return;
       if (!items.length) {
         modules.queue.body.innerHTML = '<div class="queue-empty">No items in queue.</div>';
+        syncQueueTableLayout();
         return;
       }
 
@@ -1389,13 +1456,13 @@
         const protocolClass = item.protocol === 'usenet' ? ' usenet' : '';
         return (
           '<div class="queue-row" data-index="' + index + '">' +
-            '<div><button class="queue-link queue-title" type="button" data-action="queue-view" data-index="' + index + '">' + escapeHtml(item.title || 'Unknown') + '</button></div>' +
-            '<div class="queue-episode">' + episode + '</div>' +
-            '<div class="queue-ep-title">' + (episodeTitle !== '-' ? '<button class="queue-link queue-ep-title-link" type="button" data-action="queue-view" data-index="' + index + '">' + episodeTitle + '</button>' : episodeTitle) + '</div>' +
-            '<div><span class="queue-quality">' + quality + '</span></div>' +
-            '<div class="queue-protocol' + protocolClass + '">' + protocol + '</div>' +
-            '<div class="queue-time">' + timeLeft + '</div>' +
-            '<div class="queue-progress"><span style="width:' + progress + '%"></span></div>' +
+            '<div class="queue-col-title"><button class="queue-link queue-title" type="button" data-action="queue-view" data-index="' + index + '">' + escapeHtml(item.title || 'Unknown') + '</button></div>' +
+            '<div class="queue-col-detail queue-episode">' + episode + '</div>' +
+            '<div class="queue-col-subdetail queue-ep-title">' + (episodeTitle !== '-' ? '<button class="queue-link queue-ep-title-link" type="button" data-action="queue-view" data-index="' + index + '">' + episodeTitle + '</button>' : episodeTitle) + '</div>' +
+            '<div class="queue-col-size"><span class="queue-quality">' + quality + '</span></div>' +
+            '<div class="queue-col-protocol queue-protocol' + protocolClass + '">' + protocol + '</div>' +
+            '<div class="queue-col-time queue-time">' + timeLeft + '</div>' +
+            '<div class="queue-col-progress queue-progress"><span style="width:' + progress + '%"></span></div>' +
           '</div>'
         );
       }).join('');
@@ -1409,6 +1476,7 @@
           openItemModal(items[index]);
         });
       });
+      syncQueueTableLayout();
     }
 
     async function loadSoon() {
@@ -1531,12 +1599,36 @@
           const source = activeSources[index];
           try {
             if (source.appId === 'sonarr') {
-              const payload = await fetchArr('queue/details', {
-                includeSeries: true,
-                includeEpisode: true,
-                includeUnknownSeriesItems: true,
-              }, source);
-              const list = queueArray(payload)
+              let payload = null;
+              try {
+                payload = await fetchArr('queue/details', {
+                  includeSeries: true,
+                  includeEpisode: true,
+                  includeUnknownSeriesItems: true,
+                }, source);
+              } catch (_detailsErr) {
+                payload = await fetchArr('queue', {
+                  includeSeries: true,
+                  includeEpisode: true,
+                  includeUnknownSeriesItems: true,
+                }, source);
+              }
+
+              let sonarrQueue = queueArray(payload);
+              if (!sonarrQueue.length) {
+                try {
+                  const fallbackPayload = await fetchArr('queue', {
+                    includeSeries: true,
+                    includeEpisode: true,
+                    includeUnknownSeriesItems: true,
+                  }, source);
+                  sonarrQueue = queueArray(fallbackPayload);
+                } catch (_fallbackErr) {
+                  sonarrQueue = [];
+                }
+              }
+
+              const list = sonarrQueue
                 .map((entry) => ({
                   ...entry,
                   __arrBaseUrl: source.baseUrl,
