@@ -97,7 +97,7 @@
                       <% category.apps.forEach((appItem) => { %>
                         <div class="nav-accordion-item<%= appItem.id === app.id && (!((appItem.favourite || appItem.favorite)) || appItem.navFavourite) ? ' open' : '' %>">
                           <button class="nav-accordion-trigger" type="button">
-                            <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+                            <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
                             <span class="nav-label"><%= appItem.name %></span>
                           </button>
                           <div class="nav-accordion-panel">
@@ -135,7 +135,7 @@
                 <% category.apps.forEach((appItem) => { %>
                   <div class="nav-accordion-item<%= appItem.id === app.id && (!((appItem.favourite || appItem.favorite)) || appItem.navFavourite) ? ' open' : '' %>">
                     <button class="nav-accordion-trigger" type="button">
-                      <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+                      <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
                       <span class="nav-label"><%= appItem.name %></span>
                     </button>
                     <div class="nav-accordion-panel">
@@ -230,7 +230,7 @@
           <img class="toggle-icon" src="/icons/sidebar-toggle.svg" alt="" />
         </button>
         <div class="main-window-title">
-          <img class="main-window-icon" src="<%= app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(app.id) ? '/icons/' + app.id + '.png' : '/icons/' + app.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+          <img class="main-window-icon" src="<%= app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(app.id) ? '/icons/' + app.id + '.png' : '/icons/' + app.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
           <span class="main-window-app"><%= app.name %></span>
           <span class="main-window-rest">| Overview</span>
         </div>
@@ -731,7 +731,7 @@
           const overviewItems = Array.isArray(overviewElements) ? overviewElements : [];
           const overviewById = new Map(overviewItems.map((item) => [item.id, item]));
           const activityQueueSettings = overviewById.get('activity-queue') || { enable: true, order: 1 };
-          const appLogo = app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(app.id)
+          const appLogo = app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(app.id)
             ? '/icons/' + app.id + '.png'
             : '/icons/' + app.id + '.svg');
           const appPrefix = app.id;
@@ -825,8 +825,14 @@
         </div>
       <% } %>
 
-      <% if (app.id === 'pulsarr') { %>
+      <% if (['pulsarr', 'seerr'].includes(app.id)) { %>
         <%
+          const requestAppId = app.id;
+          const requestPrefix = requestAppId;
+          const requestAppName = String(app.name || (requestAppId === 'seerr' ? 'Seerr' : 'Pulsarr'));
+          const requestAppLogo = app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(app.id)
+            ? '/icons/' + app.id + '.png'
+            : '/icons/' + app.id + '.svg');
           const overviewItems = Array.isArray(overviewElements) ? overviewElements : [];
           const overviewById = new Map(overviewItems.map((item) => [item.id, item]));
           const recentRequestsSettings = overviewById.get('recent-requests') || { enable: true, order: 1 };
@@ -847,11 +853,11 @@
         <div class="plex-overview">
           <% orderedPulsarrSections.forEach((section) => { %>
             <% if (section.id === 'recent-requests') { %>
-              <section class="plex-module plex-module--no-subtitle" id="pulsarr-recent-requests">
+              <section class="plex-module plex-module--no-subtitle" id="<%= requestPrefix %>-recent-requests">
                 <div class="plex-topbar">
                   <div class="plex-title-wrap">
                     <div class="plex-title">
-                      <img class="plex-logo" src="/icons/pulsarr.png" alt="Pulsarr" loading="eager" />
+                      <img class="plex-logo" src="<%= requestAppLogo %>" alt="<%= requestAppName %>" loading="eager" onerror="this.src='/icons/app.svg'" />
                       <span>Recent Requests</span>
                     </div>
                     <div class="plex-subtitle"></div>
@@ -861,7 +867,7 @@
 
                   <div class="plex-controls-right">
                     <div class="plex-select plex-icon plex-filter-status" title="Status">
-                      <select id="pulsarrRequestsStatusFilter" aria-label="Status">
+                      <select id="<%= requestPrefix %>RequestsStatusFilter" aria-label="Status">
                         <option value="all" selected>All</option>
                         <option value="pending">Pending</option>
                         <option value="approved">Approved</option>
@@ -871,16 +877,16 @@
                     </div>
 
                     <div class="plex-select plex-xsmall" title="Limit">
-                      <select id="pulsarrRequestsLimitSelect">
+                      <select id="<%= requestPrefix %>RequestsLimitSelect">
                         <option value="10">10</option>
                         <option value="20" selected>20</option>
                         <option value="50">50</option>
                       </select>
                     </div>
 
-                    <button class="plex-iconbtn" id="pulsarrRequestsPrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
-                    <button class="plex-iconbtn" id="pulsarrRequestsNextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
-                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="pulsarr-recent-requests" data-collapse-global="true">
+                    <button class="plex-iconbtn" id="<%= requestPrefix %>RequestsPrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
+                    <button class="plex-iconbtn" id="<%= requestPrefix %>RequestsNextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="<%= requestPrefix %>-recent-requests" data-collapse-global="true">
                       <div class="plex-doublechev">
                         <div class="plex-chev plex-up"></div>
                         <div class="plex-chev plex-down"></div>
@@ -890,8 +896,8 @@
                 </div>
 
                 <div class="plex-panel">
-                  <div id="pulsarrRequestsViewport" class="plex-carousel-viewport">
-                    <div id="pulsarrRequestsTrack" class="plex-carousel-track">
+                  <div id="<%= requestPrefix %>RequestsViewport" class="plex-carousel-viewport">
+                    <div id="<%= requestPrefix %>RequestsTrack" class="plex-carousel-track">
                       <div class="plex-empty">Loading…</div>
                     </div>
                   </div>
@@ -899,11 +905,11 @@
               </section>
             <% } %>
             <% if (section.id === 'most-watchlisted') { %>
-              <section class="plex-module plex-module--no-subtitle" id="pulsarr-most-watchlisted">
+              <section class="plex-module plex-module--no-subtitle" id="<%= requestPrefix %>-most-watchlisted">
                 <div class="plex-topbar">
                   <div class="plex-title-wrap">
                     <div class="plex-title">
-                      <img class="plex-logo" src="/icons/pulsarr.png" alt="Pulsarr" loading="eager" />
+                      <img class="plex-logo" src="<%= requestAppLogo %>" alt="<%= requestAppName %>" loading="eager" onerror="this.src='/icons/app.svg'" />
                       <span>Most Watchlisted</span>
                     </div>
                     <div class="plex-subtitle"></div>
@@ -913,7 +919,7 @@
 
                   <div class="plex-controls-right">
                     <div class="plex-select plex-icon plex-filter-media" title="Media type">
-                      <select id="pulsarrWatchlistedTypeFilter" aria-label="Media type">
+                      <select id="<%= requestPrefix %>WatchlistedTypeFilter" aria-label="Media type">
                         <option value="all" selected>All</option>
                         <option value="movie">Movies</option>
                         <option value="show">TV</option>
@@ -921,16 +927,16 @@
                     </div>
 
                     <div class="plex-select plex-xsmall" title="Limit">
-                      <select id="pulsarrWatchlistedLimitSelect">
+                      <select id="<%= requestPrefix %>WatchlistedLimitSelect">
                         <option value="10">10</option>
                         <option value="20" selected>20</option>
                         <option value="50">50</option>
                       </select>
                     </div>
 
-                    <button class="plex-iconbtn" id="pulsarrWatchlistedPrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
-                    <button class="plex-iconbtn" id="pulsarrWatchlistedNextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
-                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="pulsarr-most-watchlisted" data-collapse-global="true">
+                    <button class="plex-iconbtn" id="<%= requestPrefix %>WatchlistedPrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
+                    <button class="plex-iconbtn" id="<%= requestPrefix %>WatchlistedNextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="<%= requestPrefix %>-most-watchlisted" data-collapse-global="true">
                       <div class="plex-doublechev">
                         <div class="plex-chev plex-up"></div>
                         <div class="plex-chev plex-down"></div>
@@ -940,8 +946,8 @@
                 </div>
 
                 <div class="plex-panel">
-                  <div id="pulsarrWatchlistedViewport" class="plex-carousel-viewport">
-                    <div id="pulsarrWatchlistedTrack" class="plex-carousel-track">
+                  <div id="<%= requestPrefix %>WatchlistedViewport" class="plex-carousel-viewport">
+                    <div id="<%= requestPrefix %>WatchlistedTrack" class="plex-carousel-track">
                       <div class="plex-empty">Loading…</div>
                     </div>
                   </div>
@@ -950,17 +956,17 @@
             <% } %>
           <% }) %>
 
-          <div id="pulsarrModalBackdrop" class="plex-modal-backdrop plex-hidden">
+          <div id="<%= requestPrefix %>ModalBackdrop" class="plex-modal-backdrop plex-hidden">
             <div class="plex-modal">
-              <button id="pulsarrModalClose" class="plex-modal-close" aria-label="Close">✕</button>
+              <button id="<%= requestPrefix %>ModalClose" class="plex-modal-close" aria-label="Close">✕</button>
               <div class="plex-modal-header">
                 <div class="plex-modal-title">
-                  <span id="pulsarrModalTypeIcon" class="plex-mini-icon"></span>
-                  <span id="pulsarrModalTitle">Loading…</span>
+                  <span id="<%= requestPrefix %>ModalTypeIcon" class="plex-mini-icon"></span>
+                  <span id="<%= requestPrefix %>ModalTitle">Loading…</span>
                 </div>
-                <div id="pulsarrModalSubtitle" class="plex-modal-subtitle"></div>
+                <div id="<%= requestPrefix %>ModalSubtitle" class="plex-modal-subtitle"></div>
               </div>
-              <div id="pulsarrModalBody" class="plex-modal-body"></div>
+              <div id="<%= requestPrefix %>ModalBody" class="plex-modal-body"></div>
             </div>
           </div>
         </div>
@@ -1047,7 +1053,7 @@
         </div>
       <% } %>
 
-      <% if (app.id !== 'plex' && app.id !== 'tautulli' && !['sonarr', 'radarr', 'lidarr', 'readarr', 'pulsarr', 'prowlarr', 'transmission', 'nzbget'].includes(app.id)) { %>
+      <% if (app.id !== 'plex' && app.id !== 'tautulli' && !['sonarr', 'radarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'transmission', 'nzbget'].includes(app.id)) { %>
         <div class="dash-panel overview-panel">
           <div class="panel-header">
             <h2>App Overview</h2>
@@ -1305,10 +1311,11 @@
     </script>
     <script src="/downloaders-queue.js"></script>
   <% } %>
-  <% if (app.id === 'pulsarr') { %>
+  <% if (['pulsarr', 'seerr'].includes(app.id)) { %>
     <script>
       window.PULSARR_OVERVIEW_CONFIG = <%- JSON.stringify({
         appId: app.id,
+        domPrefix: app.id,
         appName: app.name,
         baseUrl: (appBaseUrls && appBaseUrls[app.id]) || app.localUrl || app.remoteUrl || app.url || '',
         apiKey: app.apiKey || '',

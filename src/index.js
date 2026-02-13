@@ -76,6 +76,10 @@ const APP_OVERVIEW_ELEMENTS = {
     { id: 'recent-requests', name: 'Recent Requests' },
     { id: 'most-watchlisted', name: 'Most Watchlisted' },
   ],
+  seerr: [
+    { id: 'recent-requests', name: 'Recent Requests' },
+    { id: 'most-watchlisted', name: 'Most Watchlisted' },
+  ],
   prowlarr: [
     { id: 'search', name: 'Indexer Search' },
   ],
@@ -2324,6 +2328,58 @@ app.post('/api/plex/discovery/watchlist', requireUser, async (req, res) => {
   }
 });
 
+function mapSeerrRequestStatus(statusValue) {
+  const numeric = Number(statusValue);
+  if (numeric === 5) return 'available';
+  if (numeric === 3) return 'declined';
+  return 'requested';
+}
+
+function mapSeerrFilter(statusValue) {
+  const value = String(statusValue || '').trim().toLowerCase();
+  if (value === 'available') return 'available';
+  if (value === 'declined') return 'declined';
+  if (value === 'requested') return 'pending';
+  return 'all';
+}
+
+async function fetchSeerrJson({ candidates, apiKey, path, query }) {
+  let lastError = '';
+  for (let index = 0; index < candidates.length; index += 1) {
+    const baseUrl = candidates[index];
+    if (!baseUrl) continue;
+    const upstreamUrl = new URL(path, baseUrl);
+    Object.entries(query || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === '') return;
+      upstreamUrl.searchParams.set(key, String(value));
+    });
+
+    try {
+      const upstreamRes = await fetch(upstreamUrl.toString(), {
+        headers: {
+          Accept: 'application/json',
+          'X-API-Key': apiKey,
+        },
+      });
+      const text = await upstreamRes.text();
+      if (!upstreamRes.ok) {
+        const bodyMessage = String(text || '').trim();
+        lastError = `Seerr request failed (${upstreamRes.status}) via ${baseUrl}${bodyMessage ? `: ${bodyMessage.slice(0, 220)}` : ''}`;
+        continue;
+      }
+      try {
+        return JSON.parse(text || '{}');
+      } catch (err) {
+        lastError = `Invalid JSON response from Seerr via ${baseUrl}.`;
+      }
+    } catch (err) {
+      const reason = safeMessage(err) || 'fetch failed';
+      lastError = `${reason} via ${baseUrl}`;
+    }
+  }
+  throw new Error(lastError || 'Failed to reach Seerr.');
+}
+
 app.get('/api/pulsarr/stats/:kind', requireUser, async (req, res) => {
   const kind = String(req.params.kind || '').trim().toLowerCase();
   const endpointByKind = {
@@ -2346,10 +2402,10 @@ app.get('/api/pulsarr/stats/:kind', requireUser, async (req, res) => {
   if (!apiKey) return res.status(400).json({ error: 'Missing Pulsarr API key.' });
 
   const candidates = uniqueList([
-    normalizeBaseUrl(pulsarrApp.localUrl || ''),
     normalizeBaseUrl(pulsarrApp.remoteUrl || ''),
-    normalizeBaseUrl(pulsarrApp.url || ''),
     normalizeBaseUrl(resolveLaunchUrl(pulsarrApp, req)),
+    normalizeBaseUrl(pulsarrApp.localUrl || ''),
+    normalizeBaseUrl(pulsarrApp.url || ''),
   ]);
   if (!candidates.length) return res.status(400).json({ error: 'Missing Pulsarr URL.' });
 
@@ -2372,7 +2428,8 @@ app.get('/api/pulsarr/stats/:kind', requireUser, async (req, res) => {
       });
       const text = await upstreamRes.text();
       if (!upstreamRes.ok) {
-        lastError = `Pulsarr request failed (${upstreamRes.status}) via ${baseUrl}.`;
+        const bodyMessage = String(text || '').trim();
+        lastError = `Pulsarr request failed (${upstreamRes.status}) via ${baseUrl}${bodyMessage ? `: ${bodyMessage.slice(0, 220)}` : ''}`;
         continue;
       }
       try {
@@ -2401,6 +2458,153 @@ app.get('/api/pulsarr/stats/:kind', requireUser, async (req, res) => {
   return res.status(502).json({ error: lastError || 'Failed to reach Pulsarr on configured URLs.' });
 });
 
+app.get('/api/seerr/stats/:kind', requireUser, async (req, res) => {
+  const kind = String(req.params.kind || '').trim().toLowerCase();
+  const config = loadConfig();
+  const apps = config.apps || [];
+  const seerrApp = apps.find((appItem) => appItem.id === 'seerr');
+  if (!seerrApp) return res.status(404).json({ error: 'Seerr app is not configured.' });
+  if (!canAccess(seerrApp, getEffectiveRole(req), 'overview')) {
+    return res.status(403).json({ error: 'Seerr overview access denied.' });
+  }
+
+  const apiKey = String(seerrApp.apiKey || '').trim();
+  if (!apiKey) return res.status(400).json({ error: 'Missing Seerr API key.' });
+
+  const candidates = uniqueList([
+    normalizeBaseUrl(seerrApp.remoteUrl || ''),
+    normalizeBaseUrl(resolveLaunchUrl(seerrApp, req)),
+    normalizeBaseUrl(seerrApp.localUrl || ''),
+    normalizeBaseUrl(seerrApp.url || ''),
+  ]);
+  if (!candidates.length) return res.status(400).json({ error: 'Missing Seerr URL.' });
+
+  try {
+    if (kind === 'recent-requests') {
+      const rawLimit = Number(req.query?.limit);
+      const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(50, rawLimit)) : 20;
+      const filter = mapSeerrFilter(req.query?.status);
+      const requestPayload = await fetchSeerrJson({
+        candidates,
+        apiKey,
+        path: '/api/v1/request',
+        query: { take: limit, skip: 0, sort: 'added', filter },
+      });
+      const results = Array.isArray(requestPayload?.results) ? requestPayload.results : [];
+      const detailCache = new Map();
+
+      const fetchDetail = async (mediaType, tmdbId) => {
+        const detailKey = `${mediaType}:${tmdbId}`;
+        if (detailCache.has(detailKey)) return detailCache.get(detailKey);
+        const detailPath = mediaType === 'show'
+          ? `/api/v1/tv/${encodeURIComponent(tmdbId)}`
+          : `/api/v1/movie/${encodeURIComponent(tmdbId)}`;
+        try {
+          const detail = await fetchSeerrJson({
+            candidates,
+            apiKey,
+            path: detailPath,
+            query: {},
+          });
+          detailCache.set(detailKey, detail);
+          return detail;
+        } catch (_err) {
+          detailCache.set(detailKey, null);
+          return null;
+        }
+      };
+
+      const selected = results.slice(0, limit).map((entry) => {
+        const rawType = String(entry?.type || entry?.media?.mediaType || '').toLowerCase();
+        const mediaType = rawType === 'tv' || rawType === 'show' ? 'show' : 'movie';
+        const tmdbId = Number(entry?.media?.tmdbId || entry?.tmdbId || 0) || 0;
+        return { entry, mediaType, tmdbId };
+      });
+      await Promise.all(selected.map(({ mediaType, tmdbId }) => (
+        tmdbId ? fetchDetail(mediaType, tmdbId) : Promise.resolve(null)
+      )));
+      const normalized = selected.map(({ entry, mediaType, tmdbId }) => {
+        const detail = tmdbId ? detailCache.get(`${mediaType}:${tmdbId}`) : null;
+        const imdbId = String(detail?.imdbId || detail?.imdb_id || entry?.media?.imdbId || '').trim();
+        return {
+          title: String(
+            detail?.title
+            || detail?.name
+            || entry?.subject
+            || entry?.media?.title
+            || entry?.media?.name
+            || ''
+          ).trim(),
+          contentType: mediaType,
+          createdAt: entry?.createdAt || entry?.updatedAt || '',
+          status: mapSeerrRequestStatus(entry?.status),
+          userName: String(entry?.requestedBy?.displayName || entry?.requestedBy?.username || '').trim(),
+          guids: [
+            tmdbId ? `tmdb:${tmdbId}` : '',
+            imdbId ? `imdb:${imdbId}` : '',
+          ].filter(Boolean),
+          posterPath: detail?.posterPath || detail?.poster_path || '',
+          overview: String(detail?.overview || '').trim(),
+        };
+      });
+
+      pushLog({
+        level: 'info',
+        app: 'seerr',
+        action: `stats.${kind}`,
+        message: 'Seerr stats response received.',
+        meta: { count: normalized.length },
+      });
+      return res.json({ results: normalized });
+    }
+
+    if (kind === 'movies' || kind === 'shows') {
+      const rawLimit = Number(req.query?.limit);
+      const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(50, rawLimit)) : 20;
+      const discoverPath = kind === 'movies' ? '/api/v1/discover/movies' : '/api/v1/discover/tv';
+      const discoverPayload = await fetchSeerrJson({
+        candidates,
+        apiKey,
+        path: discoverPath,
+        query: { page: 1 },
+      });
+      const records = Array.isArray(discoverPayload?.results) ? discoverPayload.results : [];
+      const normalized = records.slice(0, limit).map((entry) => {
+        const tmdbId = Number(entry?.id || entry?.tmdbId || 0) || 0;
+        const mediaType = kind === 'shows' ? 'show' : 'movie';
+        return {
+          title: String(entry?.title || entry?.name || '').trim(),
+          content_type: mediaType,
+          count: Number(entry?.voteCount ?? entry?.popularity ?? 0) || 0,
+          posterPath: entry?.posterPath || entry?.poster_path || '',
+          overview: String(entry?.overview || '').trim(),
+          guids: tmdbId ? [`tmdb:${tmdbId}`] : [],
+        };
+      });
+
+      pushLog({
+        level: 'info',
+        app: 'seerr',
+        action: `stats.${kind}`,
+        message: 'Seerr stats response received.',
+        meta: { count: normalized.length },
+      });
+      return res.json({ results: normalized });
+    }
+
+    return res.status(400).json({ error: 'Unsupported Seerr stats endpoint.' });
+  } catch (err) {
+    const lastError = safeMessage(err) || 'Failed to reach Seerr on configured URLs.';
+    pushLog({
+      level: 'error',
+      app: 'seerr',
+      action: `stats.${kind}`,
+      message: lastError,
+    });
+    return res.status(502).json({ error: lastError });
+  }
+});
+
 app.get('/api/pulsarr/tmdb/:kind/:id', requireUser, async (req, res) => {
   const kindRaw = String(req.params.kind || '').trim().toLowerCase();
   const kind = kindRaw === 'show' ? 'tv' : kindRaw;
@@ -2421,10 +2625,10 @@ app.get('/api/pulsarr/tmdb/:kind/:id', requireUser, async (req, res) => {
   if (!apiKey) return res.status(400).json({ error: 'Missing Pulsarr API key.' });
 
   const candidates = uniqueList([
-    normalizeBaseUrl(pulsarrApp.localUrl || ''),
     normalizeBaseUrl(pulsarrApp.remoteUrl || ''),
-    normalizeBaseUrl(pulsarrApp.url || ''),
     normalizeBaseUrl(resolveLaunchUrl(pulsarrApp, req)),
+    normalizeBaseUrl(pulsarrApp.localUrl || ''),
+    normalizeBaseUrl(pulsarrApp.url || ''),
   ]);
   if (!candidates.length) return res.status(400).json({ error: 'Missing Pulsarr URL.' });
 
@@ -2442,7 +2646,8 @@ app.get('/api/pulsarr/tmdb/:kind/:id', requireUser, async (req, res) => {
       });
       const text = await upstreamRes.text();
       if (!upstreamRes.ok) {
-        lastError = `Pulsarr TMDB request failed (${upstreamRes.status}) via ${baseUrl}.`;
+        const bodyMessage = String(text || '').trim();
+        lastError = `Pulsarr TMDB request failed (${upstreamRes.status}) via ${baseUrl}${bodyMessage ? `: ${bodyMessage.slice(0, 220)}` : ''}`;
         continue;
       }
       try {
@@ -2471,6 +2676,62 @@ app.get('/api/pulsarr/tmdb/:kind/:id', requireUser, async (req, res) => {
     meta: { kind, tmdbId },
   });
   return res.status(502).json({ error: lastError || 'Failed to fetch Pulsarr TMDB details.' });
+});
+
+app.get('/api/seerr/tmdb/:kind/:id', requireUser, async (req, res) => {
+  const kindRaw = String(req.params.kind || '').trim().toLowerCase();
+  const kind = kindRaw === 'show' ? 'tv' : kindRaw;
+  const tmdbId = String(req.params.id || '').trim();
+  if (!tmdbId || (kind !== 'movie' && kind !== 'tv')) {
+    return res.status(400).json({ error: 'Invalid TMDB request.' });
+  }
+
+  const config = loadConfig();
+  const apps = config.apps || [];
+  const seerrApp = apps.find((appItem) => appItem.id === 'seerr');
+  if (!seerrApp) return res.status(404).json({ error: 'Seerr app is not configured.' });
+  if (!canAccess(seerrApp, getEffectiveRole(req), 'overview')) {
+    return res.status(403).json({ error: 'Seerr overview access denied.' });
+  }
+
+  const apiKey = String(seerrApp.apiKey || '').trim();
+  if (!apiKey) return res.status(400).json({ error: 'Missing Seerr API key.' });
+
+  const candidates = uniqueList([
+    normalizeBaseUrl(seerrApp.remoteUrl || ''),
+    normalizeBaseUrl(resolveLaunchUrl(seerrApp, req)),
+    normalizeBaseUrl(seerrApp.localUrl || ''),
+    normalizeBaseUrl(seerrApp.url || ''),
+  ]);
+  if (!candidates.length) return res.status(400).json({ error: 'Missing Seerr URL.' });
+
+  try {
+    const parsed = await fetchSeerrJson({
+      candidates,
+      apiKey,
+      path: `/api/v1/${kind === 'tv' ? 'tv' : 'movie'}/${encodeURIComponent(tmdbId)}`,
+      query: {},
+    });
+    const payload = { ...parsed, imdb_id: parsed?.imdb_id || parsed?.imdbId || '' };
+    pushLog({
+      level: 'info',
+      app: 'seerr',
+      action: 'tmdb',
+      message: 'Seerr TMDB response received.',
+      meta: { kind, tmdbId },
+    });
+    return res.json(payload);
+  } catch (err) {
+    const lastError = safeMessage(err) || 'Failed to fetch Seerr TMDB details.';
+    pushLog({
+      level: 'error',
+      app: 'seerr',
+      action: 'tmdb',
+      message: lastError,
+      meta: { kind, tmdbId },
+    });
+    return res.status(502).json({ error: lastError });
+  }
 });
 
 app.get('/api/prowlarr/search', requireUser, async (req, res) => {
@@ -3407,6 +3668,8 @@ function getDefaultSystemIconOptions() {
     'prowlarr.png',
     'pulsarr.svg',
     'pulsarr.png',
+    'seerr.svg',
+    'seerr.png',
     'plex.svg',
     'plex.png',
     'radarr.svg',
@@ -5277,5 +5540,12 @@ async function fetchPlexUser(token) {
 
 function safeMessage(err) {
   if (!err) return 'Unknown error';
-  return err.message || String(err);
+  const message = String(err.message || String(err) || '').trim();
+  const cause = err && typeof err === 'object' ? err.cause : null;
+  if (!cause || typeof cause !== 'object') return message || 'Unknown error';
+  const parts = [message].filter(Boolean);
+  if (cause.code) parts.push(`code=${cause.code}`);
+  if (cause.address) parts.push(`address=${cause.address}`);
+  if (cause.port) parts.push(`port=${cause.port}`);
+  return parts.join(', ') || 'Unknown error';
 }

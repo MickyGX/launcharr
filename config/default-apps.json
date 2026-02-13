@@ -503,6 +503,67 @@
     "plexToken": ""
   },
   {
+    "id": "seerr",
+    "name": "Seerr",
+    "url": "http://localhost:5055",
+    "description": "Overseerr/Jellyseerr requests",
+    "category": "Arr Suite",
+    "roles": [
+      "hidden"
+    ],
+    "apiKey": "",
+    "username": "",
+    "password": "",
+    "menu": {
+      "overview": {
+        "user": true,
+        "admin": true
+      },
+      "launch": {
+        "user": true,
+        "admin": true
+      },
+      "settings": {
+        "user": false,
+        "admin": true
+      }
+    },
+    "order": 2,
+    "favourite": false,
+    "launchMode": "iframe",
+    "overviewElements": [
+      {
+        "id": "recent-requests",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "showSubtitle": true,
+        "showMeta": true,
+        "showPill": true,
+        "showTypeIcon": true,
+        "showViewIcon": true,
+        "showUsername": true,
+        "order": 1
+      },
+      {
+        "id": "most-watchlisted",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "showSubtitle": true,
+        "showMeta": true,
+        "showPill": true,
+        "showTypeIcon": true,
+        "showViewIcon": true,
+        "showUsername": true,
+        "order": 2
+      }
+    ],
+    "localUrl": "http://localhost:5055",
+    "remoteUrl": "",
+    "plexToken": ""
+  },
+  {
     "id": "cleanuparr",
     "name": "Cleanuparr",
     "url": "http://localhost:11011",

@@ -1,5 +1,7 @@
 (() => {
   const config = window.PULSARR_OVERVIEW_CONFIG || {};
+  const appId = String(config.appId || 'pulsarr').trim().toLowerCase() || 'pulsarr';
+  const domPrefix = String(config.domPrefix || appId).trim() || appId;
   const appName = String(config.appName || 'Pulsarr').trim() || 'Pulsarr';
   const root = document.querySelector('.plex-overview') || document.documentElement;
   const defaultDisplaySettings = {
@@ -31,24 +33,28 @@
   const requestsDisplaySettings = sectionDisplaySettings('recent-requests');
   const watchlistedDisplaySettings = sectionDisplaySettings('most-watchlisted');
 
+  function prefixedId(suffix) {
+    return domPrefix + suffix;
+  }
+
   const modules = {
     requests: {
-      viewport: document.getElementById('pulsarrRequestsViewport'),
-      track: document.getElementById('pulsarrRequestsTrack'),
-      prevBtn: document.getElementById('pulsarrRequestsPrevBtn'),
-      nextBtn: document.getElementById('pulsarrRequestsNextBtn'),
-      statusFilter: document.getElementById('pulsarrRequestsStatusFilter'),
-      limitFilter: document.getElementById('pulsarrRequestsLimitSelect'),
+      viewport: document.getElementById(prefixedId('RequestsViewport')),
+      track: document.getElementById(prefixedId('RequestsTrack')),
+      prevBtn: document.getElementById(prefixedId('RequestsPrevBtn')),
+      nextBtn: document.getElementById(prefixedId('RequestsNextBtn')),
+      statusFilter: document.getElementById(prefixedId('RequestsStatusFilter')),
+      limitFilter: document.getElementById(prefixedId('RequestsLimitSelect')),
       items: [],
       carousel: null,
     },
     watchlisted: {
-      viewport: document.getElementById('pulsarrWatchlistedViewport'),
-      track: document.getElementById('pulsarrWatchlistedTrack'),
-      prevBtn: document.getElementById('pulsarrWatchlistedPrevBtn'),
-      nextBtn: document.getElementById('pulsarrWatchlistedNextBtn'),
-      typeFilter: document.getElementById('pulsarrWatchlistedTypeFilter'),
-      limitFilter: document.getElementById('pulsarrWatchlistedLimitSelect'),
+      viewport: document.getElementById(prefixedId('WatchlistedViewport')),
+      track: document.getElementById(prefixedId('WatchlistedTrack')),
+      prevBtn: document.getElementById(prefixedId('WatchlistedPrevBtn')),
+      nextBtn: document.getElementById(prefixedId('WatchlistedNextBtn')),
+      typeFilter: document.getElementById(prefixedId('WatchlistedTypeFilter')),
+      limitFilter: document.getElementById(prefixedId('WatchlistedLimitSelect')),
       items: [],
       carousel: null,
     },
@@ -60,12 +66,12 @@
   const CACHE_TTL_MS = 5 * 60 * 1000;
 
   const modal = {
-    backdrop: document.getElementById('pulsarrModalBackdrop'),
-    close: document.getElementById('pulsarrModalClose'),
-    title: document.getElementById('pulsarrModalTitle'),
-    subtitle: document.getElementById('pulsarrModalSubtitle'),
-    body: document.getElementById('pulsarrModalBody'),
-    typeIcon: document.getElementById('pulsarrModalTypeIcon'),
+    backdrop: document.getElementById(prefixedId('ModalBackdrop')),
+    close: document.getElementById(prefixedId('ModalClose')),
+    title: document.getElementById(prefixedId('ModalTitle')),
+    subtitle: document.getElementById(prefixedId('ModalSubtitle')),
+    body: document.getElementById(prefixedId('ModalBody')),
+    typeIcon: document.getElementById(prefixedId('ModalTypeIcon')),
   };
 
   if (hasRequests) {
@@ -178,11 +184,11 @@
   }
 
   function requestsCacheKey(limit, status) {
-    return 'launcharr:pulsarr:recent-requests:v1:limit:' + String(limit) + ':status:' + String(status || '');
+    return 'launcharr:' + appId + ':recent-requests:v1:limit:' + String(limit) + ':status:' + String(status || '');
   }
 
   function watchlistedCacheKey(limit) {
-    return 'launcharr:pulsarr:most-watchlisted:v1:limit:' + String(limit);
+    return 'launcharr:' + appId + ':most-watchlisted:v1:limit:' + String(limit);
   }
 
   function findTmdbIdFromGuids(guids) {
@@ -232,14 +238,14 @@
   }
 
   async function fetchJson(url) {
-    logApi('info', 'Pulsarr request', { url });
+    logApi('info', appName + ' request', { url });
     const response = await fetch(url, { headers: { Accept: 'application/json' } });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      logApi('error', 'Pulsarr response failed', { url, status: response.status, error: payload?.error || '' });
+      logApi('error', appName + ' response failed', { url, status: response.status, error: payload?.error || '' });
       throw new Error(payload?.error || ('Request failed with status ' + response.status));
     }
-    logApi('info', 'Pulsarr response ok', { url, status: response.status });
+    logApi('info', appName + ' response ok', { url, status: response.status });
     return payload;
   }
 
@@ -596,8 +602,8 @@
         '</div>' +
       '</div>' +
       '<div class="plex-modal-footer">' +
-        '<a id="pulsarrModalImdbLink" class="plex-modal-link" href="' + imdbUrl + '" target="_blank" rel="noreferrer">IMDb</a>' +
-        '<a id="pulsarrModalTmdbLink" class="plex-modal-link" href="' + tmdbUrl + '" target="_blank" rel="noreferrer">TMDb</a>' +
+        '<a id="' + prefixedId('ModalImdbLink') + '" class="plex-modal-link" href="' + imdbUrl + '" target="_blank" rel="noreferrer">IMDb</a>' +
+        '<a id="' + prefixedId('ModalTmdbLink') + '" class="plex-modal-link" href="' + tmdbUrl + '" target="_blank" rel="noreferrer">TMDb</a>' +
         '<a class="plex-modal-link" href="/apps/tautulli/launch?q=' + query + tmdbPart + '&type=' + encodeURIComponent(mediaType) + '" target="_blank" rel="noreferrer">Tautulli</a>' +
         '<a class="plex-modal-link" href="/apps/plex/launch?q=' + query + tmdbPart + '&type=' + encodeURIComponent(mediaType) + '" target="_blank" rel="noreferrer">Plex</a>' +
       '</div>';
@@ -610,8 +616,8 @@
   async function loadModalOverview(item) {
     if (!modal.body) return;
     const overviewNode = modal.body.querySelector('.plex-overview-text');
-    const imdbLinkEl = modal.body.querySelector('#pulsarrModalImdbLink');
-    const tmdbLinkEl = modal.body.querySelector('#pulsarrModalTmdbLink');
+    const imdbLinkEl = modal.body.querySelector('#' + prefixedId('ModalImdbLink'));
+    const tmdbLinkEl = modal.body.querySelector('#' + prefixedId('ModalTmdbLink'));
     if (!overviewNode) return;
     if (item.overview) {
       overviewNode.textContent = item.overview;
@@ -622,7 +628,7 @@
       return;
     }
     try {
-      const detailsPayload = await fetchJson(withParams('/api/pulsarr/tmdb/' + (item.mediaType === 'show' ? 'tv' : 'movie') + '/' + encodeURIComponent(item.tmdbId), {}));
+      const detailsPayload = await fetchJson(withParams('/api/' + encodeURIComponent(appId) + '/tmdb/' + (item.mediaType === 'show' ? 'tv' : 'movie') + '/' + encodeURIComponent(item.tmdbId), {}));
       const details = unwrapTmdbDetails(detailsPayload);
       const summary = String(details?.overview || '').trim();
       overviewNode.textContent = summary || 'No overview available for this title.';
@@ -701,7 +707,7 @@
         modules.requests.track.innerHTML = '<div class="plex-empty">Loading...</div>';
       }
 
-      const payload = await fetchJson(withParams('/api/pulsarr/stats/recent-requests', { limit, status }));
+      const payload = await fetchJson(withParams('/api/' + encodeURIComponent(appId) + '/stats/recent-requests', { limit, status }));
       const records = toArray(payload?.results).length
         ? toArray(payload.results)
         : (toArray(payload?.items).length
@@ -764,7 +770,7 @@
         applyWatchlistedFilters();
       };
 
-      const moviePromise = fetchJson(withParams('/api/pulsarr/stats/movies', { limit, offset: 0, days: 30 }))
+      const moviePromise = fetchJson(withParams('/api/' + encodeURIComponent(appId) + '/stats/movies', { limit, offset: 0, days: 30 }))
         .then((moviePayload) => {
           const movieRecords = extractRecords(moviePayload);
           movieItems = movieRecords.map((item) => normalizeWatchlistedEntry(item, 'movie'));
@@ -772,7 +778,7 @@
           applyMergedItems();
         });
 
-      const showPromise = fetchJson(withParams('/api/pulsarr/stats/shows', { limit, offset: 0, days: 30 }))
+      const showPromise = fetchJson(withParams('/api/' + encodeURIComponent(appId) + '/stats/shows', { limit, offset: 0, days: 30 }))
         .then((showPayload) => {
           const showRecords = extractRecords(showPayload);
           showItems = showRecords.map((item) => normalizeWatchlistedEntry(item, 'show'));
@@ -793,7 +799,7 @@
   }
 
   function bindCollapseButtons() {
-    document.querySelectorAll('.plex-collapse-btn[data-target^="pulsarr-"]').forEach((button) => {
+    document.querySelectorAll('.plex-collapse-btn[data-target^="' + domPrefix + '-"]').forEach((button) => {
       button.addEventListener('click', () => {
         const targetId = button.getAttribute('data-target');
         const section = targetId ? document.getElementById(targetId) : null;
