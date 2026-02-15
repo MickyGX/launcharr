@@ -1,4 +1,12 @@
 (() => {
+  const carouselFreeScroll = (() => {
+    try {
+      return localStorage.getItem('launcharr-carousel-free-scroll') === '1';
+    } catch (err) {
+      return false;
+    }
+  })();
+
   const config = window.TAUTULLI_OVERVIEW_CONFIG || {};
   const apiKey = String(config.apiKey || '').trim();
   const rawBaseUrl = String(config.baseUrl || '').trim();
@@ -420,6 +428,21 @@
     let visibleCount = 1;
     let cardWidth = 240;
     let gap = 18;
+    const freeScrollMode = carouselFreeScroll;
+
+    function applyFreeScrollViewportStyle() {
+      if (!freeScrollMode) {
+        viewport.style.overflowX = '';
+        viewport.style.overflowY = '';
+        viewport.style.scrollBehavior = '';
+        viewport.style.webkitOverflowScrolling = '';
+        return;
+      }
+      viewport.style.overflowX = 'auto';
+      viewport.style.overflowY = 'hidden';
+      viewport.style.scrollBehavior = 'smooth';
+      viewport.style.webkitOverflowScrolling = 'touch';
+    }
 
     function computeLayout() {
       const viewportWidth = viewport.clientWidth;
@@ -437,6 +460,11 @@
     }
 
     function applyTransform(animated) {
+      if (freeScrollMode) {
+        track.style.transition = 'none';
+        track.style.transform = 'none';
+        return;
+      }
       track.style.transition = animated ? 'transform .25s ease' : 'none';
       const offset = slideIndex * (cardWidth + gap);
       track.style.transform = 'translateX(' + (-offset) + 'px)';
@@ -444,6 +472,12 @@
 
     function updateButtons() {
       if (!prevBtn || !nextBtn) return;
+      if (freeScrollMode) {
+        const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
+        prevBtn.disabled = viewport.scrollLeft <= 2;
+        nextBtn.disabled = viewport.scrollLeft >= maxScroll - 2;
+        return;
+      }
       const maxLeft = Math.max(0, cards.length - visibleCount);
       prevBtn.disabled = slideIndex <= 0;
       nextBtn.disabled = slideIndex >= maxLeft;
@@ -451,6 +485,7 @@
 
     function render() {
       track.innerHTML = '';
+      applyFreeScrollViewportStyle();
       if (!cards.length) {
         track.innerHTML =
           '<div class="plex-card">' +
@@ -467,6 +502,8 @@
               '<div class="plex-meta">Nothing to show</div>' +
             '</div>' +
           '</div>';
+        if (freeScrollMode) viewport.scrollLeft = 0;
+        updateButtons();
         return;
       }
 
@@ -526,10 +563,17 @@
       computeLayout();
       clampIndex();
       applyTransform(false);
+      if (freeScrollMode) viewport.scrollLeft = 0;
       updateButtons();
     }
 
     function slidePrev() {
+      if (freeScrollMode) {
+        computeLayout();
+        const amount = Math.max(cardWidth + gap, Math.floor(viewport.clientWidth * 0.85));
+        viewport.scrollBy({ left: -amount, behavior: 'smooth' });
+        return;
+      }
       computeLayout();
       slideIndex = Math.max(0, slideIndex - visibleCount);
       applyTransform(true);
@@ -537,6 +581,12 @@
     }
 
     function slideNext() {
+      if (freeScrollMode) {
+        computeLayout();
+        const amount = Math.max(cardWidth + gap, Math.floor(viewport.clientWidth * 0.85));
+        viewport.scrollBy({ left: amount, behavior: 'smooth' });
+        return;
+      }
       computeLayout();
       const maxLeft = Math.max(0, cards.length - visibleCount);
       slideIndex = Math.min(maxLeft, slideIndex + visibleCount);
@@ -546,6 +596,10 @@
 
     function addSwipe() {
       if (!viewport) return;
+      if (freeScrollMode) {
+        viewport.style.touchAction = 'pan-x pan-y';
+        return;
+      }
       viewport.style.touchAction = 'pan-y';
       let startX = 0;
       let deltaX = 0;
@@ -609,10 +663,14 @@
     if (prevBtn) prevBtn.addEventListener('click', slidePrev);
     if (nextBtn) nextBtn.addEventListener('click', slideNext);
     addSwipe();
+    if (freeScrollMode) {
+      viewport.addEventListener('scroll', updateButtons, { passive: true });
+    }
 
     window.addEventListener('resize', () => {
       computeLayout();
       clampIndex();
+      applyFreeScrollViewportStyle();
       applyTransform(false);
       updateButtons();
     });
@@ -635,6 +693,21 @@
     let visibleCount = 1;
     let cardWidth = 203;
     let gap = 24;
+    const freeScrollMode = carouselFreeScroll;
+
+    function applyFreeScrollViewportStyle() {
+      if (!freeScrollMode) {
+        wheelViewport.style.overflowX = '';
+        wheelViewport.style.overflowY = '';
+        wheelViewport.style.scrollBehavior = '';
+        wheelViewport.style.webkitOverflowScrolling = '';
+        return;
+      }
+      wheelViewport.style.overflowX = 'auto';
+      wheelViewport.style.overflowY = 'hidden';
+      wheelViewport.style.scrollBehavior = 'smooth';
+      wheelViewport.style.webkitOverflowScrolling = 'touch';
+    }
 
     function computeLayout() {
       const viewportWidth = wheelViewport.clientWidth;
@@ -651,6 +724,11 @@
     }
 
     function applyTransform(animated) {
+      if (freeScrollMode) {
+        wheelTrack.style.transition = 'none';
+        wheelTrack.style.transform = 'none';
+        return;
+      }
       wheelTrack.style.transition = animated ? 'transform .25s ease' : 'none';
       const offset = slideIndex * (cardWidth + gap);
       wheelTrack.style.transform = 'translateX(' + (-offset) + 'px)';
@@ -658,12 +736,24 @@
 
     function updateButtons() {
       if (!wheelPrevBtn || !wheelNextBtn) return;
+      if (freeScrollMode) {
+        const maxScroll = Math.max(0, wheelViewport.scrollWidth - wheelViewport.clientWidth);
+        wheelPrevBtn.disabled = wheelViewport.scrollLeft <= 2;
+        wheelNextBtn.disabled = wheelViewport.scrollLeft >= maxScroll - 2;
+        return;
+      }
       const maxLeft = Math.max(0, cards.length - visibleCount);
       wheelPrevBtn.disabled = slideIndex <= 0;
       wheelNextBtn.disabled = slideIndex >= maxLeft;
     }
 
     function slidePrev() {
+      if (freeScrollMode) {
+        computeLayout();
+        const amount = Math.max(cardWidth + gap, Math.floor(wheelViewport.clientWidth * 0.85));
+        wheelViewport.scrollBy({ left: -amount, behavior: 'smooth' });
+        return;
+      }
       computeLayout();
       slideIndex = Math.max(0, slideIndex - visibleCount);
       applyTransform(true);
@@ -671,6 +761,12 @@
     }
 
     function slideNext() {
+      if (freeScrollMode) {
+        computeLayout();
+        const amount = Math.max(cardWidth + gap, Math.floor(wheelViewport.clientWidth * 0.85));
+        wheelViewport.scrollBy({ left: amount, behavior: 'smooth' });
+        return;
+      }
       computeLayout();
       const maxLeft = Math.max(0, cards.length - visibleCount);
       slideIndex = Math.min(maxLeft, slideIndex + visibleCount);
@@ -680,6 +776,10 @@
 
     function addSwipe() {
       if (!wheelViewport) return;
+      if (freeScrollMode) {
+        wheelViewport.style.touchAction = 'pan-x pan-y';
+        return;
+      }
       wheelViewport.style.touchAction = 'pan-y';
       let startX = 0;
       let deltaX = 0;
@@ -784,8 +884,11 @@
 
     function render() {
       wheelTrack.innerHTML = '';
+      applyFreeScrollViewportStyle();
       if (!cards.length) {
         wheelTrack.innerHTML = '<div class="plex-empty">No stats available.</div>';
+        if (freeScrollMode) wheelViewport.scrollLeft = 0;
+        updateButtons();
         return;
       }
 
@@ -840,16 +943,21 @@
       computeLayout();
       clampIndex();
       applyTransform(false);
+      if (freeScrollMode) wheelViewport.scrollLeft = 0;
       updateButtons();
     }
 
     if (wheelPrevBtn) wheelPrevBtn.addEventListener('click', slidePrev);
     if (wheelNextBtn) wheelNextBtn.addEventListener('click', slideNext);
     addSwipe();
+    if (freeScrollMode) {
+      wheelViewport.addEventListener('scroll', updateButtons, { passive: true });
+    }
 
     window.addEventListener('resize', () => {
       computeLayout();
       clampIndex();
+      applyFreeScrollViewportStyle();
       applyTransform(false);
       updateButtons();
     });

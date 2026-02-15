@@ -38,6 +38,7 @@ const ARR_COMBINE_SECTIONS = [
   { key: 'downloadingSoon', elementId: 'downloading-soon' },
   { key: 'recentlyDownloaded', elementId: 'recently-downloaded' },
   { key: 'activityQueue', elementId: 'activity-queue' },
+  { key: 'calendar', elementId: 'calendar' },
 ];
 const DOWNLOADER_COMBINE_SECTIONS = [
   { key: 'activityQueue', elementId: 'activity-queue' },
@@ -56,21 +57,25 @@ const APP_OVERVIEW_ELEMENTS = {
     { id: 'downloading-soon', name: 'Downloading Soon' },
     { id: 'recently-downloaded', name: 'Recently Downloaded' },
     { id: 'activity-queue', name: 'Activity Queue' },
+    { id: 'calendar', name: 'Calendar' },
   ],
   radarr: [
     { id: 'downloading-soon', name: 'Downloading Soon' },
     { id: 'recently-downloaded', name: 'Recently Downloaded' },
     { id: 'activity-queue', name: 'Activity Queue' },
+    { id: 'calendar', name: 'Calendar' },
   ],
   lidarr: [
     { id: 'downloading-soon', name: 'Downloading Soon' },
     { id: 'recently-downloaded', name: 'Recently Downloaded' },
     { id: 'activity-queue', name: 'Activity Queue' },
+    { id: 'calendar', name: 'Calendar' },
   ],
   readarr: [
     { id: 'downloading-soon', name: 'Downloading Soon' },
     { id: 'recently-downloaded', name: 'Recently Downloaded' },
     { id: 'activity-queue', name: 'Activity Queue' },
+    { id: 'calendar', name: 'Calendar' },
   ],
   pulsarr: [
     { id: 'recent-requests', name: 'Recent Requests' },
@@ -3174,20 +3179,44 @@ app.get('/api/arr/:appId/:version/*', requireUser, async (req, res) => {
   const appId = String(req.params.appId || '').trim().toLowerCase();
   const version = String(req.params.version || '').trim().toLowerCase();
   const pathSuffix = String(req.params[0] || '').trim().replace(/^\/+/, '');
-  if (!ARR_APP_IDS.includes(appId)) return res.status(400).json({ error: 'Unsupported ARR app.' });
-  if (version !== 'v1' && version !== 'v3') return res.status(400).json({ error: 'Unsupported ARR API version.' });
-  if (!pathSuffix) return res.status(400).json({ error: 'Missing ARR endpoint path.' });
+  const reject = (status, message, meta = null) => {
+    pushLog({
+      level: status >= 500 ? 'error' : 'warn',
+      app: appId || 'arr',
+      action: 'arr.proxy.reject',
+      message,
+      meta: meta || null,
+    });
+    return res.status(status).json({ error: message });
+  };
+  if (!ARR_APP_IDS.includes(appId)) {
+    return reject(400, 'Unsupported ARR app.', { appId, version, path: pathSuffix });
+  }
+  if (version !== 'v1' && version !== 'v3') {
+    return reject(400, 'Unsupported ARR API version.', { appId, version, path: pathSuffix });
+  }
+  if (!pathSuffix) {
+    return reject(400, 'Missing ARR endpoint path.', { appId, version });
+  }
 
   const config = loadConfig();
   const apps = config.apps || [];
   const arrApp = apps.find((appItem) => appItem.id === appId);
-  if (!arrApp) return res.status(404).json({ error: `${appId} is not configured.` });
+  if (!arrApp) {
+    return reject(404, `${appId} is not configured.`, { appId, version, path: pathSuffix });
+  }
   if (!canAccess(arrApp, getEffectiveRole(req), 'overview')) {
-    return res.status(403).json({ error: `${arrApp.name || appId} overview access denied.` });
+    return reject(403, `${arrApp.name || appId} overview access denied.`, {
+      appId,
+      version,
+      path: pathSuffix,
+    });
   }
 
   const apiKey = String(arrApp.apiKey || '').trim();
-  if (!apiKey) return res.status(400).json({ error: `Missing ${arrApp.name || appId} API key.` });
+  if (!apiKey) {
+    return reject(400, `Missing ${arrApp.name || appId} API key.`, { appId, version, path: pathSuffix });
+  }
 
   const candidates = uniqueList([
     normalizeBaseUrl(arrApp.remoteUrl || ''),
@@ -3195,7 +3224,9 @@ app.get('/api/arr/:appId/:version/*', requireUser, async (req, res) => {
     normalizeBaseUrl(arrApp.localUrl || ''),
     normalizeBaseUrl(arrApp.url || ''),
   ]);
-  if (!candidates.length) return res.status(400).json({ error: `Missing ${arrApp.name || appId} URL.` });
+  if (!candidates.length) {
+    return reject(400, `Missing ${arrApp.name || appId} URL.`, { appId, version, path: pathSuffix });
+  }
 
   let lastError = '';
   for (let index = 0; index < candidates.length; index += 1) {
@@ -3254,6 +3285,22 @@ app.get('/api/arr/:appId/:version/*', requireUser, async (req, res) => {
     meta: { version, path: pathSuffix },
   });
   return res.status(502).json({ error: lastError || `Failed to reach ${arrApp.name || appId}.` });
+});
+
+app.all('/api/arr/*', requireUser, (req, res) => {
+  const path = String(req.path || '').trim();
+  pushLog({
+    level: 'warn',
+    app: 'arr',
+    action: 'arr.proxy.miss',
+    message: 'ARR proxy route did not match request path.',
+    meta: {
+      method: req.method,
+      path,
+      query: req.query || {},
+    },
+  });
+  return res.status(404).json({ error: 'Unknown ARR proxy route.' });
 });
 
 app.get('/api/logs', requireUser, (req, res) => {
@@ -3680,6 +3727,8 @@ function getDefaultSystemIconOptions() {
     'lidarr.png',
     'readarr.svg',
     'readarr.png',
+    'bazarr.svg',
+    'bazarr.png',
     'tautulli.svg',
     'tautulli.png',
     'transmission.svg',

@@ -254,6 +254,19 @@
         "showViewIcon": true,
         "showUsername": true,
         "order": 3
+      },
+      {
+        "id": "calendar",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "showSubtitle": true,
+        "showMeta": true,
+        "showPill": true,
+        "showTypeIcon": true,
+        "showViewIcon": true,
+        "showUsername": true,
+        "order": 4
       }
     ]
   },
@@ -304,6 +317,13 @@
         "dashboard": true,
         "favourite": false,
         "order": 2
+      },
+      {
+        "id": "calendar",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "order": 4
       }
     ]
   },
@@ -350,6 +370,13 @@
         "dashboard": true,
         "favourite": false,
         "order": 2
+      },
+      {
+        "id": "calendar",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "order": 4
       }
     ]
   },
@@ -404,8 +431,49 @@
         "dashboard": true,
         "favourite": false,
         "order": 3
+      },
+      {
+        "id": "calendar",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "order": 4
       }
     ]
+  },
+  {
+    "id": "bazarr",
+    "name": "Bazarr",
+    "icon": "/icons/bazarr.png",
+    "url": "http://localhost:6767",
+    "description": "Subtitle manager",
+    "category": "Arr Suite",
+    "roles": [
+      "hidden"
+    ],
+    "apiKey": "",
+    "username": "",
+    "password": "",
+    "menu": {
+      "overview": {
+        "user": false,
+        "admin": false
+      },
+      "launch": {
+        "user": false,
+        "admin": true
+      },
+      "settings": {
+        "user": false,
+        "admin": true
+      }
+    },
+    "order": 9,
+    "favourite": false,
+    "launchMode": "iframe",
+    "localUrl": "http://localhost:6767",
+    "remoteUrl": "",
+    "plexToken": ""
   },
   {
     "id": "prowlarr",

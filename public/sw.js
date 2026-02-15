@@ -1,13 +1,7 @@
-const CACHE_NAME = 'launcharr-static-v35';
+const CACHE_NAME = 'launcharr-static-v36';
 const STATIC_ASSETS = [
   '/manifest.webmanifest',
   '/styles.css',
-  '/pwa.js',
-  '/arr-overview.js',
-  '/downloaders-queue.js',
-  '/pulsarr-overview.js',
-  '/plex-overview.js',
-  '/prowlarr-overview.js',
   '/icons/launcharr-icon.png',
   '/icons/app.svg',
   '/icons/app-arr.svg',
@@ -52,7 +46,6 @@ self.addEventListener('fetch', (event) => {
 
   const isStaticAsset =
     request.destination === 'style' ||
-    request.destination === 'script' ||
     request.destination === 'image' ||
     request.destination === 'font' ||
     url.pathname.endsWith('.webmanifest');

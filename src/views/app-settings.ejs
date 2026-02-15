@@ -13,6 +13,20 @@
         var brandTheme = localStorage.getItem("launcharr-brand-theme") || "pulsarr";
         document.documentElement.dataset.theme = mode;
         document.documentElement.dataset.brandTheme = brandTheme;
+        var sidebarInvert = localStorage.getItem("launcharr-sidebar-invert") === "1";
+        var squareCorners = localStorage.getItem("launcharr-square-corners") === "1";
+        var bgMotionStored = localStorage.getItem("launcharr-bg-motion");
+        var bgMotion = bgMotionStored === null ? true : bgMotionStored === "1";
+        document.documentElement.dataset.sidebarInvert = sidebarInvert ? "1" : "0";
+        document.documentElement.dataset.squareCorners = squareCorners ? "1" : "0";
+        document.documentElement.dataset.bgMotion = bgMotion ? "1" : "0";
+        var embedded = false;
+        try {
+          embedded = window.self !== window.top;
+        } catch (err) {
+          embedded = true;
+        }
+        document.documentElement.dataset.embedded = embedded ? "1" : "0";
         if (brandTheme === "custom") {
           var customHex = localStorage.getItem("launcharr-custom-color") || "#1cc6c2";
           var normalizedHex = /^#?[0-9a-fA-F]{6}$/.test(customHex) ? (customHex.charAt(0) === "#" ? customHex : "#" + customHex) : "#1cc6c2";
@@ -347,6 +361,7 @@
     const isMobile = () => mobileQuery.matches;
     const mainContent = document.querySelector('.dash-main');
     const sidebar = document.querySelector('.dash-sidebar');
+    const dashNav = document.querySelector('.dash-nav');
     const safeStorage = {
       get(key) {
         try {
@@ -375,12 +390,14 @@
         dashFrame.classList.remove('sidebar-collapsed');
         dashFrame.classList.remove('mobile-nav-open');
         document.body.classList.remove('mobile-nav-open');
+        if (dashNav) dashNav.scrollTop = 0;
         setToggleIcon(false);
       } else {
         const collapsed = safeStorage.get('sidebarCollapsed') === 'true';
         dashFrame.classList.toggle('sidebar-collapsed', collapsed);
         dashFrame.classList.remove('mobile-nav-open');
         document.body.classList.remove('mobile-nav-open');
+        if (dashNav) dashNav.scrollTop = 0;
         setToggleIcon(!collapsed);
       }
     }
@@ -434,11 +451,13 @@
         dashFrame.classList.remove('sidebar-collapsed');
         const isOpen = dashFrame.classList.toggle('mobile-nav-open');
         document.body.classList.toggle('mobile-nav-open', isOpen);
+        if (dashNav) dashNav.scrollTop = 0;
         setToggleIcon(isOpen);
         return;
       }
       const isCollapsed = dashFrame.classList.toggle('sidebar-collapsed');
       safeStorage.set('sidebarCollapsed', isCollapsed ? 'true' : 'false');
+      if (dashNav) dashNav.scrollTop = 0;
       setToggleIcon(!isCollapsed);
     }
 

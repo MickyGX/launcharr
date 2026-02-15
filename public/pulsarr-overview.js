@@ -1,4 +1,12 @@
 (() => {
+  const carouselFreeScroll = (() => {
+    try {
+      return localStorage.getItem('launcharr-carousel-free-scroll') === '1';
+    } catch (err) {
+      return false;
+    }
+  })();
+
   const config = window.PULSARR_OVERVIEW_CONFIG || {};
   const appId = String(config.appId || 'pulsarr').trim().toLowerCase() || 'pulsarr';
   const domPrefix = String(config.domPrefix || appId).trim() || appId;
@@ -371,6 +379,21 @@
     let visibleCount = 1;
     let cardWidth = 203;
     let gap = 24;
+    const freeScrollMode = carouselFreeScroll;
+
+    function applyFreeScrollViewportStyle() {
+      if (!freeScrollMode) {
+        viewport.style.overflowX = '';
+        viewport.style.overflowY = '';
+        viewport.style.scrollBehavior = '';
+        viewport.style.webkitOverflowScrolling = '';
+        return;
+      }
+      viewport.style.overflowX = 'auto';
+      viewport.style.overflowY = 'hidden';
+      viewport.style.scrollBehavior = 'smooth';
+      viewport.style.webkitOverflowScrolling = 'touch';
+    }
 
     function computeLayout() {
       const viewportWidth = viewport.clientWidth;
@@ -386,6 +409,11 @@
     }
 
     function applyTransform(animated) {
+      if (freeScrollMode) {
+        track.style.transition = 'none';
+        track.style.transform = 'none';
+        return;
+      }
       track.style.transition = animated ? 'transform .25s ease' : 'none';
       const offset = slideIndex * (cardWidth + gap);
       track.style.transform = 'translateX(' + (-offset) + 'px)';
@@ -393,6 +421,12 @@
 
     function updateButtons() {
       if (!prevBtn || !nextBtn) return;
+      if (freeScrollMode) {
+        const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
+        prevBtn.disabled = viewport.scrollLeft <= 2;
+        nextBtn.disabled = viewport.scrollLeft >= maxScroll - 2;
+        return;
+      }
       const maxLeft = Math.max(0, cards.length - visibleCount);
       prevBtn.disabled = slideIndex <= 0;
       nextBtn.disabled = slideIndex >= maxLeft;
@@ -400,8 +434,10 @@
 
     function render() {
       track.innerHTML = '';
+      applyFreeScrollViewportStyle();
       if (!cards.length) {
         track.innerHTML = '<div class="plex-empty">No results found.</div>';
+        if (freeScrollMode) viewport.scrollLeft = 0;
         updateButtons();
         return;
       }
@@ -426,10 +462,17 @@
       computeLayout();
       clampIndex();
       applyTransform(false);
+      if (freeScrollMode) viewport.scrollLeft = 0;
       updateButtons();
     }
 
     function slidePrev() {
+      if (freeScrollMode) {
+        computeLayout();
+        const amount = Math.max(cardWidth + gap, Math.floor(viewport.clientWidth * 0.85));
+        viewport.scrollBy({ left: -amount, behavior: 'smooth' });
+        return;
+      }
       computeLayout();
       slideIndex = Math.max(0, slideIndex - visibleCount);
       applyTransform(true);
@@ -437,6 +480,12 @@
     }
 
     function slideNext() {
+      if (freeScrollMode) {
+        computeLayout();
+        const amount = Math.max(cardWidth + gap, Math.floor(viewport.clientWidth * 0.85));
+        viewport.scrollBy({ left: amount, behavior: 'smooth' });
+        return;
+      }
       computeLayout();
       const maxLeft = Math.max(0, cards.length - visibleCount);
       slideIndex = Math.min(maxLeft, slideIndex + visibleCount);
@@ -445,6 +494,10 @@
     }
 
     function addSwipe() {
+      if (freeScrollMode) {
+        viewport.style.touchAction = 'pan-x pan-y';
+        return;
+      }
       viewport.style.touchAction = 'pan-y';
       let startX = 0;
       let deltaX = 0;
@@ -502,6 +555,9 @@
     prevBtn?.addEventListener('click', slidePrev);
     nextBtn?.addEventListener('click', slideNext);
     addSwipe();
+    if (freeScrollMode) {
+      viewport.addEventListener('scroll', updateButtons, { passive: true });
+    }
 
     return {
       setItems(nextItems) {
@@ -512,6 +568,7 @@
       updateLayout() {
         computeLayout();
         clampIndex();
+        applyFreeScrollViewportStyle();
         applyTransform(false);
         updateButtons();
       },

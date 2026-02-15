@@ -13,6 +13,20 @@
         var brandTheme = localStorage.getItem("launcharr-brand-theme") || "pulsarr";
         document.documentElement.dataset.theme = mode;
         document.documentElement.dataset.brandTheme = brandTheme;
+        var sidebarInvert = localStorage.getItem("launcharr-sidebar-invert") === "1";
+        var squareCorners = localStorage.getItem("launcharr-square-corners") === "1";
+        var bgMotionStored = localStorage.getItem("launcharr-bg-motion");
+        var bgMotion = bgMotionStored === null ? true : bgMotionStored === "1";
+        document.documentElement.dataset.sidebarInvert = sidebarInvert ? "1" : "0";
+        document.documentElement.dataset.squareCorners = squareCorners ? "1" : "0";
+        document.documentElement.dataset.bgMotion = bgMotion ? "1" : "0";
+        var embedded = false;
+        try {
+          embedded = window.self !== window.top;
+        } catch (err) {
+          embedded = true;
+        }
+        document.documentElement.dataset.embedded = embedded ? "1" : "0";
         if (brandTheme === "custom") {
           var customHex = localStorage.getItem("launcharr-custom-color") || "#1cc6c2";
           var normalizedHex = /^#?[0-9a-fA-F]{6}$/.test(customHex) ? (customHex.charAt(0) === "#" ? customHex : "#" + customHex) : "#1cc6c2";
@@ -694,6 +708,82 @@
                 </div>
               </section>
             <% } %>
+            <% if (['sonarr', 'radarr', 'lidarr', 'readarr'].includes(item.app.id) && item.element.id === 'calendar') { %>
+              <%
+                const isCombined = Boolean(item.arrCombined);
+                const combinedApps = isCombined ? item.arrCombined.appIds : [];
+                const moduleId = isCombined ? 'arrcombinedcalendar-calendar' : (item.app.id + '-calendar');
+                const controlPrefix = isCombined ? 'arrcombinedcalendarCalendar' : (item.app.id + 'Calendar');
+                const logo = isCombined ? '/icons/app-arr.svg' : ('/icons/' + item.app.id + '.png');
+                const title = 'Calendar';
+              %>
+              <section class="plex-module plex-module--no-subtitle" id="<%= moduleId %>">
+                <div class="plex-topbar">
+                  <div class="plex-title-wrap">
+                    <div class="plex-title">
+                      <img class="plex-logo" src="<%= logo %>" alt="<%= isCombined ? 'Combined ARR' : item.app.name %>" loading="eager" />
+                      <span><%= title %></span>
+                      <span class="arr-calendar-title-sep" aria-hidden="true">|</span>
+                      <span id="<%= controlPrefix %>MonthLabel" class="arr-calendar-month-label arr-calendar-month-label--title">Loading…</span>
+                    </div>
+                    <div class="plex-subtitle"></div>
+                  </div>
+
+                  <div class="plex-spacer"></div>
+
+                  <div class="plex-controls-right">
+                    <% if (isCombined) { %>
+                      <div class="plex-select plex-icon plex-filter-media" title="Media type">
+                        <select id="<%= controlPrefix %>TypeFilter" aria-label="Media type">
+                          <option value="all" selected>All</option>
+                          <% if (combinedApps.includes('radarr')) { %><option value="movie">Movies</option><% } %>
+                          <% if (combinedApps.includes('sonarr')) { %><option value="tv">TV</option><% } %>
+                          <% if (combinedApps.includes('lidarr')) { %><option value="music">Music</option><% } %>
+                          <% if (combinedApps.includes('readarr')) { %><option value="book">Books</option><% } %>
+                        </select>
+                      </div>
+                    <% } %>
+                    <button class="arr-calendar-today-btn" id="<%= controlPrefix %>MonthTodayBtn" type="button">Today</button>
+                    <button class="plex-iconbtn" id="<%= controlPrefix %>MonthPrevBtn" type="button" aria-label="Previous month"><div class="plex-chev plex-left"></div></button>
+                    <button class="plex-iconbtn" id="<%= controlPrefix %>MonthNextBtn" type="button" aria-label="Next month"><div class="plex-chev plex-right"></div></button>
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="<%= moduleId %>" data-collapse-global="true">
+                      <div class="plex-doublechev">
+                        <div class="plex-chev plex-up"></div>
+                        <div class="plex-chev plex-down"></div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="plex-panel arr-calendar-panel">
+                  <div class="arr-calendar-layout">
+                    <div class="arr-calendar-pane arr-calendar-pane--grid">
+                      <div class="arr-calendar-weekdays">
+                        <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+                      </div>
+                      <div id="<%= controlPrefix %>Grid" class="arr-calendar-grid">
+                        <div class="plex-empty">Loading…</div>
+                      </div>
+                    </div>
+                    <div class="arr-calendar-pane arr-calendar-pane--list">
+                      <div id="<%= controlPrefix %>ListLabel" class="arr-calendar-list-label">Select a day</div>
+                      <div id="<%= controlPrefix %>List" class="arr-calendar-list">
+                        <div class="plex-empty">Loading…</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div id="<%= controlPrefix %>Overlay" class="arr-calendar-overlay plex-hidden">
+                  <div class="arr-calendar-overlay-card">
+                    <div class="arr-calendar-overlay-head">
+                      <span id="<%= controlPrefix %>OverlayLabel" class="arr-calendar-list-label">Select a day</span>
+                      <button id="<%= controlPrefix %>OverlayClose" class="arr-calendar-overlay-close" type="button" aria-label="Close day list">✕</button>
+                    </div>
+                    <div id="<%= controlPrefix %>OverlayList" class="arr-calendar-list"></div>
+                  </div>
+                </div>
+              </section>
+            <% } %>
             <% if (['transmission', 'nzbget'].includes(item.app.id) && item.element.id === 'activity-queue') { %>
               <%
                 const isCombined = Boolean(item.downloaderCombined);
@@ -1003,6 +1093,7 @@
     const isMobile = () => mobileQuery.matches;
     const mainContent = document.querySelector('.dash-main');
     const sidebar = document.querySelector('.dash-sidebar');
+    const dashNav = document.querySelector('.dash-nav');
     const userMenus = document.querySelectorAll('[data-user-menu]');
     const safeStorage = {
       get(key) {
@@ -1032,12 +1123,14 @@
         dashFrame.classList.remove('sidebar-collapsed');
         dashFrame.classList.remove('mobile-nav-open');
         document.body.classList.remove('mobile-nav-open');
+        if (dashNav) dashNav.scrollTop = 0;
         setToggleIcon(false);
       } else {
         const collapsed = safeStorage.get('sidebarCollapsed') === 'true';
         dashFrame.classList.toggle('sidebar-collapsed', collapsed);
         dashFrame.classList.remove('mobile-nav-open');
         document.body.classList.remove('mobile-nav-open');
+        if (dashNav) dashNav.scrollTop = 0;
         setToggleIcon(!collapsed);
       }
     }
@@ -1091,11 +1184,13 @@
         dashFrame.classList.remove('sidebar-collapsed');
         const isOpen = dashFrame.classList.toggle('mobile-nav-open');
         document.body.classList.toggle('mobile-nav-open', isOpen);
+        if (dashNav) dashNav.scrollTop = 0;
         setToggleIcon(isOpen);
         return;
       }
       const isCollapsed = dashFrame.classList.toggle('sidebar-collapsed');
       safeStorage.set('sidebarCollapsed', isCollapsed ? 'true' : 'false');
+      if (dashNav) dashNav.scrollTop = 0;
       setToggleIcon(!isCollapsed);
     }
 
@@ -1214,7 +1309,7 @@
       <script src="/tautulli-overview.js?v=<%= assetVersion %>"></script>
     <% } %>
   <% } %>
-  <% if (dashboardModules.some((item) => ['sonarr', 'radarr', 'lidarr', 'readarr'].includes(item.app.id) && (item.element.id === 'downloading-soon' || item.element.id === 'recently-downloaded' || item.element.id === 'activity-queue'))) { %>
+  <% if (dashboardModules.some((item) => ['sonarr', 'radarr', 'lidarr', 'readarr'].includes(item.app.id) && (item.element.id === 'downloading-soon' || item.element.id === 'recently-downloaded' || item.element.id === 'activity-queue' || item.element.id === 'calendar'))) { %>
     <%
       const arrOverviewApps = [];
       const arrSourceApps = [];
@@ -1229,6 +1324,7 @@
         'downloading-soon': 'arrcombinedsoon',
         'recently-downloaded': 'arrcombinedrecent',
         'activity-queue': 'arrcombinedqueue',
+        'calendar': 'arrcombinedcalendar',
       };
       dashboardModules
         .filter((item) => ['sonarr', 'radarr', 'lidarr', 'readarr'].includes(item.app.id))
@@ -1239,6 +1335,7 @@
             const includeSoon = item.arrCombined.elementId === 'downloading-soon';
             const includeRecent = item.arrCombined.elementId === 'recently-downloaded';
             const includeQueue = item.arrCombined.elementId === 'activity-queue';
+            const includeCalendar = item.arrCombined.elementId === 'calendar';
             arrCombinedConfigs.push({
               appId: combinedPrefixByElement[item.arrCombined.elementId] || ('arrCombined' + item.arrCombined.sectionKey),
               appName: item.arrCombined.appNames.join(' + '),
@@ -1246,6 +1343,7 @@
               includeSoon,
               includeRecent,
               includeQueue,
+              includeCalendar,
               displaySettings: {
                 [item.arrCombined.elementId]: {
                   showSubtitle: item.element.showSubtitle !== false,

@@ -1,4 +1,12 @@
 (() => {
+  const carouselFreeScroll = (() => {
+    try {
+      return localStorage.getItem('launcharr-carousel-free-scroll') === '1';
+    } catch (err) {
+      return false;
+    }
+  })();
+
   const configs = resolveConfigs();
   if (!configs.length) return;
 
@@ -58,6 +66,7 @@
         includeSoon: entry.includeSoon !== false,
         includeRecent: entry.includeRecent !== false,
         includeQueue: entry.includeQueue !== false,
+        includeCalendar: entry.includeCalendar !== false,
         displaySettings: entry.displaySettings && typeof entry.displaySettings === 'object' ? entry.displaySettings : {},
         sources,
       });
@@ -142,6 +151,7 @@
       soon: sectionDisplaySettings('downloading-soon'),
       recent: sectionDisplaySettings('recently-downloaded'),
       queue: sectionDisplaySettings('activity-queue'),
+      calendar: sectionDisplaySettings('calendar'),
     };
 
     const modules = {
@@ -175,18 +185,44 @@
         sortIndex: 0,
         items: [],
       },
+      calendar: {
+        module: document.getElementById(appId + '-calendar'),
+        grid: document.getElementById(appId + 'CalendarGrid'),
+        list: document.getElementById(appId + 'CalendarList'),
+        listLabel: document.getElementById(appId + 'CalendarListLabel'),
+        monthLabel: document.getElementById(appId + 'CalendarMonthLabel'),
+        monthTodayBtn: document.getElementById(appId + 'CalendarMonthTodayBtn'),
+        monthPrevBtn: document.getElementById(appId + 'CalendarMonthPrevBtn'),
+        monthNextBtn: document.getElementById(appId + 'CalendarMonthNextBtn'),
+        typeFilter: document.getElementById(appId + 'CalendarTypeFilter'),
+        mobileModeBtn: document.getElementById(appId + 'CalendarMobileModeBtn'),
+        overlay: document.getElementById(appId + 'CalendarOverlay'),
+        overlayList: document.getElementById(appId + 'CalendarOverlayList'),
+        overlayLabel: document.getElementById(appId + 'CalendarOverlayLabel'),
+        overlayClose: document.getElementById(appId + 'CalendarOverlayClose'),
+        allItems: [],
+        filteredItems: [],
+        dayBuckets: new Map(),
+        selectedDateKey: '',
+        monthCursor: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+      },
     };
 
     const hasSoon = Boolean(modules.soon.viewport && modules.soon.track) && config.includeSoon !== false;
     const hasRecent = Boolean(modules.recent.viewport && modules.recent.track) && config.includeRecent !== false;
     const hasQueue = Boolean(modules.queue.body) && config.includeQueue !== false;
-    if (!hasSoon && !hasRecent && !hasQueue) return;
+    const hasCalendar = Boolean(modules.calendar.module && modules.calendar.grid && modules.calendar.list) && config.includeCalendar !== false;
+    if (!hasSoon && !hasRecent && !hasQueue && !hasCalendar) return;
 
     if (!activeSources.length) {
       const message = '<div class="plex-empty">Add ' + escapeHtml(appName) + ' URL and API key in settings.</div>';
       if (hasSoon) modules.soon.track.innerHTML = message;
       if (hasRecent) modules.recent.track.innerHTML = message;
       if (hasQueue) modules.queue.body.innerHTML = '<div class="queue-empty">Add ' + escapeHtml(appName) + ' URL and API key in settings.</div>';
+      if (hasCalendar) {
+        modules.calendar.grid.innerHTML = '<div class="plex-empty">Add ' + escapeHtml(appName) + ' URL and API key in settings.</div>';
+        modules.calendar.list.innerHTML = '<div class="plex-empty">Add ' + escapeHtml(appName) + ' URL and API key in settings.</div>';
+      }
       bindCollapseButtons(appId);
       return;
     }
@@ -243,9 +279,16 @@
       loadQueue();
     }
 
+    if (hasCalendar) {
+      initCalendarModule();
+      if (isCombined) bindCombinedLogoToFilter(modules.calendar.typeFilter);
+      loadCalendar();
+    }
+
     window.addEventListener('resize', () => {
       if (modules.soon.carousel) modules.soon.carousel.updateLayout();
       if (modules.recent.carousel) modules.recent.carousel.updateLayout();
+      if (hasCalendar && !isMobileViewport()) closeCalendarOverlay();
     });
 
     bindCollapseButtons(appId);
@@ -295,6 +338,30 @@
       syncLogo();
     }
 
+    var CALENDAR_MOBILE_MODE_KEY = 'launcharr-arr-calendar-mobile-mode';
+    var calendarMobileMode = 'inline';
+
+    function isMobileViewport() {
+      return window.matchMedia('(max-width: 980px)').matches;
+    }
+
+    function readCalendarMobileMode() {
+      try {
+        const saved = String(localStorage.getItem(CALENDAR_MOBILE_MODE_KEY) || '').trim().toLowerCase();
+        return saved === 'popup' ? 'popup' : 'inline';
+      } catch (err) {
+        return 'inline';
+      }
+    }
+
+    function saveCalendarMobileMode(mode) {
+      try {
+        localStorage.setItem(CALENDAR_MOBILE_MODE_KEY, mode);
+      } catch (err) {
+        return;
+      }
+    }
+
     function cssNum(name, fallback) {
       const raw = getComputedStyle(root).getPropertyValue(name).trim();
       const parsed = Number(raw);
@@ -338,6 +405,47 @@
         return pad2(date.getUTCHours()) + ':' + pad2(date.getUTCMinutes()) + ' GMT';
       }
       return pad2(date.getUTCDate()) + '/' + pad2(date.getUTCMonth() + 1) + '/' + String(date.getUTCFullYear()).slice(-2);
+    }
+
+    function toDateKey(date) {
+      if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+      return date.getFullYear() + '-' + pad2(date.getMonth() + 1) + '-' + pad2(date.getDate());
+    }
+
+    function fromDateKey(value) {
+      const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!match) return null;
+      const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+      if (Number.isNaN(date.getTime())) return null;
+      return date;
+    }
+
+    function formatCalendarMonthLabel(date) {
+      if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+      return date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    }
+
+    function formatCalendarDayLabel(dateKey) {
+      const parsed = fromDateKey(dateKey);
+      if (!parsed) return 'Select a day';
+      return parsed.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+    }
+
+    function calendarLeadingDays(date) {
+      if (!(date instanceof Date) || Number.isNaN(date.getTime())) return 0;
+      const startWeekday = new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+      // Always show at least one full previous-month week.
+      return startWeekday === 0 ? 7 : startWeekday;
+    }
+
+    function calendarVisibleRange(date) {
+      const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
+      const leading = calendarLeadingDays(monthStart);
+      const rangeStart = new Date(monthStart);
+      rangeStart.setDate(monthStart.getDate() - leading);
+      const rangeEnd = new Date(rangeStart);
+      rangeEnd.setDate(rangeStart.getDate() + 41);
+      return { monthStart, rangeStart, rangeEnd };
     }
 
     function episodeCode(season, episode) {
@@ -555,6 +663,77 @@
       }
     }
 
+    function reportClientError(action, message, meta) {
+      const payload = {
+        app: appId,
+        level: 'error',
+        action: String(action || 'arr.client'),
+        message: String(message || 'ARR client error'),
+        meta: meta && typeof meta === 'object' ? meta : null,
+      };
+      fetch('/api/logs/client', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        keepalive: true,
+      }).catch(() => {});
+    }
+
+    var ARR_PROXY_TIMEOUT_MS = 12000;
+    var ARR_DIRECT_TIMEOUT_MS = 5000;
+    var cachedApiPrefixes = null;
+
+    async function fetchWithTimeout(url, options, timeoutMs) {
+      if (typeof AbortController !== 'function') {
+        return fetch(url, options || {});
+      }
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        return await fetch(url, {
+          ...(options || {}),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+
+    function normalizePrefix(value) {
+      const raw = String(value || '').trim();
+      if (!raw || raw === '/') return '';
+      return raw.replace(/\/+$/, '');
+    }
+
+    function resolveApiPrefixes() {
+      if (cachedApiPrefixes) return cachedApiPrefixes;
+      const prefixes = [''];
+      const pathname = String(window.location.pathname || '/').replace(/\/+$/, '') || '/';
+      const patterns = [
+        /^(.*)\/dashboard$/i,
+        /^(.*)\/settings$/i,
+        /^(.*)\/apps\/[^/]+(?:\/[^/]+)?$/i,
+      ];
+      patterns.forEach((pattern) => {
+        const match = pathname.match(pattern);
+        if (!match) return;
+        const prefix = normalizePrefix(match[1]);
+        if (!prefix) return;
+        if (!prefixes.includes(prefix)) prefixes.push(prefix);
+      });
+      cachedApiPrefixes = prefixes;
+      return prefixes;
+    }
+
+    function buildProxyEndpointCandidates(sourceAppId, version, pathSuffix) {
+      const encodedPath = String(pathSuffix || '')
+        .split('/')
+        .map((part) => encodeURIComponent(part))
+        .join('/');
+      const basePath = '/api/arr/' + encodeURIComponent(sourceAppId) + '/' + version + '/' + encodedPath;
+      return resolveApiPrefixes().map((prefix) => (prefix || '') + basePath);
+    }
+
     async function fetchArrFromSource(source, pathSuffix, params) {
       let lastError = null;
       const baseCandidates = Array.from(new Set([
@@ -565,34 +744,49 @@
 
       for (let index = 0; index < versions.length; index += 1) {
         const version = versions[index];
+        let shouldTryDirectFallback = false;
         // Try same-origin proxy first (avoids CORS and mixed-content issues).
-        try {
-          const endpoint = '/api/arr/' + encodeURIComponent(source.appId) + '/' + version + '/' + String(pathSuffix || '')
-            .split('/')
-            .map((part) => encodeURIComponent(part))
-            .join('/');
-          const url = new URL(endpoint, window.location.origin);
-          Object.entries(params || {}).forEach(([key, value]) => {
-            if (value === undefined || value === null || value === '') return;
-            url.searchParams.set(key, String(value));
-          });
-          logApi('info', 'ARR proxy request', { app: source.appId, path: pathSuffix, url: url.toString() });
-          const response = await fetch(url.toString(), {
-            headers: { Accept: 'application/json' },
-          });
-          logApi('info', 'ARR proxy response', { app: source.appId, status: response.status, ok: response.ok });
-          if (response.ok) return response.json();
-          lastError = new Error(source.appName + ' proxy request failed with status ' + response.status);
-        } catch (err) {
-          logApi('error', 'ARR proxy request failed', {
-            app: source.appId,
-            path: pathSuffix,
-            error: err?.message || String(err),
-          });
-          lastError = err;
+        const proxyCandidates = buildProxyEndpointCandidates(source.appId, version, String(pathSuffix || ''));
+        for (let proxyIndex = 0; proxyIndex < proxyCandidates.length; proxyIndex += 1) {
+          const proxyPath = proxyCandidates[proxyIndex];
+          try {
+            const url = new URL(proxyPath, window.location.origin);
+            Object.entries(params || {}).forEach(([key, value]) => {
+              if (value === undefined || value === null || value === '') return;
+              url.searchParams.set(key, String(value));
+            });
+            logApi('info', 'ARR proxy request', { app: source.appId, path: pathSuffix, url: url.toString() });
+            const response = await fetchWithTimeout(url.toString(), {
+              headers: { Accept: 'application/json' },
+            }, ARR_PROXY_TIMEOUT_MS);
+            logApi('info', 'ARR proxy response', { app: source.appId, status: response.status, ok: response.ok });
+            if (response.ok) {
+              const text = await response.text();
+              try {
+                return JSON.parse(text || '{}');
+              } catch (err) {
+                shouldTryDirectFallback = true;
+                lastError = new Error(source.appName + ' proxy returned invalid JSON.');
+              }
+            } else {
+              shouldTryDirectFallback = true;
+              lastError = new Error(source.appName + ' proxy request failed with status ' + response.status);
+            }
+          } catch (err) {
+            logApi('error', 'ARR proxy request failed', {
+              app: source.appId,
+              path: pathSuffix,
+              error: err?.message || String(err),
+              proxyPath,
+            });
+            shouldTryDirectFallback = true;
+            lastError = err;
+          }
         }
 
-        // If proxy failed, fall back to direct URL candidates (dash.html behavior).
+        if (!shouldTryDirectFallback) continue;
+
+        // Fall back to direct URL candidates only when proxy is unavailable.
         for (let baseIndex = 0; baseIndex < baseCandidates.length; baseIndex += 1) {
           const base = baseCandidates[baseIndex];
           if (!base) continue;
@@ -614,18 +808,23 @@
               url: direct.origin + direct.pathname,
               params: safeParams,
             });
-            const response = await fetch(direct.toString(), {
+            const response = await fetchWithTimeout(direct.toString(), {
               headers: {
                 Accept: 'application/json',
                 'X-Api-Key': source.apiKey,
               },
-            });
+            }, ARR_DIRECT_TIMEOUT_MS);
             logApi('info', 'ARR direct response', { app: source.appId, status: response.status, ok: response.ok });
             if (!response.ok) {
               lastError = new Error(source.appName + ' direct request failed with status ' + response.status);
               continue;
             }
-            return response.json();
+            const text = await response.text();
+            try {
+              return JSON.parse(text || '{}');
+            } catch (err) {
+              lastError = new Error(source.appName + ' direct request returned invalid JSON.');
+            }
           } catch (err) {
             logApi('error', 'ARR direct request failed', {
               app: source.appId,
@@ -637,7 +836,13 @@
         }
       }
 
-      throw lastError || new Error(source.appName + ' request failed');
+      const error = lastError || new Error(source.appName + ' request failed');
+      reportClientError('arr.client.fetch', error?.message || 'ARR source fetch failed', {
+        sourceAppId: String(source?.appId || ''),
+        path: String(pathSuffix || ''),
+        page: String(window.location.pathname || ''),
+      });
+      throw error;
     }
 
     async function fetchArr(pathSuffix, params, source) {
@@ -770,6 +975,21 @@
       let visibleCount = 1;
       let cardWidth = 203;
       let gap = 24;
+      const freeScrollMode = carouselFreeScroll;
+
+      function applyFreeScrollViewportStyle() {
+        if (!freeScrollMode) {
+          viewport.style.overflowX = '';
+          viewport.style.overflowY = '';
+          viewport.style.scrollBehavior = '';
+          viewport.style.webkitOverflowScrolling = '';
+          return;
+        }
+        viewport.style.overflowX = 'auto';
+        viewport.style.overflowY = 'hidden';
+        viewport.style.scrollBehavior = 'smooth';
+        viewport.style.webkitOverflowScrolling = 'touch';
+      }
 
       function computeLayout() {
         const viewportWidth = viewport.clientWidth;
@@ -785,6 +1005,11 @@
       }
 
       function applyTransform(animated) {
+        if (freeScrollMode) {
+          track.style.transition = 'none';
+          track.style.transform = 'none';
+          return;
+        }
         track.style.transition = animated ? 'transform .25s ease' : 'none';
         const offset = slideIndex * (cardWidth + gap);
         track.style.transform = 'translateX(' + (-offset) + 'px)';
@@ -792,6 +1017,12 @@
 
       function updateButtons() {
         if (!prevBtn || !nextBtn) return;
+        if (freeScrollMode) {
+          const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
+          prevBtn.disabled = viewport.scrollLeft <= 2;
+          nextBtn.disabled = viewport.scrollLeft >= maxScroll - 2;
+          return;
+        }
         const maxLeft = Math.max(0, cards.length - visibleCount);
         prevBtn.disabled = slideIndex <= 0;
         nextBtn.disabled = slideIndex >= maxLeft;
@@ -799,8 +1030,10 @@
 
       function render() {
         track.innerHTML = '';
+        applyFreeScrollViewportStyle();
         if (!cards.length) {
           track.innerHTML = '<div class="plex-empty">No results found.</div>';
+          if (freeScrollMode) viewport.scrollLeft = 0;
           updateButtons();
           return;
         }
@@ -824,10 +1057,17 @@
         computeLayout();
         clampIndex();
         applyTransform(false);
+        if (freeScrollMode) viewport.scrollLeft = 0;
         updateButtons();
       }
 
       function slidePrev() {
+        if (freeScrollMode) {
+          computeLayout();
+          const amount = Math.max(cardWidth + gap, Math.floor(viewport.clientWidth * 0.85));
+          viewport.scrollBy({ left: -amount, behavior: 'smooth' });
+          return;
+        }
         computeLayout();
         slideIndex = Math.max(0, slideIndex - visibleCount);
         applyTransform(true);
@@ -835,6 +1075,12 @@
       }
 
       function slideNext() {
+        if (freeScrollMode) {
+          computeLayout();
+          const amount = Math.max(cardWidth + gap, Math.floor(viewport.clientWidth * 0.85));
+          viewport.scrollBy({ left: amount, behavior: 'smooth' });
+          return;
+        }
         computeLayout();
         const maxLeft = Math.max(0, cards.length - visibleCount);
         slideIndex = Math.min(maxLeft, slideIndex + visibleCount);
@@ -843,6 +1089,10 @@
       }
 
       function addSwipe() {
+        if (freeScrollMode) {
+          viewport.style.touchAction = 'pan-x pan-y';
+          return;
+        }
         viewport.style.touchAction = 'pan-y';
         let startX = 0;
         let deltaX = 0;
@@ -896,6 +1146,9 @@
       prevBtn?.addEventListener('click', slidePrev);
       nextBtn?.addEventListener('click', slideNext);
       addSwipe();
+      if (freeScrollMode) {
+        viewport.addEventListener('scroll', updateButtons, { passive: true });
+      }
 
       return {
         setItems(nextItems) {
@@ -906,6 +1159,7 @@
         updateLayout() {
           computeLayout();
           clampIndex();
+          applyFreeScrollViewportStyle();
           applyTransform(false);
           updateButtons();
         },
@@ -1025,6 +1279,16 @@
         recentKey: recentKeyForRecord(record, entity, externalIds),
         eventType: type,
         timestamp: Number.isFinite(timestamp) ? timestamp : 0,
+      };
+    }
+
+    function mapCalendarItem(entry) {
+      const mapped = mapSoonItem(entry);
+      const dateValue = resolveSoonDate(entry);
+      const parsedDate = new Date(dateValue);
+      return {
+        ...mapped,
+        calendarDateKey: toDateKey(parsedDate),
       };
     }
 
@@ -1479,6 +1743,360 @@
       syncQueueTableLayout();
     }
 
+    function setCalendarMobileMode(mode, options = {}) {
+      if (!hasCalendar) return;
+      const nextMode = mode === 'popup' ? 'popup' : 'inline';
+      calendarMobileMode = nextMode;
+      modules.calendar.module?.setAttribute('data-mobile-mode', nextMode);
+      if (!options.skipPersist) saveCalendarMobileMode(nextMode);
+      updateCalendarModeButton();
+      if (nextMode !== 'popup') closeCalendarOverlay();
+    }
+
+    function updateCalendarModeButton() {
+      if (!hasCalendar || !modules.calendar.mobileModeBtn) return;
+      const icon = calendarMobileMode === 'popup' ? '/icons/expand.svg' : '/icons/view.svg';
+      modules.calendar.mobileModeBtn.dataset.mode = calendarMobileMode;
+      modules.calendar.mobileModeBtn.title = calendarMobileMode === 'popup'
+        ? 'Mobile mode: full-page pop-up'
+        : 'Mobile mode: inline list';
+      modules.calendar.mobileModeBtn.innerHTML = '<img src="' + icon + '" alt="" />';
+    }
+
+    function openCalendarOverlay() {
+      if (!hasCalendar || !modules.calendar.overlay) return;
+      if (!isMobileViewport() || calendarMobileMode !== 'popup') return;
+      modules.calendar.overlay.classList.remove('plex-hidden');
+      document.body.classList.add('arr-calendar-overlay-open');
+    }
+
+    function closeCalendarOverlay() {
+      if (!hasCalendar || !modules.calendar.overlay) return;
+      modules.calendar.overlay.classList.add('plex-hidden');
+      document.body.classList.remove('arr-calendar-overlay-open');
+    }
+
+    function ensureCalendarSelection(bucketKeys, forceReset = false) {
+      if (!hasCalendar) return;
+      const monthDate = modules.calendar.monthCursor;
+      const monthPrefix = monthDate.getFullYear() + '-' + pad2(monthDate.getMonth() + 1) + '-';
+      const todayKey = toDateKey(new Date());
+      const selectedKey = String(modules.calendar.selectedDateKey || '');
+      const selectedInMonth = selectedKey.startsWith(monthPrefix);
+      if (!forceReset && selectedInMonth) return;
+
+      const monthBucketKeys = bucketKeys.filter((key) => key.startsWith(monthPrefix));
+
+      if (todayKey.startsWith(monthPrefix) && modules.calendar.dayBuckets.has(todayKey)) {
+        modules.calendar.selectedDateKey = todayKey;
+        return;
+      }
+
+      if (monthBucketKeys.length) {
+        modules.calendar.selectedDateKey = monthBucketKeys[0];
+        return;
+      }
+
+      if (bucketKeys.length) {
+        modules.calendar.selectedDateKey = bucketKeys[0];
+        return;
+      }
+
+      modules.calendar.selectedDateKey = monthPrefix + '01';
+    }
+
+    function renderCalendarGrid() {
+      if (!hasCalendar || !modules.calendar.grid) return;
+      const cursor = modules.calendar.monthCursor;
+      const year = cursor.getFullYear();
+      const month = cursor.getMonth();
+      const todayKey = toDateKey(new Date());
+      const selectedKey = String(modules.calendar.selectedDateKey || '');
+      const { rangeStart } = calendarVisibleRange(cursor);
+
+      const cells = [];
+      for (let index = 0; index < 42; index += 1) {
+        const date = new Date(rangeStart);
+        date.setDate(rangeStart.getDate() + index);
+        const dateKey = toDateKey(date);
+        const day = date.getDate();
+        const isOutMonth = date.getMonth() !== month || date.getFullYear() !== year;
+        const dayItems = modules.calendar.dayBuckets.get(dateKey) || [];
+        const count = dayItems.length;
+        const kindDots = [];
+        dayItems.forEach((item) => {
+          const rawKind = String(item?.kind || '').toLowerCase();
+          const normalizedKind = ['movie', 'tv', 'music', 'book'].includes(rawKind) ? rawKind : 'other';
+          if (!kindDots.includes(normalizedKind)) kindDots.push(normalizedKind);
+        });
+        const visibleDots = kindDots.slice(0, 4);
+        const extraCount = Math.max(0, count - visibleDots.length);
+        const classes = [
+          'arr-calendar-day',
+          isOutMonth ? 'arr-calendar-day--outmonth' : '',
+          dateKey === selectedKey ? 'is-selected' : '',
+          dateKey === todayKey ? 'is-today' : '',
+          count ? 'has-items' : '',
+        ].filter(Boolean).join(' ');
+        cells.push(
+          '<button class="' + classes + '" type="button" data-date-key="' + dateKey + '" data-outmonth="' + (isOutMonth ? '1' : '0') + '">' +
+            '<span class="arr-calendar-day-num">' + day + '</span>' +
+            '<span class="arr-calendar-day-dots' + (count ? '' : ' is-empty') + '">' +
+              visibleDots.map((kind) => (
+                '<span class="arr-calendar-dot arr-calendar-dot--' + kind + '"></span>'
+              )).join('') +
+              (extraCount ? ('<span class="arr-calendar-dot-more">+' + extraCount + '</span>') : '') +
+            '</span>' +
+          '</button>'
+        );
+      }
+      modules.calendar.grid.innerHTML = cells.join('');
+
+      modules.calendar.grid.querySelectorAll('button[data-date-key]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const nextKey = String(button.getAttribute('data-date-key') || '');
+          if (!nextKey) return;
+          const nextDate = fromDateKey(nextKey);
+          if (!nextDate) return;
+          const isOutMonth = button.getAttribute('data-outmonth') === '1';
+          modules.calendar.selectedDateKey = nextKey;
+          if (isOutMonth) {
+            modules.calendar.monthCursor = new Date(nextDate.getFullYear(), nextDate.getMonth(), 1);
+            loadCalendar();
+            return;
+          }
+          renderCalendarGrid();
+          renderCalendarLists();
+          openCalendarOverlay();
+        });
+      });
+    }
+
+    function renderCalendarListInto(container, items) {
+      if (!container) return;
+      if (!Array.isArray(items) || !items.length) {
+        container.innerHTML = '<div class="arr-calendar-empty">No items on this day.</div>';
+        return;
+      }
+
+      const showSubtitle = moduleDisplaySettings.calendar.showSubtitle !== false;
+      const showMeta = moduleDisplaySettings.calendar.showMeta !== false;
+      // Calendar rows already include the date in meta; hide duplicate pill date.
+      const showPill = false;
+      const showTypeIcon = moduleDisplaySettings.calendar.showTypeIcon !== false;
+
+      container.innerHTML = items.map((item, index) => {
+        const title = escapeHtml(item.title || 'Unknown');
+        const subtitle = showSubtitle ? escapeHtml(item.subtitle || '') : '';
+        const meta = showMeta ? escapeHtml(item.meta || '') : '';
+        const pill = showPill ? escapeHtml(item.pill || '') : '';
+        const typeSvg = showTypeIcon ? mediaTypeIcon(String(item.kind || '').toLowerCase()) : '';
+        return (
+          '<button class="arr-calendar-item" type="button" data-action="calendar-view" data-index="' + index + '">' +
+            '<div class="arr-calendar-item-art">' +
+              (item.thumb
+                ? '<img src="' + item.thumb + '" alt="' + title + '" loading="lazy" referrerpolicy="no-referrer" />'
+                : '<div class="arr-calendar-item-art-fallback">?</div>') +
+            '</div>' +
+            '<div class="arr-calendar-item-main">' +
+              '<div class="arr-calendar-item-title-row">' +
+                (typeSvg ? '<span class="arr-calendar-item-type" aria-hidden="true">' + typeSvg + '</span>' : '') +
+                '<span class="arr-calendar-item-title">' + title + '</span>' +
+                (pill ? '<span class="arr-calendar-item-pill">' + pill + '</span>' : '') +
+              '</div>' +
+              (subtitle ? '<div class="arr-calendar-item-subtitle">' + subtitle + '</div>' : '') +
+              (meta ? '<div class="arr-calendar-item-meta">' + meta + '</div>' : '') +
+            '</div>' +
+          '</button>'
+        );
+      }).join('');
+
+      container.querySelectorAll('[data-action="calendar-view"]').forEach((button) => {
+        button.addEventListener('click', (event) => {
+          event.preventDefault();
+          const index = Number(button.getAttribute('data-index'));
+          if (!Number.isFinite(index) || !items[index]) return;
+          openItemModal(items[index]);
+        });
+      });
+    }
+
+    function renderCalendarLists() {
+      if (!hasCalendar) return;
+      const selectedKey = String(modules.calendar.selectedDateKey || '');
+      const selectedItems = modules.calendar.dayBuckets.get(selectedKey) || [];
+      const label = formatCalendarDayLabel(selectedKey);
+      if (modules.calendar.listLabel) modules.calendar.listLabel.textContent = label;
+      if (modules.calendar.overlayLabel) modules.calendar.overlayLabel.textContent = label;
+      renderCalendarListInto(modules.calendar.list, selectedItems);
+      renderCalendarListInto(modules.calendar.overlayList, selectedItems);
+    }
+
+    function applyCalendarFilters(forceResetSelection = false) {
+      if (!hasCalendar) return;
+      const typeValue = String(modules.calendar.typeFilter?.value || 'all').toLowerCase();
+      const filtered = modules.calendar.allItems
+        .filter((item) => {
+          if (!item?.calendarDateKey) return false;
+          if (typeValue !== 'all' && String(item.kind || '').toLowerCase() !== typeValue) return false;
+          return true;
+        })
+        .sort((a, b) => a.airTimestamp - b.airTimestamp);
+
+      modules.calendar.filteredItems = filtered;
+      const dayBuckets = new Map();
+      filtered.forEach((item) => {
+        const key = String(item.calendarDateKey || '');
+        if (!key) return;
+        if (!dayBuckets.has(key)) dayBuckets.set(key, []);
+        dayBuckets.get(key).push(item);
+      });
+      modules.calendar.dayBuckets = dayBuckets;
+
+      const bucketKeys = Array.from(dayBuckets.keys()).sort((a, b) => a.localeCompare(b));
+      ensureCalendarSelection(bucketKeys, forceResetSelection);
+      renderCalendarGrid();
+      renderCalendarLists();
+    }
+
+    function shiftCalendarMonth(delta) {
+      if (!hasCalendar) return;
+      const cursor = modules.calendar.monthCursor;
+      modules.calendar.monthCursor = new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1);
+      loadCalendar();
+    }
+
+    function jumpCalendarToToday() {
+      if (!hasCalendar) return;
+      const now = new Date();
+      modules.calendar.monthCursor = new Date(now.getFullYear(), now.getMonth(), 1);
+      loadCalendar();
+    }
+
+    function bindCalendarSwipeTarget(target) {
+      if (!target || target.dataset.calendarSwipeBound === '1') return;
+      target.dataset.calendarSwipeBound = '1';
+      let startX = 0;
+      let startY = 0;
+      let startTs = 0;
+      target.addEventListener('touchstart', (event) => {
+        if (!isMobileViewport()) return;
+        const touch = event.changedTouches?.[0];
+        if (!touch) return;
+        startX = Number(touch.clientX) || 0;
+        startY = Number(touch.clientY) || 0;
+        startTs = Date.now();
+      }, { passive: true });
+      target.addEventListener('touchend', (event) => {
+        if (!isMobileViewport()) return;
+        const touch = event.changedTouches?.[0];
+        if (!touch) return;
+        const endX = Number(touch.clientX) || 0;
+        const endY = Number(touch.clientY) || 0;
+        const deltaX = endX - startX;
+        const deltaY = endY - startY;
+        const elapsed = Date.now() - startTs;
+        if (elapsed > 700) return;
+        if (Math.abs(deltaX) < 48) return;
+        if (Math.abs(deltaX) <= (Math.abs(deltaY) + 12)) return;
+        shiftCalendarMonth(deltaX < 0 ? 1 : -1);
+      }, { passive: true });
+    }
+
+    function initCalendarModule() {
+      if (!hasCalendar) return;
+      // Mobile calendar always stays inline under the grid.
+      calendarMobileMode = 'inline';
+      setCalendarMobileMode('inline', { skipPersist: false });
+
+      modules.calendar.monthTodayBtn?.addEventListener('click', jumpCalendarToToday);
+      modules.calendar.monthPrevBtn?.addEventListener('click', () => shiftCalendarMonth(-1));
+      modules.calendar.monthNextBtn?.addEventListener('click', () => shiftCalendarMonth(1));
+      modules.calendar.typeFilter?.addEventListener('change', () => applyCalendarFilters(true));
+      const titleSwipeTarget = modules.calendar.monthLabel?.closest('.plex-title') || modules.calendar.monthLabel;
+      bindCalendarSwipeTarget(titleSwipeTarget);
+      const gridSwipeTarget = modules.calendar.grid?.closest('.arr-calendar-pane--grid') || modules.calendar.grid;
+      bindCalendarSwipeTarget(gridSwipeTarget);
+      modules.calendar.overlayClose?.addEventListener('click', closeCalendarOverlay);
+      modules.calendar.overlay?.addEventListener('click', (event) => {
+        if (event.target === modules.calendar.overlay) closeCalendarOverlay();
+      });
+      window.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') closeCalendarOverlay();
+      });
+    }
+
+    async function loadCalendar() {
+      if (!hasCalendar) return;
+      modules.calendar.grid.innerHTML = '<div class="plex-empty">Loading...</div>';
+      modules.calendar.list.innerHTML = '<div class="plex-empty">Loading...</div>';
+      if (modules.calendar.overlayList) modules.calendar.overlayList.innerHTML = '<div class="plex-empty">Loading...</div>';
+
+      const cursor = modules.calendar.monthCursor;
+      const { monthStart, rangeStart, rangeEnd } = calendarVisibleRange(cursor);
+      if (modules.calendar.monthLabel) {
+        modules.calendar.monthLabel.textContent = formatCalendarMonthLabel(monthStart);
+      }
+
+      try {
+        const settled = await Promise.allSettled(
+          activeSources.map(async (source) => {
+            const payload = await fetchArr(
+              'calendar',
+              calendarParamsForApp(source.appId, rangeStart, rangeEnd),
+              source
+            );
+            const sourceRecords = Array.isArray(payload)
+              ? payload
+              : (Array.isArray(payload?.records) ? payload.records : []);
+            return sourceRecords.map((entry) => ({
+              ...entry,
+              __arrAppId: source.appId,
+              __arrAppName: source.appName,
+              __arrBaseUrl: source.baseUrl,
+              __arrApiKey: source.apiKey,
+            }));
+          })
+        );
+
+        const records = [];
+        let failedCount = 0;
+        let firstError = null;
+        settled.forEach((result, index) => {
+          if (result.status === 'fulfilled') {
+            records.push(...result.value);
+            return;
+          }
+          failedCount += 1;
+          if (!firstError) firstError = result.reason;
+          console.warn('ARR calendar load failed for', activeSources[index]?.appId, result.reason);
+        });
+
+        if (failedCount === activeSources.length && firstError) {
+          throw firstError;
+        }
+
+        modules.calendar.allItems = records
+          .filter((entry) => {
+            if (entry?.hasFile === true) return false;
+            if (entry?.movieFile) return false;
+            return true;
+          })
+          .map(mapCalendarItem);
+
+        applyCalendarFilters(false);
+      } catch (err) {
+        reportClientError('arr.client.calendar.load', err?.message || 'Calendar load failed', {
+          module: 'calendar',
+          page: String(window.location.pathname || ''),
+        });
+        const message = '<div class="plex-empty">Unable to load ' + escapeHtml(appName) + ' calendar.</div>';
+        modules.calendar.grid.innerHTML = message;
+        modules.calendar.list.innerHTML = message;
+        if (modules.calendar.overlayList) modules.calendar.overlayList.innerHTML = message;
+      }
+    }
+
     async function loadSoon() {
       if (!hasSoon) return;
       modules.soon.track.innerHTML = '<div class="plex-empty">Loading...</div>';
@@ -1528,6 +2146,10 @@
 
         applySoonFilters();
       } catch (err) {
+        reportClientError('arr.client.soon.load', err?.message || 'Soon load failed', {
+          module: 'downloading-soon',
+          page: String(window.location.pathname || ''),
+        });
         modules.soon.track.innerHTML = '<div class="plex-empty">Unable to load ' + escapeHtml(appName) + ' calendar.</div>';
       }
     }
@@ -1585,6 +2207,10 @@
 
         applyRecentFilters();
       } catch (err) {
+        reportClientError('arr.client.recent.load', err?.message || 'Recent load failed', {
+          module: 'recently-downloaded',
+          page: String(window.location.pathname || ''),
+        });
         modules.recent.track.innerHTML = '<div class="plex-empty">Unable to load ' + escapeHtml(appName) + ' history.</div>';
       }
     }
@@ -1696,6 +2322,10 @@
         modules.queue.items = mapped;
         applyQueueFilters();
       } catch (err) {
+        reportClientError('arr.client.queue.load', err?.message || 'Queue load failed', {
+          module: 'activity-queue',
+          page: String(window.location.pathname || ''),
+        });
         modules.queue.body.innerHTML = '<div class="queue-empty">Unable to load ' + escapeHtml(appName) + ' queue.</div>';
       }
     }

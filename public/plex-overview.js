@@ -1,4 +1,12 @@
 (function () {
+  const carouselFreeScroll = (() => {
+    try {
+      return localStorage.getItem('launcharr-carousel-free-scroll') === '1';
+    } catch (err) {
+      return false;
+    }
+  })();
+
   const config = window.PLEX_OVERVIEW_CONFIG || {};
   const token = String(config.token || '').trim();
   const rawBaseUrl = String(config.baseUrl || config.host || '').trim();
@@ -357,6 +365,21 @@
     let slideIndex = 0;
     let visibleCount = 4;
     let stepPx = 314;
+    const freeScrollMode = carouselFreeScroll;
+
+    function applyFreeScrollViewportStyle() {
+      if (!freeScrollMode) {
+        viewport.style.overflowX = '';
+        viewport.style.overflowY = '';
+        viewport.style.scrollBehavior = '';
+        viewport.style.webkitOverflowScrolling = '';
+        return;
+      }
+      viewport.style.overflowX = 'auto';
+      viewport.style.overflowY = 'hidden';
+      viewport.style.scrollBehavior = 'smooth';
+      viewport.style.webkitOverflowScrolling = 'touch';
+    }
 
     function computeCarouselLayout() {
       const cardW = cssNum('--plex-cardW', 203);
@@ -373,12 +396,23 @@
     }
 
     function updateNavButtons() {
+      if (freeScrollMode) {
+        const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
+        if (prevBtn) prevBtn.disabled = viewport.scrollLeft <= 2;
+        if (nextBtn) nextBtn.disabled = viewport.scrollLeft >= maxScroll - 2;
+        return;
+      }
       const maxLeft = Math.max(0, items.length - visibleCount);
       if (prevBtn) prevBtn.disabled = slideIndex <= 0;
       if (nextBtn) nextBtn.disabled = slideIndex >= maxLeft;
     }
 
     function applyTransform(animate) {
+      if (freeScrollMode) {
+        track.style.transition = 'none';
+        track.style.transform = 'none';
+        return;
+      }
       if (animate === false) {
         track.style.transition = 'none';
         track.style.transform = 'translate3d(' + (-slideIndex * stepPx) + 'px,0,0)';
@@ -391,10 +425,12 @@
 
     function renderTrack(renderCard) {
       track.innerHTML = '';
+      applyFreeScrollViewportStyle();
 
       if (!items.length) {
         slideIndex = 0;
         applyTransform(false);
+        if (freeScrollMode) viewport.scrollLeft = 0;
         updateNavButtons();
         track.innerHTML =
           '<div class="plex-card">' +
@@ -422,6 +458,7 @@
       computeCarouselLayout();
       clampSlideIndex();
       applyTransform(false);
+      if (freeScrollMode) viewport.scrollLeft = 0;
       updateNavButtons();
     }
 
@@ -449,6 +486,12 @@
     });
 
     function slidePrev() {
+      if (freeScrollMode) {
+        computeCarouselLayout();
+        const amount = Math.max(stepPx, Math.floor(viewport.clientWidth * 0.85));
+        viewport.scrollBy({ left: -amount, behavior: 'smooth' });
+        return;
+      }
       computeCarouselLayout();
       slideIndex = Math.max(0, slideIndex - visibleCount);
       applyTransform(true);
@@ -456,6 +499,12 @@
     }
 
     function slideNext() {
+      if (freeScrollMode) {
+        computeCarouselLayout();
+        const amount = Math.max(stepPx, Math.floor(viewport.clientWidth * 0.85));
+        viewport.scrollBy({ left: amount, behavior: 'smooth' });
+        return;
+      }
       computeCarouselLayout();
       const maxLeft = Math.max(0, items.length - visibleCount);
       slideIndex = Math.min(maxLeft, slideIndex + visibleCount);
@@ -467,6 +516,10 @@
     if (nextBtn) nextBtn.addEventListener('click', slideNext);
 
     function addSwipe() {
+      if (freeScrollMode) {
+        viewport.style.touchAction = 'pan-x pan-y';
+        return;
+      }
       let startX = 0;
       let startY = 0;
       let movedX = 0;
@@ -529,6 +582,9 @@
     }
 
     addSwipe();
+    if (freeScrollMode) {
+      viewport.addEventListener('scroll', updateNavButtons, { passive: true });
+    }
 
     let hasDetailHandler = false;
 
@@ -553,6 +609,7 @@
       updateLayout() {
         computeCarouselLayout();
         clampSlideIndex();
+        applyFreeScrollViewportStyle();
         applyTransform(false);
         updateNavButtons();
       },

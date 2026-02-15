@@ -10,7 +10,10 @@ if ('serviceWorker' in navigator) {
       swUrl = '/sw.js';
     }
     navigator.serviceWorker
-      .register(swUrl)
+      .register(swUrl, { updateViaCache: 'none' })
+      .then((registration) => {
+        registration.update().catch(() => {});
+      })
       .catch((err) => console.warn('Service worker registration failed:', err));
   });
 }

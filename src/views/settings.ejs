@@ -13,6 +13,20 @@
         var brandTheme = localStorage.getItem("launcharr-brand-theme") || "pulsarr";
         document.documentElement.dataset.theme = mode;
         document.documentElement.dataset.brandTheme = brandTheme;
+        var sidebarInvert = localStorage.getItem("launcharr-sidebar-invert") === "1";
+        var squareCorners = localStorage.getItem("launcharr-square-corners") === "1";
+        var bgMotionStored = localStorage.getItem("launcharr-bg-motion");
+        var bgMotion = bgMotionStored === null ? true : bgMotionStored === "1";
+        document.documentElement.dataset.sidebarInvert = sidebarInvert ? "1" : "0";
+        document.documentElement.dataset.squareCorners = squareCorners ? "1" : "0";
+        document.documentElement.dataset.bgMotion = bgMotion ? "1" : "0";
+        var embedded = false;
+        try {
+          embedded = window.self !== window.top;
+        } catch (err) {
+          embedded = true;
+        }
+        document.documentElement.dataset.embedded = embedded ? "1" : "0";
         if (brandTheme === "custom") {
           var customHex = localStorage.getItem("launcharr-custom-color") || "#1cc6c2";
           var normalizedHex = /^#?[0-9a-fA-F]{6}$/.test(customHex) ? (customHex.charAt(0) === "#" ? customHex : "#" + customHex) : "#1cc6c2";
@@ -664,8 +678,12 @@
                       <% } %>
                       <% if (item.combined && item.combinedType === 'arr') { %>
                         <% const arrSectionKey = item.combinedSection || 'activityQueue'; %>
-                        <% const arrSectionLabel = arrSectionKey === 'downloadingSoon' ? 'Downloading Soon' : (arrSectionKey === 'recentlyDownloaded' ? 'Recently Downloaded' : 'Activity Queue'); %>
-                        <div class="settings-card-title">Combined Queue Display</div>
+                        <% const arrSectionLabel = arrSectionKey === 'downloadingSoon'
+                          ? 'Downloading Soon'
+                          : (arrSectionKey === 'recentlyDownloaded'
+                            ? 'Recently Downloaded'
+                            : (arrSectionKey === 'calendar' ? 'Calendar' : 'Activity Queue')); %>
+                        <div class="settings-card-title">Combined <%= arrSectionLabel %> Sources</div>
                         <div class="settings-combined-grid settings-combined-grid--arr" data-section="<%= arrSectionKey %>">
                           <% arrApps.forEach((app) => { %>
                             <label class="settings-combined-item">
@@ -995,6 +1013,40 @@
                   <span class="theme-preset-meta">Color wheel</span>
                 </button>
               </div>
+              <div class="theme-options" id="themeOptions">
+                <label class="settings-toggle theme-option">
+                  <input id="themeSidebarInvert" type="checkbox" />
+                  <span class="settings-toggle-slider" aria-hidden="true"></span>
+                  <span class="theme-option-copy">
+                    <strong>Invert sidebar colors</strong>
+                    <small>Swap sidebar dark/theme emphasis.</small>
+                  </span>
+                </label>
+                <label class="settings-toggle theme-option">
+                  <input id="themeSquareCorners" type="checkbox" />
+                  <span class="settings-toggle-slider" aria-hidden="true"></span>
+                  <span class="theme-option-copy">
+                    <strong>Square corners</strong>
+                    <small>Remove rounded corners across the UI.</small>
+                  </span>
+                </label>
+                <label class="settings-toggle theme-option">
+                  <input id="themeBgMotion" type="checkbox" checked />
+                  <span class="settings-toggle-slider" aria-hidden="true"></span>
+                  <span class="theme-option-copy">
+                    <strong>Animated space background</strong>
+                    <small>Theme-linked moving star field.</small>
+                  </span>
+                </label>
+                <label class="settings-toggle theme-option">
+                  <input id="themeCarouselFreeScroll" type="checkbox" />
+                  <span class="settings-toggle-slider" aria-hidden="true"></span>
+                  <span class="theme-option-copy">
+                    <strong>Free carousel scroll</strong>
+                    <small>Disable index snapping and allow fast horizontal swipe scrolling.</small>
+                  </span>
+                </label>
+              </div>
             </div>
           </div>
       </div>
@@ -1300,6 +1352,7 @@
     const isMobile = () => mobileQuery.matches;
     const mainContent = document.querySelector('.dash-main');
     const sidebar = document.querySelector('.dash-sidebar');
+    const dashNav = document.querySelector('.dash-nav');
     const tabButtons = Array.from(document.querySelectorAll('.settings-tab-btn'));
     const tabPanels = Array.from(document.querySelectorAll('.settings-tab-panel'));
     const customTabButtons = Array.from(document.querySelectorAll('.settings-subtab-btn'));
@@ -1550,8 +1603,49 @@
     const themePresetButtons = Array.from(document.querySelectorAll('.theme-preset-card'));
     const customThemeColorInput = document.getElementById('customThemeColor');
     const customThemeChip = document.querySelector('[data-custom-chip]');
+    const themeSidebarInvertToggle = document.getElementById('themeSidebarInvert');
+    const themeSquareCornersToggle = document.getElementById('themeSquareCorners');
+    const themeBgMotionToggle = document.getElementById('themeBgMotion');
+    const themeCarouselFreeScrollToggle = document.getElementById('themeCarouselFreeScroll');
     const allowedBrandThemes = new Set(['custom', 'launcharr', 'rocketship', 'pulsarr', 'plex', 'radarr', 'sonarr', 'lidarr', 'readarr']);
     const customColorStorageKey = 'launcharr-custom-color';
+    const themeOptionStorageKeys = {
+      sidebarInvert: 'launcharr-sidebar-invert',
+      squareCorners: 'launcharr-square-corners',
+      bgMotion: 'launcharr-bg-motion',
+      carouselFreeScroll: 'launcharr-carousel-free-scroll',
+    };
+    const parseStoredBool = (key, defaultValue = false) => {
+      const raw = safeStorage.get(key);
+      if (raw === null || raw === undefined) return defaultValue;
+      return raw === '1' || raw === 'true';
+    };
+    const applyThemeOptions = (options = {}) => {
+      const sidebarInvert = Boolean(options.sidebarInvert);
+      const squareCorners = Boolean(options.squareCorners);
+      const bgMotion = options.bgMotion !== false;
+      const carouselFreeScroll = Boolean(options.carouselFreeScroll);
+      document.documentElement.dataset.sidebarInvert = sidebarInvert ? '1' : '0';
+      document.documentElement.dataset.squareCorners = squareCorners ? '1' : '0';
+      document.documentElement.dataset.bgMotion = bgMotion ? '1' : '0';
+      document.documentElement.dataset.carouselFreeScroll = carouselFreeScroll ? '1' : '0';
+      safeStorage.set(themeOptionStorageKeys.sidebarInvert, sidebarInvert ? '1' : '0');
+      safeStorage.set(themeOptionStorageKeys.squareCorners, squareCorners ? '1' : '0');
+      safeStorage.set(themeOptionStorageKeys.bgMotion, bgMotion ? '1' : '0');
+      safeStorage.set(themeOptionStorageKeys.carouselFreeScroll, carouselFreeScroll ? '1' : '0');
+      if (themeSidebarInvertToggle) themeSidebarInvertToggle.checked = sidebarInvert;
+      if (themeSquareCornersToggle) themeSquareCornersToggle.checked = squareCorners;
+      if (themeBgMotionToggle) themeBgMotionToggle.checked = bgMotion;
+      if (themeCarouselFreeScrollToggle) themeCarouselFreeScrollToggle.checked = carouselFreeScroll;
+    };
+    const syncThemeOptionsFromInputs = () => {
+      applyThemeOptions({
+        sidebarInvert: Boolean(themeSidebarInvertToggle?.checked),
+        squareCorners: Boolean(themeSquareCornersToggle?.checked),
+        bgMotion: Boolean(themeBgMotionToggle?.checked),
+        carouselFreeScroll: Boolean(themeCarouselFreeScrollToggle?.checked),
+      });
+    };
     const parseHexColor = (value) => {
       const raw = String(value || '').trim();
       const normalized = raw.startsWith('#') ? raw : `#${raw}`;
@@ -1622,6 +1716,17 @@
         btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
       });
     };
+    const initialThemeOptions = {
+      sidebarInvert: parseStoredBool(themeOptionStorageKeys.sidebarInvert, false),
+      squareCorners: parseStoredBool(themeOptionStorageKeys.squareCorners, false),
+      bgMotion: parseStoredBool(themeOptionStorageKeys.bgMotion, true),
+      carouselFreeScroll: parseStoredBool(themeOptionStorageKeys.carouselFreeScroll, false),
+    };
+    applyThemeOptions(initialThemeOptions);
+    themeSidebarInvertToggle?.addEventListener('change', syncThemeOptionsFromInputs);
+    themeSquareCornersToggle?.addEventListener('change', syncThemeOptionsFromInputs);
+    themeBgMotionToggle?.addEventListener('change', syncThemeOptionsFromInputs);
+    themeCarouselFreeScrollToggle?.addEventListener('change', syncThemeOptionsFromInputs);
     if (themePresetButtons.length) {
       const initialCustomHex = parseHexColor(safeStorage.get(customColorStorageKey));
       if (customThemeColorInput) customThemeColorInput.value = initialCustomHex;
@@ -1659,12 +1764,14 @@
         dashFrame.classList.remove('sidebar-collapsed');
         dashFrame.classList.remove('mobile-nav-open');
         document.body.classList.remove('mobile-nav-open');
+        if (dashNav) dashNav.scrollTop = 0;
         setToggleIcon(false);
       } else {
         const collapsed = safeStorage.get('sidebarCollapsed') === 'true';
         dashFrame.classList.toggle('sidebar-collapsed', collapsed);
         dashFrame.classList.remove('mobile-nav-open');
         document.body.classList.remove('mobile-nav-open');
+        if (dashNav) dashNav.scrollTop = 0;
         setToggleIcon(!collapsed);
       }
     }
@@ -1718,11 +1825,13 @@
         dashFrame.classList.remove('sidebar-collapsed');
         const isOpen = dashFrame.classList.toggle('mobile-nav-open');
         document.body.classList.toggle('mobile-nav-open', isOpen);
+        if (dashNav) dashNav.scrollTop = 0;
         setToggleIcon(isOpen);
         return;
       }
       const isCollapsed = dashFrame.classList.toggle('sidebar-collapsed');
       safeStorage.set('sidebarCollapsed', isCollapsed ? 'true' : 'false');
+      if (dashNav) dashNav.scrollTop = 0;
       setToggleIcon(!isCollapsed);
     }
 

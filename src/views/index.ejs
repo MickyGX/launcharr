@@ -13,6 +13,20 @@
         var brandTheme = localStorage.getItem("launcharr-brand-theme") || "pulsarr";
         document.documentElement.dataset.theme = mode;
         document.documentElement.dataset.brandTheme = brandTheme;
+        var sidebarInvert = localStorage.getItem("launcharr-sidebar-invert") === "1";
+        var squareCorners = localStorage.getItem("launcharr-square-corners") === "1";
+        var bgMotionStored = localStorage.getItem("launcharr-bg-motion");
+        var bgMotion = bgMotionStored === null ? true : bgMotionStored === "1";
+        document.documentElement.dataset.sidebarInvert = sidebarInvert ? "1" : "0";
+        document.documentElement.dataset.squareCorners = squareCorners ? "1" : "0";
+        document.documentElement.dataset.bgMotion = bgMotion ? "1" : "0";
+        var embedded = false;
+        try {
+          embedded = window.self !== window.top;
+        } catch (err) {
+          embedded = true;
+        }
+        document.documentElement.dataset.embedded = embedded ? "1" : "0";
         if (brandTheme === "custom") {
           var customHex = localStorage.getItem("launcharr-custom-color") || "#1cc6c2";
           var normalizedHex = /^#?[0-9a-fA-F]{6}$/.test(customHex) ? (customHex.charAt(0) === "#" ? customHex : "#" + customHex) : "#1cc6c2";
