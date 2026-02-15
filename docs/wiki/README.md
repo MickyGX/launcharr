@@ -39,3 +39,5 @@ Preview without pushing:
 ```bash
 scripts/publish-wiki.sh --dry-run
 ```
+
+The publish script also syncs screenshot assets from `docs/media/` into the wiki repo under `media/`, and rewrites wiki page image links to use `media/...` paths.
