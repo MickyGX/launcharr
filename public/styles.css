@@ -25,6 +25,9 @@
   --bgB:#0d141c;
   --outline:rgba(255,255,255,.08);
   --glass:rgba(16,21,30,.72);
+  --star-density:165;
+  --star-speed:45s;
+  --star-size:1.2;
 }
 
 *{box-sizing:border-box}
@@ -200,6 +203,18 @@ html[data-brand-theme="readarr"]{
   opacity:.6;
   pointer-events:none;
   mask-image:radial-gradient(circle at 50% 20%, #000 0%, transparent 70%);
+}
+
+.landing-body{
+  position:relative;
+  isolation:isolate;
+}
+
+.landing-body .topbar,
+.landing-body .container,
+.landing-body .footer{
+  position:relative;
+  z-index:1;
 }
 
 .topbar{
@@ -952,13 +967,25 @@ html[data-brand-theme="readarr"]{
     radial-gradient(circle at 88% 8%, rgba(255,170,110,.16), transparent 45%),
     linear-gradient(160deg, #0b1118, #0a0f16);
   overflow:hidden;
+  overflow-x:clip;
   position:relative;
+  isolation:isolate;
+}
+
+.dash-starfield-canvas{
+  position:fixed;
+  inset:0;
+  z-index:0;
+  pointer-events:none;
+  display:block;
+  opacity:.95;
 }
 
 .dash-body::before{
   content:"";
   position:fixed;
   inset:0;
+  z-index:0;
   background:
     linear-gradient(120deg, transparent 42%, rgba(255,255,255,.04) 50%, transparent 58%),
     radial-gradient(circle at 70% 80%, rgba(110,196,255,.1), transparent 45%);
@@ -970,25 +997,118 @@ html[data-brand-theme="readarr"]{
   content:"";
   position:fixed;
   inset:0;
+  z-index:0;
   pointer-events:none;
   background-image:
-    radial-gradient(rgba(var(--brand-rgb),.34) 1px, transparent 1px),
-    radial-gradient(rgba(255,255,255,.2) 1px, transparent 1px);
-  background-size:180px 180px, 110px 110px;
-  background-position:0 0, 46px 54px;
-  opacity:.3;
-  animation:launcharrStarDrift 70s linear infinite;
-  will-change:transform;
+    radial-gradient(
+      circle at 3% 9%,
+      rgba(var(--brand-rgb, 28,198,194),.72) 0 calc(var(--star-size, 1.2) * .48px),
+      transparent calc(var(--star-size, 1.2) * 1.35px)
+    ),
+    radial-gradient(
+      circle at 11% 67%,
+      rgba(255,255,255,.78) 0 calc(var(--star-size, 1.2) * .42px),
+      transparent calc(var(--star-size, 1.2) * 1.18px)
+    ),
+    radial-gradient(
+      circle at 19% 34%,
+      rgba(194,224,255,.6) 0 calc(var(--star-size, 1.2) * .36px),
+      transparent calc(var(--star-size, 1.2) * 1.06px)
+    ),
+    radial-gradient(
+      circle at 24% 83%,
+      rgba(var(--brand-rgb, 28,198,194),.74) 0 calc(var(--star-size, 1.2) * .41px),
+      transparent calc(var(--star-size, 1.2) * 1.22px)
+    ),
+    radial-gradient(
+      circle at 33% 14%,
+      rgba(255,255,255,.72) 0 calc(var(--star-size, 1.2) * .39px),
+      transparent calc(var(--star-size, 1.2) * 1.14px)
+    ),
+    radial-gradient(
+      circle at 38% 56%,
+      rgba(201,231,255,.64) 0 calc(var(--star-size, 1.2) * .37px),
+      transparent calc(var(--star-size, 1.2) * 1.08px)
+    ),
+    radial-gradient(
+      circle at 44% 91%,
+      rgba(var(--brand-rgb, 28,198,194),.7) 0 calc(var(--star-size, 1.2) * .45px),
+      transparent calc(var(--star-size, 1.2) * 1.3px)
+    ),
+    radial-gradient(
+      circle at 52% 29%,
+      rgba(255,255,255,.82) 0 calc(var(--star-size, 1.2) * .4px),
+      transparent calc(var(--star-size, 1.2) * 1.16px)
+    ),
+    radial-gradient(
+      circle at 59% 73%,
+      rgba(194,224,255,.62) 0 calc(var(--star-size, 1.2) * .36px),
+      transparent calc(var(--star-size, 1.2) * 1.05px)
+    ),
+    radial-gradient(
+      circle at 67% 11%,
+      rgba(var(--brand-rgb, 28,198,194),.74) 0 calc(var(--star-size, 1.2) * .43px),
+      transparent calc(var(--star-size, 1.2) * 1.2px)
+    ),
+    radial-gradient(
+      circle at 72% 47%,
+      rgba(255,255,255,.74) 0 calc(var(--star-size, 1.2) * .38px),
+      transparent calc(var(--star-size, 1.2) * 1.12px)
+    ),
+    radial-gradient(
+      circle at 81% 82%,
+      rgba(194,224,255,.58) 0 calc(var(--star-size, 1.2) * .34px),
+      transparent calc(var(--star-size, 1.2) * 1.02px)
+    ),
+    radial-gradient(
+      circle at 88% 22%,
+      rgba(var(--brand-rgb, 28,198,194),.72) 0 calc(var(--star-size, 1.2) * .44px),
+      transparent calc(var(--star-size, 1.2) * 1.26px)
+    ),
+    radial-gradient(
+      circle at 94% 59%,
+      rgba(255,255,255,.76) 0 calc(var(--star-size, 1.2) * .4px),
+      transparent calc(var(--star-size, 1.2) * 1.17px)
+    ),
+    radial-gradient(
+      circle at 15% 41%,
+      rgba(var(--brand-rgb, 28,198,194),.2) 0 calc(var(--star-size, 1.2) * 2.1px),
+      transparent calc(var(--star-size, 1.2) * 5.2px)
+    ),
+    radial-gradient(
+      circle at 54% 17%,
+      rgba(255,255,255,.16) 0 calc(var(--star-size, 1.2) * 1.8px),
+      transparent calc(var(--star-size, 1.2) * 4.3px)
+    ),
+    radial-gradient(
+      circle at 76% 63%,
+      rgba(194,224,255,.14) 0 calc(var(--star-size, 1.2) * 1.65px),
+      transparent calc(var(--star-size, 1.2) * 4.1px)
+    ),
+    radial-gradient(
+      circle at 31% 74%,
+      rgba(var(--brand-rgb, 28,198,194),.18) 0 calc(var(--star-size, 1.2) * 2.25px),
+      transparent calc(var(--star-size, 1.2) * 5.5px)
+    );
+  background-size:calc(var(--star-density, 165) * 1px) calc(var(--star-density, 165) * 1.17px);
+  background-position:0 0;
+  opacity:.68;
+  animation:launcharrStarDrift var(--star-speed, 45s) linear infinite;
+  will-change:background-position;
+}
+
+.dash-body.starfield-3d::after{
+  display:none;
 }
 
 html[data-bg-motion="0"] .dash-body::after{
   animation:none;
-  opacity:.16;
+  opacity:.32;
 }
 
 @keyframes launcharrStarDrift{
-  from{transform:translate3d(0,0,0)}
-  to{transform:translate3d(-220px,160px,0)}
+  from{background-position:0 0}
+  to{background-position:-460px 310px}
 }
 
 .dash-frame{
@@ -1006,6 +1126,9 @@ html[data-bg-motion="0"] .dash-body::after{
   border-radius:18px;
   box-shadow:0 30px 70px rgba(0,0,0,.6);
   overflow:hidden;
+  overflow-x:clip;
+  position:relative;
+  z-index:1;
 }
 
 html[data-embedded="1"] .dash-frame{
@@ -1802,7 +1925,10 @@ html[data-sidebar-invert="1"] .sidebar-collapsed .nav-accordion-item:not(.nav-ac
   border-left:3px solid #000;
   border-radius:0 12px 12px 0;
   padding:var(--main-window-pad-top) var(--main-window-gap) var(--main-window-pad-bottom);
-  overflow:auto;
+  overflow-y:auto;
+  overflow-x:hidden;
+  overflow-x:clip;
+  overscroll-behavior-x:none;
   min-height:0;
 }
 
@@ -4164,7 +4290,11 @@ input[type="checkbox"]{
     padding-bottom:calc(8px + env(safe-area-inset-bottom, 0px));
     box-shadow:0 -1px 0 rgba(0,0,0,.35);
   }
-  .dash-main{overflow:visible}
+  .dash-main{
+    overflow-y:visible;
+    overflow-x:hidden;
+    overflow-x:clip;
+  }
   .dash-main{
     width:100%;
     max-width:100%;

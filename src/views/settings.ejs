@@ -20,6 +20,12 @@
         document.documentElement.dataset.sidebarInvert = sidebarInvert ? "1" : "0";
         document.documentElement.dataset.squareCorners = squareCorners ? "1" : "0";
         document.documentElement.dataset.bgMotion = bgMotion ? "1" : "0";
+        var starDensity = 165;
+        var starSpeed = 45;
+        var starSize = 1.2;
+        document.documentElement.style.setProperty("--star-density", String(starDensity));
+        document.documentElement.style.setProperty("--star-speed", String(starSpeed) + "s");
+        document.documentElement.style.setProperty("--star-size", String(starSize));
         var embedded = false;
         try {
           embedded = window.self !== window.top;
@@ -1624,10 +1630,16 @@
       const sidebarInvert = Boolean(options.sidebarInvert);
       const squareCorners = Boolean(options.squareCorners);
       const bgMotion = options.bgMotion !== false;
+      const starDensity = 165;
+      const starSpeed = 45;
+      const starSize = 1.2;
       const carouselFreeScroll = Boolean(options.carouselFreeScroll);
       document.documentElement.dataset.sidebarInvert = sidebarInvert ? '1' : '0';
       document.documentElement.dataset.squareCorners = squareCorners ? '1' : '0';
       document.documentElement.dataset.bgMotion = bgMotion ? '1' : '0';
+      document.documentElement.style.setProperty('--star-density', String(starDensity));
+      document.documentElement.style.setProperty('--star-speed', `${starSpeed}s`);
+      document.documentElement.style.setProperty('--star-size', String(starSize));
       document.documentElement.dataset.carouselFreeScroll = carouselFreeScroll ? '1' : '0';
       safeStorage.set(themeOptionStorageKeys.sidebarInvert, sidebarInvert ? '1' : '0');
       safeStorage.set(themeOptionStorageKeys.squareCorners, squareCorners ? '1' : '0');
@@ -2762,6 +2774,7 @@
     }
   </script>
   <script src="/version-badge.js"></script>
+  <script src="/starfield-3d.js"></script>
   <script src="/pwa.js"></script>
 </body>
 </html>

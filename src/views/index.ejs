@@ -20,6 +20,12 @@
         document.documentElement.dataset.sidebarInvert = sidebarInvert ? "1" : "0";
         document.documentElement.dataset.squareCorners = squareCorners ? "1" : "0";
         document.documentElement.dataset.bgMotion = bgMotion ? "1" : "0";
+        var starDensity = 165;
+        var starSpeed = 45;
+        var starSize = 1.2;
+        document.documentElement.style.setProperty("--star-density", String(starDensity));
+        document.documentElement.style.setProperty("--star-speed", String(starSpeed) + "s");
+        document.documentElement.style.setProperty("--star-size", String(starSize));
         var embedded = false;
         try {
           embedded = window.self !== window.top;
@@ -78,7 +84,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="apple-touch-icon" href="/icons/launcharr-icon.png" />
 </head>
-<body>
+<body class="landing-body">
   <div class="bg-grid"></div>
   <header class="topbar">
     <div class="brand">
@@ -214,6 +220,7 @@
       closeUserMenus();
     });
   </script>
+  <script src="/starfield-3d.js"></script>
   <script src="/pwa.js"></script>
 </body>
 </html>
