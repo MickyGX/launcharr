@@ -27,7 +27,7 @@ This document summarizes project releases from the initial `v0.1.0` baseline to 
 - Improved request-app fallback behavior and diagnostics.
 - Included latest UI/settings refinements from prior v0.2.x work.
 
-Note: release commit message references `v1.0.1`, tagged release is `v0.2.3`.
+Note: this release is published as `v0.2.3` (version naming has been normalized in later release workflow/docs).
 
 ## v0.2.2 (2026-02-13)
 
