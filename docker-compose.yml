@@ -1,6 +1,7 @@
 services:
   launcharr:
     container_name: launcharr
+    image: mickygx/launcharr:development #latest for more stable version
     ports:
       - "3333:3333"
     environment:

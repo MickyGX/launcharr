@@ -40,3 +40,6 @@ seekarr/
 
 # Local private files
 private/
+
+# Local maintenance binaries
+bfg.jar

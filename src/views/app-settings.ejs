@@ -117,7 +117,7 @@
                       <% category.apps.forEach((appItem) => { %>
                         <div class="nav-accordion-item<%= appItem.id === app.id && (!((appItem.favourite || appItem.favorite)) || appItem.navFavourite) ? ' open' : '' %>">
                           <button class="nav-accordion-trigger" type="button">
-                            <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+                            <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'jellyfin', 'emby'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
                             <span class="nav-label"><%= appItem.name %></span>
                           </button>
                           <div class="nav-accordion-panel">
@@ -155,7 +155,7 @@
                 <% category.apps.forEach((appItem) => { %>
                   <div class="nav-accordion-item<%= appItem.id === app.id && (!((appItem.favourite || appItem.favorite)) || appItem.navFavourite) ? ' open' : '' %>">
                     <button class="nav-accordion-trigger" type="button">
-                      <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+                      <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'jellyfin', 'emby'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
                       <span class="nav-label"><%= appItem.name %></span>
                     </button>
                     <div class="nav-accordion-panel">
@@ -244,7 +244,9 @@
         const hasMenu = Boolean(menu.overview || menu.launch || menu.settings);
         const enabled = hasMenu ? Boolean(overview[roleKey] || launch[roleKey] || settingsMenu[roleKey]) : true;
         const hasUrl = Boolean(app.localUrl || app.remoteUrl);
-        const hasToken = app.id === 'plex' ? Boolean(app.plexToken) : true;
+        const hasToken = app.id === 'plex'
+          ? Boolean(app.plexToken)
+          : (['jellyfin', 'emby'].includes(app.id) ? Boolean(app.apiKey) : true);
         const statusOk = enabled && hasUrl && hasToken;
         const isArrSuite = String(app.category || '').toLowerCase() === 'arr suite';
       %>
@@ -253,7 +255,7 @@
           <img class="toggle-icon" src="/icons/sidebar-toggle.svg" alt="" />
         </button>
         <div class="main-window-title">
-          <img class="main-window-icon" src="<%= app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(app.id) ? '/icons/' + app.id + '.png' : '/icons/' + app.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+          <img class="main-window-icon" src="<%= app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'jellyfin', 'emby'].includes(app.id) ? '/icons/' + app.id + '.png' : '/icons/' + app.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
           <span class="main-window-app"><%= app.name %></span>
           <span class="main-window-rest">| Settings</span>
         </div>
@@ -319,13 +321,19 @@
               <div class="plex-settings-note">Tip: Local URL is preferred when set.</div>
             </div>
           <% } %>
-          <% if (app.id === 'tautulli' || isArrSuite) { %>
+          <% if (app.id === 'tautulli' || isArrSuite || app.id === 'jellyfin' || app.id === 'emby') { %>
             <div class="settings-card plex-settings-card">
               <div class="settings-card-title"><%= app.name %> Access</div>
               <div class="settings-card-sub">
-                <%= app.id === 'tautulli'
-                  ? 'Use the API key from Tautulli Settings → Web Interface.'
-                  : `Use the API key from ${app.name} settings.` %>
+                <% if (app.id === 'tautulli') { %>
+                  Use the API key from Tautulli Settings -> Web Interface.
+                <% } else if (app.id === 'jellyfin') { %>
+                  Use the API key from Jellyfin Dashboard -> API Keys.
+                <% } else if (app.id === 'emby') { %>
+                  Use the API key from Emby Dashboard -> API Keys.
+                <% } else { %>
+                  Use the API key from <%= app.name %> settings.
+                <% } %>
               </div>
               <div class="plex-settings-fields">
                 <label class="field">

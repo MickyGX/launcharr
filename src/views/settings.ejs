@@ -116,7 +116,7 @@
                       <% category.apps.forEach((appItem) => { %>
                         <div class="nav-accordion-item">
                           <button class="nav-accordion-trigger" type="button">
-                            <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+                            <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'jellyfin', 'emby'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
                             <span class="nav-label"><%= appItem.name %></span>
                           </button>
                           <div class="nav-accordion-panel">
@@ -154,7 +154,7 @@
                 <% category.apps.forEach((appItem) => { %>
                   <div class="nav-accordion-item">
                     <button class="nav-accordion-trigger" type="button">
-                      <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+                      <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'jellyfin', 'emby'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
                       <span class="nav-label"><%= appItem.name %></span>
                     </button>
                     <div class="nav-accordion-panel">
@@ -521,7 +521,7 @@
                   <div class="settings-row settings-row--display settings-row--draggable <%= adminEnabled ? '' : 'is-disabled' %>" data-category="<%= currentCategory %>" data-category-rank="<%= categoryRank %>" draggable="true">
                     <div class="settings-app settings-app--draggable">
                       <button class="order-button settings-drag-handle settings-drag-handle--app" type="button" title="Drag to reorder within category" aria-label="Drag to reorder within category">&#x2630;</button>
-                      <img class="nav-icon app-icon" src="<%= app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(app.id) ? '/icons/' + app.id + '.png' : '/icons/' + app.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+                      <img class="nav-icon app-icon" src="<%= app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'jellyfin', 'emby'].includes(app.id) ? '/icons/' + app.id + '.png' : '/icons/' + app.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
                       <span class="settings-app-name"><%= app.name %></span>
                     </div>
                     <div class="settings-cell">
@@ -617,7 +617,7 @@
                   <% const rowKey = `${String(item.appId)}-${String(element.id || index)}-${item.combined ? 'combined' : 'single'}`; %>
                   <% const categoryRank = Math.max(0, (categories || []).indexOf(item.category || 'Tools')); %>
                   <% const displayName = item.displayName || element.name; %>
-                  <% const elementIcon = item.iconPath || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(item.appId) ? `/icons/${item.appId}.png` : `/icons/${item.appId}.svg`); %>
+                  <% const elementIcon = item.iconPath || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'jellyfin', 'emby'].includes(item.appId) ? `/icons/${item.appId}.png` : `/icons/${item.appId}.svg`); %>
                   <% const showWatchCardsPanel = item.appId === 'tautulli' && (element.id === 'watch-stats' || element.id === 'watch-stats-wheel') && tautulliItems.length; %>
                   <% const combinedOrderKey = item.combined ? `combined:${item.combinedType || 'mixed'}:${item.combinedSection || element.id || 'unknown'}` : ''; %>
                   <% const combinedOrderValue = combinedOrderKey && dashboardCombinedOrder ? Number(dashboardCombinedOrder[combinedOrderKey]) : NaN; %>
@@ -746,6 +746,30 @@
                           </div>
                         <% } %>
                       <% } %>
+                      <% if (item.combined && item.combinedType === 'media') { %>
+                        <% const mediaSectionKey = item.combinedSection || 'active'; %>
+                        <% const mediaSectionLabel = mediaSectionKey === 'recent' ? 'Recently Added' : 'Active Streams'; %>
+                        <% const combinedMediaApps = (Array.isArray(mediaApps) && mediaApps.length)
+                          ? mediaApps
+                          : (Array.isArray(apps) ? apps.filter((appItem) => ['plex', 'jellyfin', 'emby'].includes(appItem.id)) : []); %>
+                        <div class="settings-card-title">Combined <%= mediaSectionLabel %> Sources</div>
+                        <div class="settings-combined-grid settings-combined-grid--arr" data-section="<%= mediaSectionKey %>">
+                          <% combinedMediaApps.forEach((app) => { %>
+                            <% const iconPath = app.icon || (app.id === 'jellyfin'
+                              ? '/icons/jellyfin.png'
+                              : (app.id === 'emby' ? '/icons/emby.png' : '/icons/plex.png')); %>
+                            <label class="settings-combined-item">
+                              <img class="settings-combined-icon" src="<%= iconPath %>" alt="" onerror="this.src='/icons/app.svg'" />
+                              <span class="settings-combined-name"><%= app.name %></span>
+                              <input
+                                type="checkbox"
+                                name="media_combine_<%= mediaSectionKey %>_<%= app.id %>"
+                                <%= mediaDashboardCombine?.[mediaSectionKey]?.[app.id] ? 'checked' : '' %>
+                              />
+                            </label>
+                          <% }) %>
+                        </div>
+                      <% } %>
                       <% if (item.combined && item.combinedType === 'downloader' && element.id === 'activity-queue') { %>
                         <% const combinedDownloaderApps = (Array.isArray(downloaderApps) && downloaderApps.length)
                           ? downloaderApps
@@ -767,7 +791,7 @@
                           <% combinedDownloaderApps.forEach((app) => { %>
                             <div class="settings-row settings-row--arr-combine">
                               <div class="settings-app">
-                                <img class="nav-icon app-icon" src="<%= app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(app.id) ? '/icons/' + app.id + '.png' : '/icons/' + app.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+                                <img class="nav-icon app-icon" src="<%= app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'jellyfin', 'emby'].includes(app.id) ? '/icons/' + app.id + '.png' : '/icons/' + app.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
                                 <span class="settings-app-name"><%= app.name %></span>
                               </div>
                               <div class="settings-cell settings-cell--blank" aria-hidden="true"></div>
@@ -1241,7 +1265,7 @@
               >
                 <img
                   class="app-settings-switcher-icon nav-icon app-icon"
-                  src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>"
+                  src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'jellyfin', 'emby'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>"
                   alt=""
                   onerror="this.src='/icons/app.svg'"
                 />
@@ -1259,7 +1283,9 @@
               const appHasMenu = Boolean(appMenu.overview || appMenu.launch || appMenu.settings);
               const appEnabled = appHasMenu ? Boolean(appOverview[appRoleKey] || appLaunch[appRoleKey] || appSettingsMenu[appRoleKey]) : true;
               const appHasUrl = Boolean(appItem.localUrl || appItem.remoteUrl);
-              const appHasToken = appItem.id === 'plex' ? Boolean(appItem.plexToken) : true;
+              const appHasToken = appItem.id === 'plex'
+                ? Boolean(appItem.plexToken)
+                : (['jellyfin', 'emby'].includes(appItem.id) ? Boolean(appItem.apiKey) : true);
               const appStatusOk = appEnabled && appHasUrl && appHasToken;
               const appIsArrSuite = String(appItem.category || '').toLowerCase() === 'arr suite';
             %>
@@ -1291,7 +1317,7 @@
                       <input type="text" name="plexAdminUser" value="<%= appAdminOwner %>" placeholder="admin@plex.tv" />
                     </label>
                   <% } %>
-                  <% if (appItem.id === 'tautulli' || appIsArrSuite) { %>
+                  <% if (appItem.id === 'tautulli' || appIsArrSuite || appItem.id === 'jellyfin' || appItem.id === 'emby') { %>
                     <label class="field">
                       <span>API Key</span>
                       <input type="password" name="apiKey" value="<%= appItem.apiKey || '' %>" placeholder="<%= appItem.name %> API key" />
@@ -1321,29 +1347,128 @@
       <div class="settings-tab-panel" data-tab="user">
       <div class="dash-panel">
         <div class="settings-form settings-users">
-          <div class="settings-users-actions">
-            <button class="primary-button" type="button" id="fetchPlexUsersBtn">Fetch users</button>
-            <button class="primary-button" type="button" id="savePlexRolesBtn" disabled>Save roles</button>
-            <span class="settings-users-note" id="plexUsersNote">Pull the user list from Plex to assign roles.</span>
-          </div>
-          <div class="settings-users-table">
-            <div class="settings-users-row settings-users-head">
-              <div class="settings-users-head-cell settings-users-sort" data-sort-key="name" role="button" tabindex="0">
-                <img class="settings-head-icon" src="/icons/name.svg" alt="" />
-                <span>Name</span>
-              </div>
-              <div class="settings-users-head-cell settings-users-sort" data-sort-key="plex" role="button" tabindex="0">
-                <span>Last seen (Plex)</span>
-              </div>
-              <div class="settings-users-head-cell settings-users-sort" data-sort-key="launcharr" role="button" tabindex="0">
-                <span>Last Launcharr login</span>
-              </div>
-              <div class="settings-users-head-cell settings-users-sort" data-sort-key="role" role="button" tabindex="0">
-                <img class="settings-head-icon" src="/icons/role.svg" alt="" />
-                <span>Role</span>
-              </div>
+          <%
+            const localUsersResultMap = {
+              added: 'Launcharr user added.',
+              'role-saved': 'Launcharr user role updated.',
+            };
+            const localUsersNote = localUsersError
+              ? localUsersError
+              : (localUsersResultMap[localUsersResult] || 'Create non-Plex Launcharr users and set access roles.');
+          %>
+          <div class="settings-card">
+            <div class="settings-card-title">Launcharr Users</div>
+            <div class="settings-card-sub">Local accounts can sign in without Plex and use role-based access.</div>
+            <div class="settings-users-actions">
+              <span class="settings-users-note<%= localUsersError ? ' settings-users-note--error' : '' %>"><%= localUsersNote %></span>
             </div>
-            <div id="plexUsersBody"></div>
+            <form method="post" action="/settings/local-users" class="settings-form">
+              <label class="field">
+                <span>Username</span>
+                <input type="text" name="username" placeholder="localuser" required />
+              </label>
+              <label class="field">
+                <span>Email (optional)</span>
+                <input type="email" name="email" placeholder="user@example.com" />
+              </label>
+              <label class="field">
+                <span>Password</span>
+                <input type="password" name="password" placeholder="At least 6 characters" minlength="6" required />
+              </label>
+              <label class="field">
+                <span>Role</span>
+                <select class="settings-select" name="role">
+                  <option value="user">User</option>
+                  <option value="co-admin">Co-admin</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </label>
+              <button class="primary-button" type="submit">Add Launcharr user</button>
+            </form>
+            <div class="settings-users-table">
+              <div class="settings-users-row settings-users-head">
+                <div class="settings-users-head-cell">
+                  <img class="settings-head-icon" src="/icons/name.svg" alt="" />
+                  <span>User</span>
+                </div>
+                <div class="settings-users-head-cell">
+                  <span>Email</span>
+                </div>
+                <div class="settings-users-head-cell">
+                  <span>Last Launcharr login</span>
+                </div>
+                <div class="settings-users-head-cell">
+                  <img class="settings-head-icon" src="/icons/role.svg" alt="" />
+                  <span>Role</span>
+                </div>
+              </div>
+              <% if (Array.isArray(localUsers) && localUsers.length) { %>
+                <% localUsers.forEach((localUser) => { %>
+                  <%
+                    const localLogin = localUser.lastLauncharrLogin && !Number.isNaN(Date.parse(localUser.lastLauncharrLogin))
+                      ? new Date(localUser.lastLauncharrLogin).toLocaleString()
+                      : '—';
+                  %>
+                  <div class="settings-users-row">
+                    <div class="settings-users-name">
+                      <%= localUser.username %>
+                      <% if (localUser.isCurrentSessionUser) { %>
+                        <span class="settings-users-locked">Current session</span>
+                      <% } %>
+                    </div>
+                    <div class="settings-users-login"><%= localUser.email || '—' %></div>
+                    <div class="settings-users-login" title="<%= localUser.lastLauncharrLogin || '' %>"><%= localLogin %></div>
+                    <div class="settings-users-role">
+                      <form method="post" action="/settings/local-users/role" class="settings-role-inline-form">
+                        <input type="hidden" name="username" value="<%= localUser.username %>" />
+                        <select name="role">
+                          <option value="user" <%= localUser.role === 'user' ? 'selected' : '' %>>User</option>
+                          <option value="co-admin" <%= localUser.role === 'co-admin' ? 'selected' : '' %>>Co-admin</option>
+                          <option value="admin" <%= localUser.role === 'admin' ? 'selected' : '' %>>Admin</option>
+                        </select>
+                        <button class="primary-button" type="submit">Save</button>
+                      </form>
+                    </div>
+                  </div>
+                <% }) %>
+              <% } else { %>
+                <div class="settings-users-row">
+                  <div class="settings-users-login">No local Launcharr users found.</div>
+                  <div class="settings-users-login">—</div>
+                  <div class="settings-users-login">—</div>
+                  <div class="settings-users-login">—</div>
+                </div>
+              <% } %>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-title">Plex Users</div>
+            <div class="settings-card-sub">Pull users from Plex and assign Launcharr roles.</div>
+            <div class="settings-users-actions">
+              <button class="primary-button" type="button" id="fetchPlexUsersBtn">Fetch users</button>
+              <button class="primary-button" type="button" id="savePlexRolesBtn" disabled>Save roles</button>
+              <span class="settings-users-note" id="plexUsersNote">Pull the user list from Plex to assign roles.</span>
+            </div>
+            <div class="settings-users-table">
+              <div class="settings-users-row settings-users-head">
+                <div class="settings-users-head-cell settings-users-sort" data-sort-key="name" role="button" tabindex="0">
+                  <img class="settings-head-icon" src="/icons/name.svg" alt="" />
+                  <span>Name</span>
+                </div>
+                <div class="settings-users-head-cell settings-users-sort" data-sort-key="plex" role="button" tabindex="0">
+                  <span>Last seen (Plex)</span>
+                </div>
+                <div class="settings-users-head-cell settings-users-sort" data-sort-key="launcharr" role="button" tabindex="0">
+                  <span>Last Launcharr login</span>
+                </div>
+                <div class="settings-users-head-cell settings-users-sort" data-sort-key="role" role="button" tabindex="0">
+                  <img class="settings-head-icon" src="/icons/role.svg" alt="" />
+                  <span>Role</span>
+                </div>
+              </div>
+              <div id="plexUsersBody"></div>
+            </div>
           </div>
         </div>
       </div>

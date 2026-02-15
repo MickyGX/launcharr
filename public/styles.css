@@ -727,8 +727,8 @@ html[data-brand-theme="readarr"]{
 }
 
 .login-brand-mark img{
-  width:52px;
-  height:52px;
+  width:72px;
+  height:72px;
   display:block;
   filter:drop-shadow(0 6px 14px rgba(var(--brand-rgb),.45));
 }
@@ -1227,6 +1227,7 @@ html[data-square-corners="1"] .plex-poster-well,
 html[data-square-corners="1"] .plex-pill,
 html[data-square-corners="1"] .plex-type-icon,
 html[data-square-corners="1"] .plex-eye-icon,
+html[data-square-corners="1"] .plex-source-icon,
 html[data-square-corners="1"] .plex-watchlist-btn,
 html[data-square-corners="1"] .prowlarr-row,
 html[data-square-corners="1"] .queue-table,
@@ -2270,7 +2271,8 @@ html[data-sidebar-invert="1"] .sidebar-collapsed .nav-accordion-item:not(.nav-ac
 }
 
 [data-theme="day"] .plex-type-icon,
-[data-theme="day"] .plex-eye-icon{
+[data-theme="day"] .plex-eye-icon,
+[data-theme="day"] .plex-source-icon{
   background:rgba(255,255,255,.85);
   border-color:rgba(10,20,30,.2);
 }
@@ -4011,6 +4013,23 @@ input[type="checkbox"]{
   min-height:30px;
 }
 
+.settings-role-inline-form{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  width:100%;
+}
+
+.settings-role-inline-form select{
+  flex:1 1 auto;
+  min-width:0;
+}
+
+.settings-role-inline-form .primary-button{
+  min-height:30px;
+  padding:0 12px;
+}
+
 .settings-users-locked{
   font-size:9px;
   text-transform:uppercase;
@@ -4690,6 +4709,16 @@ input[type="checkbox"]{
     padding:5px 6px;
     min-height:28px;
   }
+  .settings-role-inline-form{
+    flex-direction:column;
+    align-items:stretch;
+    gap:6px;
+  }
+  .settings-role-inline-form .primary-button{
+    width:100%;
+    min-height:28px;
+    padding:0 8px;
+  }
   .settings-select{
     max-width:130px;
   }
@@ -5290,10 +5319,19 @@ input[type="checkbox"]{
   position:absolute;width:28px;height:24px;border-radius:8px;background:rgba(20,24,36,.92);
   border:2px solid rgba(255,255,255,.22);display:grid;place-items:center;
 }
-.plex-type-icon{top:3px;left:3px;border-radius:6px}
-.plex-eye-icon{right:3px;bottom:3px;cursor:pointer}
+.plex-type-icon{top:3px;left:3px;border-radius:6px;z-index:3;pointer-events:none}
+.plex-eye-icon{right:3px;bottom:3px;cursor:pointer;z-index:5;pointer-events:auto}
 .plex-eye-icon:hover{filter:brightness(1.1)}
 .plex-type-icon svg,.plex-eye-icon svg{width:16px;height:16px;opacity:.95}
+.plex-source-icon{
+  position:absolute;left:3px;bottom:3px;width:28px;height:24px;border-radius:8px;background:rgba(20,24,36,.92);
+  border:2px solid rgba(255,255,255,.22);display:grid;place-items:center;overflow:hidden;padding:2px;
+  z-index:4;
+  pointer-events:none;
+}
+.plex-source-icon img{
+  width:16px;height:16px;display:block;object-fit:contain;filter:none;
+}
 
 .plex-watchlist-btn{
   position:absolute;

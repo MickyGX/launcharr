@@ -76,6 +76,130 @@
     "launchMode": "iframe"
   },
   {
+    "id": "jellyfin",
+    "name": "Jellyfin",
+    "icon": "/icons/jellyfin.png",
+    "url": "http://localhost:8096/web/index.html",
+    "description": "Media server",
+    "category": "Media",
+    "roles": [
+      "admin",
+      "user"
+    ],
+    "apiKey": "",
+    "username": "",
+    "password": "",
+    "localUrl": "http://localhost:8096/web/index.html",
+    "remoteUrl": "",
+    "menu": {
+      "overview": {
+        "user": true,
+        "admin": true
+      },
+      "launch": {
+        "user": true,
+        "admin": true
+      },
+      "settings": {
+        "user": false,
+        "admin": true
+      }
+    },
+    "order": 2,
+    "favourite": false,
+    "overviewElements": [
+      {
+        "id": "active",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "showSubtitle": true,
+        "showMeta": true,
+        "showPill": true,
+        "showTypeIcon": true,
+        "showViewIcon": true,
+        "showUsername": true,
+        "order": 1
+      },
+      {
+        "id": "recent",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "showSubtitle": true,
+        "showMeta": true,
+        "showPill": true,
+        "showTypeIcon": true,
+        "showViewIcon": true,
+        "showUsername": true,
+        "order": 2
+      }
+    ],
+    "launchMode": "iframe"
+  },
+  {
+    "id": "emby",
+    "name": "Emby",
+    "icon": "/icons/emby.png",
+    "url": "http://localhost:8096/web/index.html",
+    "description": "Media server",
+    "category": "Media",
+    "roles": [
+      "admin",
+      "user"
+    ],
+    "apiKey": "",
+    "username": "",
+    "password": "",
+    "localUrl": "http://localhost:8096/web/index.html",
+    "remoteUrl": "",
+    "menu": {
+      "overview": {
+        "user": true,
+        "admin": true
+      },
+      "launch": {
+        "user": true,
+        "admin": true
+      },
+      "settings": {
+        "user": false,
+        "admin": true
+      }
+    },
+    "order": 3,
+    "favourite": false,
+    "overviewElements": [
+      {
+        "id": "active",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "showSubtitle": true,
+        "showMeta": true,
+        "showPill": true,
+        "showTypeIcon": true,
+        "showViewIcon": true,
+        "showUsername": true,
+        "order": 1
+      },
+      {
+        "id": "recent",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "showSubtitle": true,
+        "showMeta": true,
+        "showPill": true,
+        "showTypeIcon": true,
+        "showViewIcon": true,
+        "showUsername": true,
+        "order": 2
+      }
+    ],
+    "launchMode": "iframe"
+  },
+  {
     "id": "tautulli",
     "name": "Tautulli",
     "url": "http://localhost:8181",

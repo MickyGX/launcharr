@@ -32,7 +32,8 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const ADMIN_USERS = parseCsv(process.env.ADMIN_USERS || '');
 const ARR_APP_IDS = ['radarr', 'sonarr', 'lidarr', 'readarr'];
 const DOWNLOADER_APP_IDS = ['transmission', 'nzbget'];
-const DEFAULT_CATEGORY_ORDER = ['Admin', 'Media', 'Manager', 'Arr Suite', 'Downloaders', 'Tools'];
+const MEDIA_APP_IDS = ['plex', 'jellyfin', 'emby'];
+const DEFAULT_CATEGORY_ORDER = ['Admin', 'Media', 'Manager', 'Games', 'Arr Suite', 'Downloaders', 'Tools'];
 const DEFAULT_CATEGORY_ICON = '/icons/category.svg';
 const ARR_COMBINE_SECTIONS = [
   { key: 'downloadingSoon', elementId: 'downloading-soon' },
@@ -43,11 +44,23 @@ const ARR_COMBINE_SECTIONS = [
 const DOWNLOADER_COMBINE_SECTIONS = [
   { key: 'activityQueue', elementId: 'activity-queue' },
 ];
+const MEDIA_COMBINE_SECTIONS = [
+  { key: 'active', elementId: 'active' },
+  { key: 'recent', elementId: 'recent' },
+];
 const APP_OVERVIEW_ELEMENTS = {
   plex: [
     { id: 'active', name: 'Active Streams' },
     { id: 'recent', name: 'Recently Added' },
     { id: 'watchlisted', name: 'Most Watchlisted This Week' },
+  ],
+  jellyfin: [
+    { id: 'active', name: 'Active Streams' },
+    { id: 'recent', name: 'Recently Added' },
+  ],
+  emby: [
+    { id: 'active', name: 'Active Streams' },
+    { id: 'recent', name: 'Recently Added' },
   ],
   tautulli: [
     { id: 'watch-stats', name: 'Watch Statistics' },
@@ -304,13 +317,40 @@ function normalizeLocalUsers(items) {
       return {
         username,
         email,
-        role: role === 'admin' || role === 'co-admin' ? role : 'admin',
+        role: normalizeLocalRole(role, 'admin'),
         passwordHash,
         salt,
         createdAt: entry.createdAt ? String(entry.createdAt) : new Date().toISOString(),
       };
     })
     .filter(Boolean);
+}
+
+function normalizeLocalRole(value, fallback = 'user') {
+  const role = String(value || '').trim().toLowerCase();
+  if (role === 'admin' || role === 'co-admin' || role === 'user') return role;
+  const fallbackRole = String(fallback || '').trim().toLowerCase();
+  if (fallbackRole === 'admin' || fallbackRole === 'co-admin' || fallbackRole === 'user') return fallbackRole;
+  return 'user';
+}
+
+function isValidEmail(value) {
+  const email = String(value || '').trim();
+  if (!email) return false;
+  return email.includes('@');
+}
+
+function findLocalUserIndex(users, identity = {}) {
+  const username = normalizeUserKey(identity.username || '');
+  const email = normalizeUserKey(identity.email || '');
+  if (!Array.isArray(users) || !users.length) return -1;
+  return users.findIndex((entry) => {
+    const entryUsername = normalizeUserKey(entry?.username || '');
+    const entryEmail = normalizeUserKey(entry?.email || '');
+    if (username && entryUsername === username) return true;
+    if (email && entryEmail && entryEmail === email) return true;
+    return false;
+  });
 }
 
 function resolveLocalUsers(config) {
@@ -901,6 +941,7 @@ app.get('/dashboard', requireUser, (req, res) => {
   const categoryOrder = categoryEntries.map((entry) => entry.name);
   const appBaseUrls = buildAppBaseUrls(apps, req);
   const arrDashboardCombine = resolveArrDashboardCombineSettings(config, apps);
+  const mediaDashboardCombine = resolveMediaDashboardCombineSettings(config, apps);
   const arrCombinedQueueDisplay = resolveCombinedQueueDisplaySettings(config, 'arrCombinedQueueDisplay');
   const downloaderCombinedQueueDisplay = resolveCombinedQueueDisplaySettings(config, 'downloaderCombinedQueueDisplay');
   const downloaderDashboardCombine = resolveDownloaderDashboardCombineSettings(config, apps);
@@ -943,6 +984,7 @@ app.get('/dashboard', requireUser, (req, res) => {
       ...item,
       arrCombined: null,
       downloaderCombined: null,
+      mediaCombined: null,
     }));
 
   const buildSectionModules = (appIds, elementId) => appIds
@@ -981,6 +1023,7 @@ app.get('/dashboard', requireUser, (req, res) => {
         appNames: combinedApps.map((item) => item.app.name),
       },
       downloaderCombined: null,
+      mediaCombined: null,
     };
     const insertIndex = dashboardModules.findIndex((item) =>
       ARR_APP_IDS.includes(item.app.id) && item.element.id === section.elementId
@@ -1009,6 +1052,7 @@ app.get('/dashboard', requireUser, (req, res) => {
         appNames: combinedApps.map((item) => item.app.name),
       },
       arrCombined: null,
+      mediaCombined: null,
     };
     const insertIndex = dashboardModules.findIndex((item) =>
       DOWNLOADER_APP_IDS.includes(item.app.id) && item.element.id === section.elementId
@@ -1016,9 +1060,39 @@ app.get('/dashboard', requireUser, (req, res) => {
     dashboardModules.splice(insertIndex === -1 ? dashboardModules.length : insertIndex, 0, combinedEntry);
   });
 
+  MEDIA_COMBINE_SECTIONS.forEach((section) => {
+    const combinedKey = `combined:media:${section.key}`;
+    const combinedSettings = dashboardCombinedSettings[combinedKey];
+    if (combinedSettings && (!combinedSettings.enable || !combinedSettings.dashboard)) return;
+    const sectionModules = buildSectionModules(MEDIA_APP_IDS, section.elementId);
+    const combinedModules = sectionModules.filter((item) =>
+      Boolean(mediaDashboardCombine?.[section.key]?.[item.app.id])
+    );
+    const combinedApps = combinedModules.length ? combinedModules : sectionModules;
+    if (!combinedApps.length) return;
+
+    const leader = combinedApps[0];
+    const combinedEntry = {
+      ...leader,
+      mediaCombined: {
+        sectionKey: section.key,
+        elementId: section.elementId,
+        appIds: combinedApps.map((item) => item.app.id),
+        appNames: combinedApps.map((item) => item.app.name),
+      },
+      arrCombined: null,
+      downloaderCombined: null,
+    };
+    const insertIndex = dashboardModules.findIndex((item) =>
+      MEDIA_APP_IDS.includes(item.app.id) && item.element.id === section.elementId
+    );
+    dashboardModules.splice(insertIndex === -1 ? dashboardModules.length : insertIndex, 0, combinedEntry);
+  });
+
   const getCombinedOrderKey = (item) => {
     if (item?.arrCombined) return `combined:arr:${item.arrCombined.sectionKey}`;
     if (item?.downloaderCombined) return `combined:downloader:${item.downloaderCombined.sectionKey}`;
+    if (item?.mediaCombined) return `combined:media:${item.mediaCombined.sectionKey}`;
     return '';
   };
   const getDashboardOrder = (item) => {
@@ -1043,6 +1117,7 @@ app.get('/dashboard', requireUser, (req, res) => {
     appBaseUrls,
     dashboardModules,
     arrDashboardCombine,
+    mediaDashboardCombine,
     arrCombinedQueueDisplay,
     downloaderCombinedQueueDisplay,
     downloaderDashboardCombine,
@@ -1195,6 +1270,7 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
   const categoryIcons = getCategoryIconOptions();
   const appIcons = getAppIconOptions(apps);
   const arrDashboardCombine = resolveArrDashboardCombineSettings(config, apps);
+  const mediaDashboardCombine = resolveMediaDashboardCombineSettings(config, apps);
   const arrCombinedQueueDisplay = resolveCombinedQueueDisplaySettings(config, 'arrCombinedQueueDisplay');
   const downloaderCombinedQueueDisplay = resolveCombinedQueueDisplaySettings(config, 'downloaderCombinedQueueDisplay');
   const downloaderDashboardCombine = resolveDownloaderDashboardCombineSettings(config, apps);
@@ -1209,6 +1285,26 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
   const notificationSettings = resolveNotificationSettings(config);
   const notificationResult = String(req.query?.notificationResult || '').trim();
   const notificationError = String(req.query?.notificationError || '').trim();
+  const localUsersResult = String(req.query?.localUsersResult || '').trim();
+  const localUsersError = String(req.query?.localUsersError || '').trim();
+  const localLoginStore = resolveUserLogins(config).launcharr || {};
+  const sessionUser = req.session?.user || {};
+  const sessionUsernameKey = normalizeUserKey(sessionUser.username || '');
+  const sessionEmailKey = normalizeUserKey(sessionUser.email || '');
+  const localUsers = resolveLocalUsers(config).map((entry) => {
+    const usernameKey = normalizeUserKey(entry.username || '');
+    const emailKey = normalizeUserKey(entry.email || '');
+    const loginKey = emailKey || usernameKey;
+    const isCurrentSessionUser = Boolean(
+      sessionUsernameKey && sessionUsernameKey === usernameKey
+      || (sessionEmailKey && emailKey && sessionEmailKey === emailKey)
+    );
+    return {
+      ...entry,
+      isCurrentSessionUser,
+      lastLauncharrLogin: loginKey ? String(localLoginStore[loginKey] || '') : '',
+    };
+  });
   const rankCategory = buildCategoryRank(categoryOrder);
   const role = getEffectiveRole(req);
   const actualRole = getActualRole(req);
@@ -1277,24 +1373,42 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     return updated;
   };
 
-  const combinedDashboardElements = applyCombinedDashboardElements(
-    applyCombinedDashboardElements(baseDashboardElements, {
-      appIds: ARR_APP_IDS,
-      sections: ARR_COMBINE_SECTIONS,
-      combineMap: arrDashboardCombine,
-      labelPrefix: 'Combined',
-      iconPath: '/icons/arr-suite.svg',
-      combinedType: 'arr',
-    }),
-    {
-      appIds: DOWNLOADER_APP_IDS,
-      sections: DOWNLOADER_COMBINE_SECTIONS,
-      combineMap: downloaderDashboardCombine,
-      labelPrefix: 'Combined',
-      iconPath: '/icons/download.svg',
-      combinedType: 'downloader',
-    }
-  );
+  const arrCombinedElements = applyCombinedDashboardElements(baseDashboardElements, {
+    appIds: ARR_APP_IDS,
+    sections: ARR_COMBINE_SECTIONS,
+    combineMap: arrDashboardCombine,
+    labelPrefix: 'Combined',
+    iconPath: '/icons/arr-suite.svg',
+    combinedType: 'arr',
+  });
+  const downloaderCombinedElements = applyCombinedDashboardElements(arrCombinedElements, {
+    appIds: DOWNLOADER_APP_IDS,
+    sections: DOWNLOADER_COMBINE_SECTIONS,
+    combineMap: downloaderDashboardCombine,
+    labelPrefix: 'Combined',
+    iconPath: '/icons/download.svg',
+    combinedType: 'downloader',
+  });
+  const combinedDashboardElements = applyCombinedDashboardElements(downloaderCombinedElements, {
+    appIds: MEDIA_APP_IDS,
+    sections: MEDIA_COMBINE_SECTIONS,
+    combineMap: mediaDashboardCombine,
+    labelPrefix: 'Combined',
+    iconPath: '/icons/media-play.svg',
+    combinedType: 'media',
+  });
+  const normalizedCombinedDashboardElements = combinedDashboardElements.map((item) => {
+    if (!item?.combined || item.combinedType !== 'media') return item;
+    const selectedApps = Array.isArray(item.combinedApps) ? item.combinedApps.filter(Boolean) : [];
+    if (selectedApps.length !== 1) return item;
+    const sourceId = selectedApps[0];
+    const iconPath = sourceId === 'jellyfin'
+      ? '/icons/jellyfin.png'
+      : (sourceId === 'emby'
+        ? '/icons/emby.png'
+        : (sourceId === 'plex' ? '/icons/plex.png' : item.iconPath));
+    return { ...item, iconPath };
+  });
 
   const getCombinedOrderKey = (item) => {
     if (!item || !item.combined) return '';
@@ -1310,7 +1424,7 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     const orderValue = Number(item?.element?.order);
     return Number.isFinite(orderValue) ? orderValue : 0;
   };
-  const dashboardElements = combinedDashboardElements.sort((a, b) => {
+  const dashboardElements = normalizedCombinedDashboardElements.sort((a, b) => {
     const orderDelta = getDashboardOrder(a) - getDashboardOrder(b);
     if (orderDelta !== 0) return orderDelta;
     const appNameDelta = String(a.appName || '').localeCompare(String(b.appName || ''));
@@ -1343,6 +1457,8 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     arrApps: settingsApps.filter((appItem) => ARR_APP_IDS.includes(appItem.id)),
     arrDashboardCombine,
     arrCombinedQueueDisplay,
+    mediaApps: settingsApps.filter((appItem) => MEDIA_APP_IDS.includes(appItem.id)),
+    mediaDashboardCombine,
     downloaderApps: apps.filter((appItem) => DOWNLOADER_APP_IDS.includes(appItem.id)),
     downloaderDashboardCombine,
     downloaderCombinedQueueDisplay,
@@ -1351,6 +1467,9 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     notificationSettings,
     notificationResult,
     notificationError,
+    localUsers,
+    localUsersResult,
+    localUsersError,
     navCategories,
     coAdmins: loadCoAdmins(),
     role,
@@ -1389,6 +1508,13 @@ app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
       dashboard: Boolean(req.body[`dashboard_combined_downloader_${section.key}_dashboard`]),
     };
   });
+  MEDIA_COMBINE_SECTIONS.forEach((section) => {
+    const mapKey = `combined:media:${section.key}`;
+    dashboardCombinedSettings[mapKey] = {
+      enable: Boolean(req.body[`dashboard_combined_media_${section.key}_enable`]),
+      dashboard: Boolean(req.body[`dashboard_combined_media_${section.key}_dashboard`]),
+    };
+  });
   const apps = (config.apps || []).map((appItem) => ({
     ...appItem,
     overviewElements: buildDashboardElementsFromRequest(appItem, req.body),
@@ -1414,6 +1540,16 @@ app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
       .forEach((appItem) => {
         const field = `downloader_combine_${section.key}_${appItem.id}`;
         downloaderDashboardCombine[section.key][appItem.id] = Boolean(req.body[field]);
+      });
+  });
+  const mediaDashboardCombine = resolveMediaDashboardCombineSettings(config, apps);
+  MEDIA_COMBINE_SECTIONS.forEach((section) => {
+    mediaDashboardCombine[section.key] = mediaDashboardCombine[section.key] || {};
+    apps
+      .filter((appItem) => MEDIA_APP_IDS.includes(appItem.id))
+      .forEach((appItem) => {
+        const field = `media_combine_${section.key}_${appItem.id}`;
+        mediaDashboardCombine[section.key][appItem.id] = Boolean(req.body[field]);
       });
   });
   const arrCombinedQueueDisplay = resolveCombinedQueueDisplaySettings(config, 'arrCombinedQueueDisplay');
@@ -1444,6 +1580,7 @@ app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
     ...config,
     apps,
     arrDashboardCombine,
+    mediaDashboardCombine,
     downloaderDashboardCombine,
     arrCombinedQueueDisplay,
     downloaderCombinedQueueDisplay,
@@ -1463,6 +1600,15 @@ app.get('/user-settings', requireUser, (req, res) => {
   const navApps = getNavApps(apps, role, req, categoryOrder);
   const navCategories = buildNavCategories(navApps, categoryEntries);
   const generalSettings = resolveGeneralSettings(config);
+  const profileResult = String(req.query?.profileResult || '').trim();
+  const profileError = String(req.query?.profileError || '').trim();
+  const localUsers = resolveLocalUsers(config);
+  const localUserIndex = findLocalUserIndex(localUsers, {
+    username: req.session?.user?.username,
+    email: req.session?.user?.email,
+  });
+  const localProfile = localUserIndex >= 0 ? localUsers[localUserIndex] : null;
+  const isLocalUser = String(req.session?.user?.source || '').trim().toLowerCase() === 'local' && Boolean(localProfile);
 
   res.render('user-settings', {
     user: req.session.user,
@@ -1470,7 +1616,145 @@ app.get('/user-settings', requireUser, (req, res) => {
     actualRole,
     navCategories,
     generalSettings,
+    isLocalUser,
+    localProfile,
+    profileResult,
+    profileError,
   });
+});
+
+app.post('/user-settings/profile', requireUser, (req, res) => {
+  const source = String(req.session?.user?.source || '').trim().toLowerCase();
+  if (source !== 'local') {
+    return res.redirect('/user-settings?profileError=Only+local+Launcharr+accounts+can+edit+profile+details.');
+  }
+
+  const config = loadConfig();
+  const users = resolveLocalUsers(config);
+  const index = findLocalUserIndex(users, {
+    username: req.session?.user?.username,
+    email: req.session?.user?.email,
+  });
+  if (index < 0) {
+    return res.redirect('/user-settings?profileError=Local+account+record+was+not+found.');
+  }
+
+  const currentUser = users[index];
+  const username = String(req.body?.username || '').trim();
+  const email = String(req.body?.email || '').trim();
+  const newPassword = String(req.body?.newPassword || '');
+  const confirmPassword = String(req.body?.confirmPassword || '');
+
+  if (!username) {
+    return res.redirect('/user-settings?profileError=Username+is+required.');
+  }
+  if (email && !isValidEmail(email)) {
+    return res.redirect('/user-settings?profileError=A+valid+email+is+required.');
+  }
+  if (newPassword && newPassword.length < LOCAL_AUTH_MIN_PASSWORD) {
+    return res.redirect(`/user-settings?profileError=Password+must+be+at+least+${LOCAL_AUTH_MIN_PASSWORD}+characters.`);
+  }
+  if (newPassword && newPassword !== confirmPassword) {
+    return res.redirect('/user-settings?profileError=Passwords+do+not+match.');
+  }
+
+  const nextUsernameKey = normalizeUserKey(username);
+  const nextEmailKey = normalizeUserKey(email);
+  const duplicate = users.find((entry, entryIndex) => {
+    if (entryIndex === index) return false;
+    const entryUsername = normalizeUserKey(entry?.username || '');
+    const entryEmail = normalizeUserKey(entry?.email || '');
+    if (entryUsername && nextUsernameKey && entryUsername === nextUsernameKey) return true;
+    if (entryEmail && nextEmailKey && entryEmail === nextEmailKey) return true;
+    return false;
+  });
+  if (duplicate) {
+    return res.redirect('/user-settings?profileError=Username+or+email+is+already+in+use.');
+  }
+
+  const nextUser = {
+    ...currentUser,
+    username,
+    email,
+  };
+  if (newPassword) {
+    const salt = crypto.randomBytes(16).toString('hex');
+    nextUser.salt = salt;
+    nextUser.passwordHash = hashPassword(newPassword, salt);
+  }
+
+  const nextUsers = [...users];
+  nextUsers[index] = nextUser;
+  saveConfig({ ...config, users: nextUsers });
+  setSessionUser(req, nextUser, 'local');
+
+  return res.redirect('/user-settings?profileResult=saved');
+});
+
+app.post('/settings/local-users', requireSettingsAdmin, (req, res) => {
+  const config = loadConfig();
+  const users = resolveLocalUsers(config);
+  const username = String(req.body?.username || '').trim();
+  const email = String(req.body?.email || '').trim();
+  const password = String(req.body?.password || '');
+  const role = normalizeLocalRole(req.body?.role, 'user');
+
+  if (!username) return res.redirect('/settings?tab=user&localUsersError=Username+is+required.');
+  if (email && !isValidEmail(email)) return res.redirect('/settings?tab=user&localUsersError=A+valid+email+is+required.');
+  if (!password || password.length < LOCAL_AUTH_MIN_PASSWORD) {
+    return res.redirect(`/settings?tab=user&localUsersError=Password+must+be+at+least+${LOCAL_AUTH_MIN_PASSWORD}+characters.`);
+  }
+
+  const usernameKey = normalizeUserKey(username);
+  const emailKey = normalizeUserKey(email);
+  const duplicate = users.find((entry) => {
+    const entryUsername = normalizeUserKey(entry?.username || '');
+    const entryEmail = normalizeUserKey(entry?.email || '');
+    if (entryUsername && usernameKey && entryUsername === usernameKey) return true;
+    if (entryEmail && emailKey && entryEmail === emailKey) return true;
+    return false;
+  });
+  if (duplicate) return res.redirect('/settings?tab=user&localUsersError=Username+or+email+already+exists.');
+
+  const salt = crypto.randomBytes(16).toString('hex');
+  const newUser = {
+    username,
+    email,
+    role,
+    salt,
+    passwordHash: hashPassword(password, salt),
+    createdAt: new Date().toISOString(),
+  };
+  saveConfig({ ...config, users: [...users, newUser] });
+  return res.redirect('/settings?tab=user&localUsersResult=added');
+});
+
+app.post('/settings/local-users/role', requireSettingsAdmin, (req, res) => {
+  const config = loadConfig();
+  const users = resolveLocalUsers(config);
+  const username = String(req.body?.username || '').trim();
+  const role = normalizeLocalRole(req.body?.role, 'user');
+  if (!username) return res.redirect('/settings?tab=user&localUsersError=Missing+username.');
+  const index = users.findIndex((entry) => normalizeUserKey(entry?.username || '') === normalizeUserKey(username));
+  if (index < 0) return res.redirect('/settings?tab=user&localUsersError=Launcharr+user+not+found.');
+
+  const currentSessionSource = String(req.session?.user?.source || '').trim().toLowerCase();
+  const isCurrentSessionUser = currentSessionSource === 'local'
+    && normalizeUserKey(req.session?.user?.username || '') === normalizeUserKey(users[index].username || '');
+  if (isCurrentSessionUser && role !== 'admin') {
+    return res.redirect('/settings?tab=user&localUsersError=You+cannot+change+your+current+session+role+away+from+admin.');
+  }
+  if (users[index].role === 'admin' && role !== 'admin') {
+    const otherAdminExists = users.some((entry, entryIndex) => entryIndex !== index && entry.role === 'admin');
+    if (!otherAdminExists) {
+      return res.redirect('/settings?tab=user&localUsersError=At+least+one+local+admin+is+required.');
+    }
+  }
+
+  const nextUsers = [...users];
+  nextUsers[index] = { ...nextUsers[index], role };
+  saveConfig({ ...config, users: nextUsers });
+  return res.redirect('/settings?tab=user&localUsersResult=role-saved');
 });
 
 // DEPRECATED: Legacy endpoint kept for compatibility with older clients.
@@ -1602,6 +1886,16 @@ app.post('/settings/apps', requireSettingsAdmin, (req, res) => {
         downloaderDashboardCombine[section.key][appItem.id] = Boolean(req.body[field]);
       });
   });
+  const mediaDashboardCombine = resolveMediaDashboardCombineSettings(config, apps);
+  MEDIA_COMBINE_SECTIONS.forEach((section) => {
+    mediaDashboardCombine[section.key] = mediaDashboardCombine[section.key] || {};
+    apps
+      .filter((appItem) => MEDIA_APP_IDS.includes(appItem.id))
+      .forEach((appItem) => {
+        const field = `media_combine_${section.key}_${appItem.id}`;
+        mediaDashboardCombine[section.key][appItem.id] = Boolean(req.body[field]);
+      });
+  });
   const arrCombinedQueueDisplay = resolveCombinedQueueDisplaySettings(config, 'arrCombinedQueueDisplay');
   arrCombinedQueueDisplay.queueShowDetail = Boolean(req.body.arr_combined_queue_col_detail);
   arrCombinedQueueDisplay.queueShowSubDetail = Boolean(req.body.arr_combined_queue_col_subdetail);
@@ -1630,6 +1924,7 @@ app.post('/settings/apps', requireSettingsAdmin, (req, res) => {
     ...config,
     apps,
     arrDashboardCombine,
+    mediaDashboardCombine,
     downloaderDashboardCombine,
     arrCombinedQueueDisplay,
     downloaderCombinedQueueDisplay,
@@ -2330,6 +2625,607 @@ app.post('/api/plex/discovery/watchlist', requireUser, async (req, res) => {
       message: safeMessage(err) || 'Failed to update watchlist.',
     });
     return res.status(502).json({ error: safeMessage(err) || 'Failed to update watchlist.' });
+  }
+});
+
+function resolveJellyfinCandidates(appItem, req) {
+  return uniqueList([
+    normalizeBaseUrl(appItem?.remoteUrl || ''),
+    normalizeBaseUrl(resolveLaunchUrl(appItem, req)),
+    normalizeBaseUrl(appItem?.localUrl || ''),
+    normalizeBaseUrl(appItem?.url || ''),
+  ]).filter(Boolean);
+}
+
+function resolveEmbyCandidates(appItem, req) {
+  return uniqueList([
+    normalizeBaseUrl(appItem?.remoteUrl || ''),
+    normalizeBaseUrl(resolveLaunchUrl(appItem, req)),
+    normalizeBaseUrl(appItem?.localUrl || ''),
+    normalizeBaseUrl(appItem?.url || ''),
+  ]).filter(Boolean);
+}
+
+function buildJellyfinImageUrl({ baseUrl, itemId, type, apiKey, tag = '', index = '' }) {
+  if (!baseUrl || !itemId || !type) return '';
+  const safeType = String(type).trim();
+  const safeId = encodeURIComponent(String(itemId).trim());
+  const url = new URL(`/Items/${safeId}/Images/${safeType}${index !== '' ? `/${encodeURIComponent(String(index))}` : ''}`, baseUrl);
+  if (apiKey) url.searchParams.set('api_key', apiKey);
+  if (tag) url.searchParams.set('tag', String(tag));
+  url.searchParams.set('quality', '90');
+  return url.toString();
+}
+
+function buildEmbyImageUrl({ baseUrl, itemId, type, apiKey, tag = '', index = '' }) {
+  if (!baseUrl || !itemId || !type) return '';
+  const safeType = String(type).trim();
+  const safeId = encodeURIComponent(String(itemId).trim());
+  const url = new URL(`/emby/Items/${safeId}/Images/${safeType}${index !== '' ? `/${encodeURIComponent(String(index))}` : ''}`, baseUrl);
+  if (apiKey) url.searchParams.set('api_key', apiKey);
+  if (tag) url.searchParams.set('tag', String(tag));
+  url.searchParams.set('quality', '90');
+  return url.toString();
+}
+
+function formatDurationFromTicks(ticks) {
+  const value = Number(ticks);
+  if (!Number.isFinite(value) || value <= 0) return '';
+  const totalMinutes = Math.round(value / 10000000 / 60);
+  if (!Number.isFinite(totalMinutes) || totalMinutes <= 0) return '';
+  if (totalMinutes >= 60) {
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+  }
+  return `${totalMinutes}m`;
+}
+
+function formatRelativeTime(value) {
+  const parsed = Date.parse(String(value || ''));
+  if (!Number.isFinite(parsed)) return '';
+  const diffMs = Date.now() - parsed;
+  const diffMinutes = Math.max(1, Math.round(diffMs / 60000));
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 48) return `${diffHours}h ago`;
+  const diffDays = Math.round(diffHours / 24);
+  return `${diffDays}d ago`;
+}
+
+function toPaddedEpisode(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return '';
+  return String(Math.floor(numeric)).padStart(2, '0');
+}
+
+function mapJellyfinKind(typeValue) {
+  const raw = String(typeValue || '').trim().toLowerCase();
+  if (raw === 'movie' || raw === 'trailer') return 'movie';
+  return 'tv';
+}
+
+async function fetchJellyfinJson({ candidates, apiKey, path, query }) {
+  let lastError = '';
+  for (let index = 0; index < candidates.length; index += 1) {
+    const baseUrl = candidates[index];
+    if (!baseUrl) continue;
+    const upstreamUrl = new URL(path, baseUrl);
+    Object.entries(query || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === '') return;
+      upstreamUrl.searchParams.set(key, String(value));
+    });
+    if (apiKey) upstreamUrl.searchParams.set('api_key', apiKey);
+
+    try {
+      const upstreamRes = await fetch(upstreamUrl.toString(), {
+        headers: {
+          Accept: 'application/json',
+          'X-Emby-Token': apiKey,
+        },
+      });
+      const text = await upstreamRes.text();
+      if (!upstreamRes.ok) {
+        const bodyMessage = String(text || '').trim();
+        lastError = `Jellyfin request failed (${upstreamRes.status}) via ${baseUrl}${bodyMessage ? `: ${bodyMessage.slice(0, 220)}` : ''}`;
+        continue;
+      }
+      try {
+        return { baseUrl, payload: JSON.parse(text || '{}') };
+      } catch (err) {
+        lastError = `Invalid JSON response from Jellyfin via ${baseUrl}.`;
+      }
+    } catch (err) {
+      const reason = safeMessage(err) || 'fetch failed';
+      lastError = `${reason} via ${baseUrl}`;
+    }
+  }
+  throw new Error(lastError || 'Failed to reach Jellyfin.');
+}
+
+async function fetchJellyfinRecentItems({ candidates, apiKey, limit, mediaType }) {
+  const usersResponse = await fetchJellyfinJson({
+    candidates,
+    apiKey,
+    path: '/Users',
+    query: {},
+  });
+  const users = Array.isArray(usersResponse.payload) ? usersResponse.payload : [];
+  const activeUser = users.find((user) => !user?.Policy?.IsDisabled) || users[0];
+  const userId = String(activeUser?.Id || '').trim();
+  if (!userId) throw new Error('No Jellyfin user available for latest items.');
+
+  const includeItemTypes = mediaType === 'movie'
+    ? 'Movie'
+    : (mediaType === 'show' ? 'Series,Episode' : 'Movie,Series,Episode');
+
+  const latestResponse = await fetchJellyfinJson({
+    candidates,
+    apiKey,
+    path: `/Users/${encodeURIComponent(userId)}/Items/Latest`,
+    query: {
+      Limit: limit,
+      IncludeItemTypes: includeItemTypes,
+      Fields: 'Overview,ProviderIds',
+      ImageTypeLimit: 1,
+      EnableImageTypes: 'Primary,Backdrop',
+    },
+  });
+  const items = Array.isArray(latestResponse.payload) ? latestResponse.payload : [];
+  return { baseUrl: latestResponse.baseUrl, items };
+}
+
+async function fetchEmbyJson({ candidates, apiKey, path, query }) {
+  let lastError = '';
+  const pathCandidates = [path, `/emby${path}`];
+  for (let index = 0; index < candidates.length; index += 1) {
+    const baseUrl = candidates[index];
+    if (!baseUrl) continue;
+    for (let pathIndex = 0; pathIndex < pathCandidates.length; pathIndex += 1) {
+      const attemptPath = pathCandidates[pathIndex];
+      const upstreamUrl = new URL(attemptPath, baseUrl);
+      Object.entries(query || {}).forEach(([key, value]) => {
+        if (value === undefined || value === null || value === '') return;
+        upstreamUrl.searchParams.set(key, String(value));
+      });
+      if (apiKey) upstreamUrl.searchParams.set('api_key', apiKey);
+
+      try {
+        const upstreamRes = await fetch(upstreamUrl.toString(), {
+          headers: {
+            Accept: 'application/json',
+            'X-Emby-Token': apiKey,
+          },
+        });
+        const text = await upstreamRes.text();
+        if (!upstreamRes.ok) {
+          const bodyMessage = String(text || '').trim();
+          lastError = `Emby request failed (${upstreamRes.status}) via ${baseUrl}${bodyMessage ? `: ${bodyMessage.slice(0, 220)}` : ''}`;
+          continue;
+        }
+        try {
+          return { baseUrl, payload: JSON.parse(text || '{}') };
+        } catch (err) {
+          lastError = `Invalid JSON response from Emby via ${baseUrl}.`;
+        }
+      } catch (err) {
+        const reason = safeMessage(err) || 'fetch failed';
+        lastError = `${reason} via ${baseUrl}`;
+      }
+    }
+  }
+  throw new Error(lastError || 'Failed to reach Emby.');
+}
+
+async function fetchEmbyRecentItems({ candidates, apiKey, limit, mediaType }) {
+  const usersResponse = await fetchEmbyJson({
+    candidates,
+    apiKey,
+    path: '/Users',
+    query: {},
+  });
+  const users = Array.isArray(usersResponse.payload) ? usersResponse.payload : [];
+  const activeUser = users.find((user) => !user?.Policy?.IsDisabled) || users[0];
+  const userId = String(activeUser?.Id || '').trim();
+  if (!userId) throw new Error('No Emby user available for latest items.');
+
+  const includeItemTypes = mediaType === 'movie'
+    ? 'Movie'
+    : (mediaType === 'show' ? 'Series,Episode' : 'Movie,Series,Episode');
+
+  const latestResponse = await fetchEmbyJson({
+    candidates,
+    apiKey,
+    path: `/Users/${encodeURIComponent(userId)}/Items/Latest`,
+    query: {
+      Limit: limit,
+      IncludeItemTypes: includeItemTypes,
+      Fields: 'Overview,ProviderIds',
+      ImageTypeLimit: 1,
+      EnableImageTypes: 'Primary,Backdrop',
+    },
+  });
+  const items = Array.isArray(latestResponse.payload) ? latestResponse.payload : [];
+  return { baseUrl: latestResponse.baseUrl, items };
+}
+
+app.get('/api/jellyfin/active', requireUser, async (req, res) => {
+  const config = loadConfig();
+  const apps = config.apps || [];
+  const jellyfinApp = apps.find((appItem) => appItem.id === 'jellyfin');
+  if (!jellyfinApp) return res.status(404).json({ error: 'Jellyfin app is not configured.' });
+  if (!canAccess(jellyfinApp, getEffectiveRole(req), 'overview')) {
+    return res.status(403).json({ error: 'Jellyfin overview access denied.' });
+  }
+
+  const apiKey = String(jellyfinApp.apiKey || '').trim();
+  if (!apiKey) return res.status(400).json({ error: 'Missing Jellyfin API key.' });
+
+  const candidates = resolveJellyfinCandidates(jellyfinApp, req);
+  if (!candidates.length) return res.status(400).json({ error: 'Missing Jellyfin URL.' });
+
+  try {
+    const sessionResponse = await fetchJellyfinJson({
+      candidates,
+      apiKey,
+      path: '/Sessions',
+      query: { ActiveWithinSeconds: 21600 },
+    });
+    const sessions = Array.isArray(sessionResponse.payload) ? sessionResponse.payload : [];
+    const items = sessions
+      .filter((session) => session && session.NowPlayingItem && session.NowPlayingItem.Id)
+      .map((session) => {
+        const media = session.NowPlayingItem || {};
+        const kind = mapJellyfinKind(media.Type);
+        const seriesName = String(media.SeriesName || '').trim();
+        const season = toPaddedEpisode(media.ParentIndexNumber);
+        const episode = toPaddedEpisode(media.IndexNumber);
+        const episodeCode = season && episode ? `S${season}E${episode}` : '';
+        const subtitle = kind === 'tv'
+          ? [seriesName || String(media.Name || '').trim(), episodeCode].filter(Boolean).join(' ')
+          : '';
+        const runtime = formatDurationFromTicks(media.RunTimeTicks);
+        const user = String(session.UserName || '').trim();
+        const device = String(session.Client || session.DeviceName || '').trim();
+        const playState = session.PlayState || {};
+        const progress = Number(media.RunTimeTicks) > 0
+          ? Math.max(0, Math.min(100, Math.round((Number(playState.PositionTicks || 0) / Number(media.RunTimeTicks)) * 100)))
+          : 0;
+        const stateLabel = playState.IsPaused ? 'Paused' : 'Playing';
+        const meta = [runtime, device].filter(Boolean).join(' • ');
+        const pill = progress > 0 ? `${stateLabel} ${progress}%` : stateLabel;
+        const primaryTag = String(media.PrimaryImageTag || '').trim();
+        const backdropTag = Array.isArray(media.BackdropImageTags) && media.BackdropImageTags.length
+          ? String(media.BackdropImageTags[0] || '').trim()
+          : '';
+        return {
+          id: String(media.Id || ''),
+          title: String(media.Name || '').trim() || 'Now Playing',
+          subtitle,
+          meta,
+          pill,
+          kind,
+          user,
+          overview: String(media.Overview || '').trim(),
+          thumb: buildJellyfinImageUrl({
+            baseUrl: sessionResponse.baseUrl,
+            itemId: media.Id,
+            type: 'Primary',
+            apiKey,
+            tag: primaryTag,
+          }),
+          art: backdropTag
+            ? buildJellyfinImageUrl({
+              baseUrl: sessionResponse.baseUrl,
+              itemId: media.Id,
+              type: 'Backdrop',
+              index: '0',
+              apiKey,
+              tag: backdropTag,
+            })
+            : '',
+        };
+      });
+    pushLog({
+      level: 'info',
+      app: 'jellyfin',
+      action: 'overview.active',
+      message: 'Jellyfin active sessions fetched.',
+      meta: { count: items.length },
+    });
+    return res.json({ items });
+  } catch (err) {
+    pushLog({
+      level: 'error',
+      app: 'jellyfin',
+      action: 'overview.active',
+      message: safeMessage(err) || 'Failed to fetch Jellyfin active sessions.',
+    });
+    return res.status(502).json({ error: safeMessage(err) || 'Failed to fetch Jellyfin active sessions.' });
+  }
+});
+
+app.get('/api/jellyfin/recent', requireUser, async (req, res) => {
+  const config = loadConfig();
+  const apps = config.apps || [];
+  const jellyfinApp = apps.find((appItem) => appItem.id === 'jellyfin');
+  if (!jellyfinApp) return res.status(404).json({ error: 'Jellyfin app is not configured.' });
+  if (!canAccess(jellyfinApp, getEffectiveRole(req), 'overview')) {
+    return res.status(403).json({ error: 'Jellyfin overview access denied.' });
+  }
+
+  const apiKey = String(jellyfinApp.apiKey || '').trim();
+  if (!apiKey) return res.status(400).json({ error: 'Missing Jellyfin API key.' });
+
+  const candidates = resolveJellyfinCandidates(jellyfinApp, req);
+  if (!candidates.length) return res.status(400).json({ error: 'Missing Jellyfin URL.' });
+
+  const rawLimit = Number(req.query?.limit);
+  const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(50, rawLimit)) : 20;
+  const requestedType = String(req.query?.type || 'movie').trim().toLowerCase();
+  const mediaType = requestedType === 'show' || requestedType === 'all' ? requestedType : 'movie';
+
+  try {
+    const recentResponse = await fetchJellyfinRecentItems({
+      candidates,
+      apiKey,
+      limit,
+      mediaType,
+    });
+    const items = recentResponse.items.map((media) => {
+      const kind = mapJellyfinKind(media.Type);
+      const seriesName = String(media.SeriesName || '').trim();
+      const season = toPaddedEpisode(media.ParentIndexNumber);
+      const episode = toPaddedEpisode(media.IndexNumber);
+      const episodeCode = season && episode ? `S${season}E${episode}` : '';
+      const subtitle = kind === 'tv'
+        ? [seriesName || String(media.Name || '').trim(), episodeCode].filter(Boolean).join(' ')
+        : '';
+      const runtime = formatDurationFromTicks(media.RunTimeTicks);
+      const year = Number(media.ProductionYear);
+      const yearText = Number.isFinite(year) && year > 0 ? String(year) : '';
+      const meta = [yearText, runtime].filter(Boolean).join(' • ');
+      const pill = formatRelativeTime(media.DateCreated) || 'Recently added';
+      const primaryTag = String(media.PrimaryImageTag || '').trim();
+      const backdropTag = Array.isArray(media.BackdropImageTags) && media.BackdropImageTags.length
+        ? String(media.BackdropImageTags[0] || '').trim()
+        : '';
+      const providerIds = media.ProviderIds && typeof media.ProviderIds === 'object' ? media.ProviderIds : {};
+      return {
+        id: String(media.Id || ''),
+        title: String(media.Name || '').trim() || 'Untitled',
+        subtitle,
+        meta,
+        pill,
+        kind,
+        overview: String(media.Overview || '').trim(),
+        imdbId: String(providerIds.Imdb || providerIds.IMDB || '').trim(),
+        tmdbId: String(providerIds.Tmdb || providerIds.TMDB || '').trim(),
+        thumb: buildJellyfinImageUrl({
+          baseUrl: recentResponse.baseUrl,
+          itemId: media.Id,
+          type: 'Primary',
+          apiKey,
+          tag: primaryTag,
+        }),
+        art: backdropTag
+          ? buildJellyfinImageUrl({
+            baseUrl: recentResponse.baseUrl,
+            itemId: media.Id,
+            type: 'Backdrop',
+            index: '0',
+            apiKey,
+            tag: backdropTag,
+          })
+          : '',
+      };
+    });
+    pushLog({
+      level: 'info',
+      app: 'jellyfin',
+      action: 'overview.recent',
+      message: 'Jellyfin recent items fetched.',
+      meta: { count: items.length, type: mediaType },
+    });
+    return res.json({ items });
+  } catch (err) {
+    pushLog({
+      level: 'error',
+      app: 'jellyfin',
+      action: 'overview.recent',
+      message: safeMessage(err) || 'Failed to fetch Jellyfin recent items.',
+    });
+    return res.status(502).json({ error: safeMessage(err) || 'Failed to fetch Jellyfin recent items.' });
+  }
+});
+
+app.get('/api/emby/active', requireUser, async (req, res) => {
+  const config = loadConfig();
+  const apps = config.apps || [];
+  const embyApp = apps.find((appItem) => appItem.id === 'emby');
+  if (!embyApp) return res.status(404).json({ error: 'Emby app is not configured.' });
+  if (!canAccess(embyApp, getEffectiveRole(req), 'overview')) {
+    return res.status(403).json({ error: 'Emby overview access denied.' });
+  }
+
+  const apiKey = String(embyApp.apiKey || '').trim();
+  if (!apiKey) return res.status(400).json({ error: 'Missing Emby API key.' });
+
+  const candidates = resolveEmbyCandidates(embyApp, req);
+  if (!candidates.length) return res.status(400).json({ error: 'Missing Emby URL.' });
+
+  try {
+    const sessionResponse = await fetchEmbyJson({
+      candidates,
+      apiKey,
+      path: '/Sessions',
+      query: { ActiveWithinSeconds: 21600 },
+    });
+    const sessions = Array.isArray(sessionResponse.payload) ? sessionResponse.payload : [];
+    const items = sessions
+      .filter((session) => session && session.NowPlayingItem && session.NowPlayingItem.Id)
+      .map((session) => {
+        const media = session.NowPlayingItem || {};
+        const kind = mapJellyfinKind(media.Type);
+        const seriesName = String(media.SeriesName || '').trim();
+        const season = toPaddedEpisode(media.ParentIndexNumber);
+        const episode = toPaddedEpisode(media.IndexNumber);
+        const episodeCode = season && episode ? `S${season}E${episode}` : '';
+        const subtitle = kind === 'tv'
+          ? [seriesName || String(media.Name || '').trim(), episodeCode].filter(Boolean).join(' ')
+          : '';
+        const runtime = formatDurationFromTicks(media.RunTimeTicks);
+        const user = String(session.UserName || '').trim();
+        const device = String(session.Client || session.DeviceName || '').trim();
+        const playState = session.PlayState || {};
+        const progress = Number(media.RunTimeTicks) > 0
+          ? Math.max(0, Math.min(100, Math.round((Number(playState.PositionTicks || 0) / Number(media.RunTimeTicks)) * 100)))
+          : 0;
+        const stateLabel = playState.IsPaused ? 'Paused' : 'Playing';
+        const meta = [runtime, device].filter(Boolean).join(' • ');
+        const pill = progress > 0 ? `${stateLabel} ${progress}%` : stateLabel;
+        const primaryTag = String(media.PrimaryImageTag || '').trim();
+        const backdropTag = Array.isArray(media.BackdropImageTags) && media.BackdropImageTags.length
+          ? String(media.BackdropImageTags[0] || '').trim()
+          : '';
+        return {
+          id: String(media.Id || ''),
+          title: String(media.Name || '').trim() || 'Now Playing',
+          subtitle,
+          meta,
+          pill,
+          kind,
+          user,
+          overview: String(media.Overview || '').trim(),
+          thumb: buildEmbyImageUrl({
+            baseUrl: sessionResponse.baseUrl,
+            itemId: media.Id,
+            type: 'Primary',
+            apiKey,
+            tag: primaryTag,
+          }),
+          art: backdropTag
+            ? buildEmbyImageUrl({
+              baseUrl: sessionResponse.baseUrl,
+              itemId: media.Id,
+              type: 'Backdrop',
+              index: '0',
+              apiKey,
+              tag: backdropTag,
+            })
+            : '',
+        };
+      });
+    pushLog({
+      level: 'info',
+      app: 'emby',
+      action: 'overview.active',
+      message: 'Emby active sessions fetched.',
+      meta: { count: items.length },
+    });
+    return res.json({ items });
+  } catch (err) {
+    pushLog({
+      level: 'error',
+      app: 'emby',
+      action: 'overview.active',
+      message: safeMessage(err) || 'Failed to fetch Emby active sessions.',
+    });
+    return res.status(502).json({ error: safeMessage(err) || 'Failed to fetch Emby active sessions.' });
+  }
+});
+
+app.get('/api/emby/recent', requireUser, async (req, res) => {
+  const config = loadConfig();
+  const apps = config.apps || [];
+  const embyApp = apps.find((appItem) => appItem.id === 'emby');
+  if (!embyApp) return res.status(404).json({ error: 'Emby app is not configured.' });
+  if (!canAccess(embyApp, getEffectiveRole(req), 'overview')) {
+    return res.status(403).json({ error: 'Emby overview access denied.' });
+  }
+
+  const apiKey = String(embyApp.apiKey || '').trim();
+  if (!apiKey) return res.status(400).json({ error: 'Missing Emby API key.' });
+
+  const candidates = resolveEmbyCandidates(embyApp, req);
+  if (!candidates.length) return res.status(400).json({ error: 'Missing Emby URL.' });
+
+  const rawLimit = Number(req.query?.limit);
+  const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(50, rawLimit)) : 20;
+  const requestedType = String(req.query?.type || 'movie').trim().toLowerCase();
+  const mediaType = requestedType === 'show' || requestedType === 'all' ? requestedType : 'movie';
+
+  try {
+    const recentResponse = await fetchEmbyRecentItems({
+      candidates,
+      apiKey,
+      limit,
+      mediaType,
+    });
+    const items = recentResponse.items.map((media) => {
+      const kind = mapJellyfinKind(media.Type);
+      const seriesName = String(media.SeriesName || '').trim();
+      const season = toPaddedEpisode(media.ParentIndexNumber);
+      const episode = toPaddedEpisode(media.IndexNumber);
+      const episodeCode = season && episode ? `S${season}E${episode}` : '';
+      const subtitle = kind === 'tv'
+        ? [seriesName || String(media.Name || '').trim(), episodeCode].filter(Boolean).join(' ')
+        : '';
+      const runtime = formatDurationFromTicks(media.RunTimeTicks);
+      const year = Number(media.ProductionYear);
+      const yearText = Number.isFinite(year) && year > 0 ? String(year) : '';
+      const meta = [yearText, runtime].filter(Boolean).join(' • ');
+      const pill = formatRelativeTime(media.DateCreated) || 'Recently added';
+      const primaryTag = String(media.PrimaryImageTag || '').trim();
+      const backdropTag = Array.isArray(media.BackdropImageTags) && media.BackdropImageTags.length
+        ? String(media.BackdropImageTags[0] || '').trim()
+        : '';
+      const providerIds = media.ProviderIds && typeof media.ProviderIds === 'object' ? media.ProviderIds : {};
+      return {
+        id: String(media.Id || ''),
+        title: String(media.Name || '').trim() || 'Untitled',
+        subtitle,
+        meta,
+        pill,
+        kind,
+        overview: String(media.Overview || '').trim(),
+        imdbId: String(providerIds.Imdb || providerIds.IMDB || '').trim(),
+        tmdbId: String(providerIds.Tmdb || providerIds.TMDB || '').trim(),
+        thumb: buildEmbyImageUrl({
+          baseUrl: recentResponse.baseUrl,
+          itemId: media.Id,
+          type: 'Primary',
+          apiKey,
+          tag: primaryTag,
+        }),
+        art: backdropTag
+          ? buildEmbyImageUrl({
+            baseUrl: recentResponse.baseUrl,
+            itemId: media.Id,
+            type: 'Backdrop',
+            index: '0',
+            apiKey,
+            tag: backdropTag,
+          })
+          : '',
+      };
+    });
+    pushLog({
+      level: 'info',
+      app: 'emby',
+      action: 'overview.recent',
+      message: 'Emby recent items fetched.',
+      meta: { count: items.length, type: mediaType },
+    });
+    return res.json({ items });
+  } catch (err) {
+    pushLog({
+      level: 'error',
+      app: 'emby',
+      action: 'overview.recent',
+      message: safeMessage(err) || 'Failed to fetch Emby recent items.',
+    });
+    return res.status(502).json({ error: safeMessage(err) || 'Failed to fetch Emby recent items.' });
   }
 });
 
@@ -3719,6 +4615,10 @@ function getDefaultSystemIconOptions() {
     'seerr.png',
     'plex.svg',
     'plex.png',
+    'jellyfin.svg',
+    'jellyfin.png',
+    'emby.svg',
+    'emby.png',
     'radarr.svg',
     'radarr.png',
     'sonarr.svg',
@@ -4413,6 +5313,30 @@ function resolveDownloaderDashboardCombineSettings(config, apps) {
   });
 
   return DOWNLOADER_COMBINE_SECTIONS.reduce((acc, section) => {
+    const sectionValue = (configured && typeof configured[section.key] === 'object' && configured[section.key])
+      ? configured[section.key]
+      : {};
+    acc[section.key] = appIds.reduce((sectionAcc, appId) => {
+      sectionAcc[appId] = hasConfigured ? Boolean(sectionValue[appId]) : true;
+      return sectionAcc;
+    }, {});
+    return acc;
+  }, {});
+}
+
+function resolveMediaDashboardCombineSettings(config, apps) {
+  const configured = (config && typeof config.mediaDashboardCombine === 'object' && config.mediaDashboardCombine)
+    ? config.mediaDashboardCombine
+    : {};
+  const appIds = (Array.isArray(apps) ? apps : [])
+    .map((appItem) => String(appItem?.id || '').trim().toLowerCase())
+    .filter((id) => MEDIA_APP_IDS.includes(id));
+  const hasConfigured = MEDIA_COMBINE_SECTIONS.some((section) => {
+    const sectionValue = configured && typeof configured[section.key] === 'object' ? configured[section.key] : null;
+    return sectionValue && Object.keys(sectionValue).length > 0;
+  });
+
+  return MEDIA_COMBINE_SECTIONS.reduce((acc, section) => {
     const sectionValue = (configured && typeof configured[section.key] === 'object' && configured[section.key])
       ? configured[section.key]
       : {};
@@ -5222,6 +6146,7 @@ async function completePlexLogin(req, authToken) {
     email: plexUser.email || null,
     avatar,
     role,
+    source: 'plex',
   };
   req.session.viewRole = null;
   req.session.authToken = authToken;

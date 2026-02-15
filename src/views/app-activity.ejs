@@ -117,7 +117,7 @@
                       <% category.apps.forEach((appItem) => { %>
                         <div class="nav-accordion-item<%= appItem.id === app.id && (!((appItem.favourite || appItem.favorite)) || appItem.navFavourite) ? ' open' : '' %>">
                           <button class="nav-accordion-trigger" type="button">
-                            <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+                            <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'jellyfin', 'emby'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
                             <span class="nav-label"><%= appItem.name %></span>
                           </button>
                           <div class="nav-accordion-panel">
@@ -155,7 +155,7 @@
                 <% category.apps.forEach((appItem) => { %>
                   <div class="nav-accordion-item<%= appItem.id === app.id && (!((appItem.favourite || appItem.favorite)) || appItem.navFavourite) ? ' open' : '' %>">
                     <button class="nav-accordion-trigger" type="button">
-                      <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+                      <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'jellyfin', 'emby'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
                       <span class="nav-label"><%= appItem.name %></span>
                     </button>
                     <div class="nav-accordion-panel">

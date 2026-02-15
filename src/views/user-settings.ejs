@@ -116,7 +116,7 @@
                       <% category.apps.forEach((appItem) => { %>
                         <div class="nav-accordion-item">
                           <button class="nav-accordion-trigger" type="button">
-                            <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+                            <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'jellyfin', 'emby'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
                             <span class="nav-label"><%= appItem.name %></span>
                           </button>
                           <div class="nav-accordion-panel">
@@ -154,7 +154,7 @@
                 <% category.apps.forEach((appItem) => { %>
                   <div class="nav-accordion-item">
                     <button class="nav-accordion-trigger" type="button">
-                      <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+                      <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'jellyfin', 'emby'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
                       <span class="nav-label"><%= appItem.name %></span>
                     </button>
                     <div class="nav-accordion-panel">
@@ -251,17 +251,53 @@
           <h2>User Profile</h2>
           <span class="panel-sub">Profile and view mode</span>
         </div>
+        <%
+          const profileResultMap = {
+            saved: 'Profile details updated.',
+          };
+          const profileNote = profileError
+            ? profileError
+            : (profileResultMap[profileResult] || (isLocalUser
+              ? 'Update your Launcharr account details.'
+              : 'This profile is managed by your Plex account.'));
+        %>
         <div class="settings-form">
           <div class="settings-card">
             <div class="settings-card-title">Profile</div>
-            <div class="settings-card-sub">Plex account details</div>
-            <div class="settings-card-lines">
-              <div class="settings-card-line"><span>Username</span><strong><%= user.username %></strong></div>
-              <% if (user.email) { %>
-                <div class="settings-card-line"><span>Email</span><strong><%= user.email %></strong></div>
-              <% } %>
-              <div class="settings-card-line"><span>Role</span><strong><%= role %></strong></div>
-            </div>
+            <div class="settings-card-sub"><%= isLocalUser ? 'Launcharr account details' : 'Plex account details' %></div>
+            <span class="settings-users-note<%= profileError ? ' settings-users-note--error' : '' %>"><%= profileNote %></span>
+            <% if (isLocalUser) { %>
+              <form method="post" action="/user-settings/profile" class="settings-form">
+                <label class="field">
+                  <span>Username</span>
+                  <input type="text" name="username" value="<%= localProfile?.username || user.username || '' %>" required />
+                </label>
+                <label class="field">
+                  <span>Email (optional)</span>
+                  <input type="email" name="email" value="<%= localProfile?.email || user.email || '' %>" />
+                </label>
+                <label class="field">
+                  <span>New password (optional)</span>
+                  <input type="password" name="newPassword" placeholder="Leave blank to keep current password" />
+                </label>
+                <label class="field">
+                  <span>Confirm new password</span>
+                  <input type="password" name="confirmPassword" placeholder="Repeat new password" />
+                </label>
+                <button class="primary-button" type="submit">Save profile details</button>
+              </form>
+              <div class="settings-card-lines">
+                <div class="settings-card-line"><span>Role</span><strong><%= localProfile?.role || actualRole %></strong></div>
+              </div>
+            <% } else { %>
+              <div class="settings-card-lines">
+                <div class="settings-card-line"><span>Username</span><strong><%= user.username %></strong></div>
+                <% if (user.email) { %>
+                  <div class="settings-card-line"><span>Email</span><strong><%= user.email %></strong></div>
+                <% } %>
+                <div class="settings-card-line"><span>Role</span><strong><%= role %></strong></div>
+              </div>
+            <% } %>
           </div>
 
           <% if (actualRole === 'admin') { %>
