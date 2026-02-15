@@ -18,3 +18,24 @@ Recommended publish order:
 6. `Troubleshooting.md`
 7. `FAQ.md`
 8. `Release-Checklist.md`
+
+## Publish To GitHub Wiki
+
+From repository root:
+
+```bash
+chmod +x scripts/publish-wiki.sh
+scripts/publish-wiki.sh
+```
+
+If your `origin` remote is not the target repo:
+
+```bash
+scripts/publish-wiki.sh --repo owner/repo
+```
+
+Preview without pushing:
+
+```bash
+scripts/publish-wiki.sh --dry-run
+```
