@@ -2,12 +2,23 @@
 
 ## v0.2.7 (2026-02-16)
 
-- [Added]
-- [Changed]
-- [Fixed]
+- Added `qBittorrent` and `SABnzbd` as default apps (with uploaded icons) in sidebar/default app management.
+- Added downloader queue support for `qBittorrent` and `SABnzbd`, including combined download queue card compatibility.
+- Added `qBittorrent` and `SABnzbd` to downloader combined-source selection and queue-card rendering across dashboard/app overview.
+- Changed Combined Download Queue source settings UI to use the same source-pill formatting as other combined cards.
+- Fixed Prowlarr API key field visibility in both settings locations (`Settings -> Apps` and per-app settings page).
+
+## v0.2.6 (2026-02-16)
+
+- Added Jellyfin and Emby dashboard/app-overview parity for media cards (active streams, recently added, and combined media support).
+- Added multi-instance support for Radarr, Sonarr, and Bazarr with instance tabs and instance-specific naming/selection.
+- Added dashboard manager improvements for add/remove card workflows, including combined card management and clearer source selection.
+- Added default app add/remove controls in sidebar manager, with re-add flow for removed default apps.
+- Improved downloader/media icon consistency across sidebar, dashboard manager, and combined card selectors.
+- Fixed empty-state behavior for active stream modules to align card output across Plex/Jellyfin/Emby and combined views.
 
 
-This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.5`.
+This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.7`.
 
 ## v0.2.5 (2026-02-15)
 
