@@ -1,4 +1,11 @@
-# Release Notes (v0.1.0 -> v0.2.5)
+# Release Notes (v0.1.0 -> v0.2.7)
+
+## v0.2.7 (2026-02-16)
+
+- [Added]
+- [Changed]
+- [Fixed]
+
 
 This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.5`.
 
