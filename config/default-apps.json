@@ -849,6 +849,72 @@
     "plexToken": ""
   },
   {
+    "id": "qbittorrent",
+    "name": "qBittorrent",
+    "url": "http://localhost:8080",
+    "description": "Torrent client",
+    "category": "Downloaders",
+    "roles": [
+      "hidden"
+    ],
+    "apiKey": "",
+    "username": "",
+    "password": "",
+    "menu": {
+      "overview": {
+        "user": false,
+        "admin": true
+      },
+      "launch": {
+        "user": true,
+        "admin": true
+      },
+      "settings": {
+        "user": false,
+        "admin": true
+      }
+    },
+    "order": 3,
+    "favourite": false,
+    "launchMode": "iframe",
+    "localUrl": "http://localhost:8080",
+    "remoteUrl": "",
+    "plexToken": ""
+  },
+  {
+    "id": "sabnzbd",
+    "name": "SABnzbd",
+    "url": "http://localhost:8085",
+    "description": "Usenet client",
+    "category": "Downloaders",
+    "roles": [
+      "hidden"
+    ],
+    "apiKey": "",
+    "username": "",
+    "password": "",
+    "menu": {
+      "overview": {
+        "user": false,
+        "admin": true
+      },
+      "launch": {
+        "user": true,
+        "admin": true
+      },
+      "settings": {
+        "user": false,
+        "admin": true
+      }
+    },
+    "order": 4,
+    "favourite": false,
+    "launchMode": "iframe",
+    "localUrl": "http://localhost:8085",
+    "remoteUrl": "",
+    "plexToken": ""
+  },
+  {
     "id": "nzbget",
     "name": "NZBGet",
     "url": "http://localhost:6789",

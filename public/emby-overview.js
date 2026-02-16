@@ -250,6 +250,27 @@
     var rows = Array.isArray(items) ? items : [];
     if (!rows.length) {
       var emptyMessage = options && options.emptyMessage ? options.emptyMessage : 'No items found.';
+      var emptyCard = options && options.emptyCard;
+      if (emptyCard) {
+        var emptyTitle = options && options.emptyTitle ? String(options.emptyTitle) : 'No items found';
+        var emptySubtitle = options && options.emptySubtitle ? String(options.emptySubtitle) : 'Check back soon';
+        track.innerHTML =
+          '<div class="plex-card">' +
+            '<div class="plex-poster-wrap">' +
+              '<div class="plex-poster-well" style="height:calc(var(--plex-posterH) * 1px);display:flex;align-items:center;justify-content:center">' +
+                '<div class="plex-placeholder" style="height:100%;width:100%;justify-content:center">' +
+                  '<div class="plex-placeholder-big">' + escapeHtml(emptyTitle) + '</div>' +
+                  '<div class="plex-placeholder-small">' + escapeHtml(emptySubtitle) + '</div>' +
+                '</div>' +
+              '</div>' +
+            '</div>' +
+            '<div class="plex-footer">' +
+              '<div class="plex-name">All quiet</div>' +
+              '<div class="plex-meta">Check back soon</div>' +
+            '</div>' +
+          '</div>';
+        return;
+      }
       track.innerHTML = '<div class="plex-empty">' + escapeHtml(emptyMessage) + '</div>';
       return;
     }
@@ -300,7 +321,12 @@
     fetchJson('/api/emby/active', function (payload) {
       var rows = Array.isArray(payload && payload.items) ? payload.items : [];
       track.__embyItems = rows;
-      renderTrack(track, rows, settings, { emptyMessage: 'No active streams.' });
+      renderTrack(track, rows, settings, {
+        emptyMessage: 'No active streams.',
+        emptyCard: true,
+        emptyTitle: 'No active streams',
+        emptySubtitle: 'Nothing is playing right now',
+      });
     }, function (err) {
       track.__embyItems = [];
       track.innerHTML = '<div class="plex-empty">' + escapeHtml(err && err.message ? err.message : 'Failed to load active streams.') + '</div>';

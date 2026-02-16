@@ -176,6 +176,8 @@
   function mapQueueItem(appId, item, options = {}) {
     if (appId === 'transmission') return mapTransmissionItem(item, options);
     if (appId === 'nzbget') return mapNzbgetItem(item, options);
+    if (appId === 'qbittorrent') return mapQbittorrentItem(item, options);
+    if (appId === 'sabnzbd') return mapSabnzbdItem(item, options);
     return null;
   }
 
@@ -259,6 +261,88 @@
     };
   }
 
+  function mapQbittorrentItem(item, options = {}) {
+    const status = qbittorrentStatus(item);
+    const statusKey = qbittorrentStatusKey(item);
+    const statusKeys = qbittorrentStatusKeys(statusKey);
+    const sizeBytes = toNumber(item?.total_size || item?.size || item?.amount_left || 0);
+    const amountLeft = toNumber(item?.amount_left || 0);
+    const progressRaw = Number(item?.progress);
+    const progress = Number.isFinite(progressRaw)
+      ? Math.max(0, Math.min(100, progressRaw * 100))
+      : progressFromSizes(sizeBytes, amountLeft);
+    const eta = toNumber(item?.eta || 0);
+    const dlSpeed = toNumber(item?.dlspeed || 0);
+    const upSpeed = toNumber(item?.upspeed || 0);
+    const rateLabel = dlSpeed > 0
+      ? `DL ${formatBytes(dlSpeed)}/s`
+      : (upSpeed > 0 ? `UL ${formatBytes(upSpeed)}/s` : '-');
+
+    const baseDetail = status;
+    const baseSubDetail = rateLabel;
+    const detail = options.combined
+      ? String(options.sourceName || 'qBittorrent')
+      : baseDetail;
+    const subDetail = options.combined
+      ? [baseDetail, baseSubDetail].filter(Boolean).join(' · ')
+      : baseSubDetail;
+    const timeLeft = eta > 0 && eta < 8640000 ? formatDuration(eta) : '-';
+
+    return {
+      kind: 'torrent',
+      title: String(item?.name || 'Unknown'),
+      episode: detail,
+      episodeTitle: subDetail,
+      quality: sizeBytes ? formatBytes(sizeBytes) : '-',
+      protocol: 'torrent',
+      timeLeft,
+      progress,
+      statusKey,
+      statusKeys,
+      sourceId: options.sourceId || '',
+    };
+  }
+
+  function mapSabnzbdItem(item, options = {}) {
+    const title = String(item?.filename || item?.nzb_name || item?.name || 'Unknown');
+    const category = String(item?.cat || item?.category || '').trim();
+    const status = String(item?.status || item?.state || '').trim();
+    const statusKey = sabnzbdStatusKey(status);
+    const statusKeys = sabnzbdStatusKeys(statusKey);
+    const sizeMB = toNumber(item?.mb || item?.size || 0);
+    const leftMB = toNumber(item?.mbleft || item?.mb_left || 0);
+    const sizeBytes = sizeMB > 0 ? sizeMB * 1024 * 1024 : 0;
+    const remainingBytes = leftMB > 0 ? leftMB * 1024 * 1024 : 0;
+    const percentage = toNumber(item?.percentage || item?.percent || 0);
+    const progress = percentage > 0
+      ? Math.max(0, Math.min(100, percentage))
+      : progressFromSizes(sizeBytes, remainingBytes);
+    const timeLeft = String(item?.timeleft || item?.time_left || '').trim() || '-';
+
+    const baseDetail = category || 'Queue';
+    const baseSubDetail = status || '-';
+    const detail = options.combined
+      ? String(options.sourceName || 'SABnzbd')
+      : baseDetail;
+    const subDetail = options.combined
+      ? [baseDetail, baseSubDetail].filter(Boolean).join(' · ')
+      : baseSubDetail;
+
+    return {
+      kind: 'usenet',
+      title,
+      episode: detail,
+      episodeTitle: subDetail,
+      quality: sizeBytes ? formatBytes(sizeBytes) : '-',
+      protocol: 'usenet',
+      timeLeft,
+      progress,
+      statusKey,
+      statusKeys,
+      sourceId: options.sourceId || '',
+    };
+  }
+
   function transmissionStatus(item) {
     const status = Number(item?.status);
     const map = {
@@ -296,9 +380,46 @@
     if (primary === 'downloading' || primary === 'seeding') keys.add('active');
     if (primary === 'queued' || primary === 'checking') keys.add('downloading');
     if (primary === 'stopped') keys.add('paused');
-    if (item?.isFinished) keys.add('finished');
+    if (item?.isFinished) {
+      keys.add('finished');
+      keys.add('completed');
+    }
     const errorValue = Number(item?.error || 0);
     if (errorValue > 0 || String(item?.errorString || '').trim()) keys.add('error');
+    return Array.from(keys);
+  }
+
+  function qbittorrentStatus(item) {
+    const value = String(item?.state || '').trim().toLowerCase();
+    if (!value) return 'Queued';
+    if (value.includes('error') || value.includes('missing')) return 'Error';
+    if (value.includes('pause')) return 'Paused';
+    if (value.includes('meta') || value.includes('downloading') || value.includes('forceddl')) return 'Downloading';
+    if (value.includes('upload') || value.includes('seed') || value.includes('forcedup')) return 'Seeding';
+    if (value.includes('queue')) return 'Queued';
+    if (value.includes('check') || value.includes('moving') || value.includes('stalled')) return 'Checking';
+    if (value.includes('complete')) return 'Completed';
+    return 'Queued';
+  }
+
+  function qbittorrentStatusKey(item) {
+    const value = String(item?.state || '').trim().toLowerCase();
+    if (!value) return 'queued';
+    if (value.includes('error') || value.includes('missing')) return 'error';
+    if (value.includes('pause')) return 'paused';
+    if (value.includes('meta') || value.includes('downloading') || value.includes('forceddl')) return 'downloading';
+    if (value.includes('upload') || value.includes('seed') || value.includes('forcedup')) return 'seeding';
+    if (value.includes('queue')) return 'queued';
+    if (value.includes('check') || value.includes('moving') || value.includes('stalled')) return 'checking';
+    if (value.includes('complete')) return 'completed';
+    return 'queued';
+  }
+
+  function qbittorrentStatusKeys(primary) {
+    const keys = new Set();
+    if (primary) keys.add(primary);
+    if (primary === 'downloading' || primary === 'seeding') keys.add('active');
+    if (primary === 'checking') keys.add('downloading');
     return Array.from(keys);
   }
 
@@ -310,8 +431,27 @@
     if (value.includes('queued')) return 'queued';
     if (value.includes('check') || value.includes('repair') || value.includes('verify')) return 'checking';
     if (value.includes('complete') || value.includes('success')) return 'completed';
-    if (value.includes('fail') || value.includes('error')) return 'stopped';
+    if (value.includes('fail') || value.includes('error')) return 'error';
     return 'queued';
+  }
+
+  function sabnzbdStatusKey(rawStatus) {
+    const value = String(rawStatus || '').trim().toLowerCase();
+    if (!value) return 'queued';
+    if (value.includes('download')) return 'downloading';
+    if (value.includes('pause')) return 'paused';
+    if (value.includes('queue')) return 'queued';
+    if (value.includes('check') || value.includes('verify') || value.includes('repair')) return 'checking';
+    if (value.includes('complete') || value.includes('finished') || value.includes('success')) return 'completed';
+    if (value.includes('fail') || value.includes('error')) return 'error';
+    return 'queued';
+  }
+
+  function sabnzbdStatusKeys(primary) {
+    const keys = new Set();
+    if (primary) keys.add(primary);
+    if (primary === 'downloading') keys.add('active');
+    return Array.from(keys);
   }
 
   function queueColumnVisibility(table) {

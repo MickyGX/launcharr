@@ -28,11 +28,15 @@ const DEFAULT_APPS_PATH = process.env.DEFAULT_APPS_PATH || path.join(__dirname, 
 const DEFAULT_CATEGORIES_PATH = process.env.DEFAULT_CATEGORIES_PATH || path.join(__dirname, '..', 'config', 'default-categories.json');
 const CONFIG_EXAMPLE_PATH = process.env.CONFIG_EXAMPLE_PATH || path.join(__dirname, '..', 'config', 'config.example.json');
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
+const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+const ICONS_DIR = path.join(PUBLIC_DIR, 'icons');
 
 const ADMIN_USERS = parseCsv(process.env.ADMIN_USERS || '');
 const ARR_APP_IDS = ['radarr', 'sonarr', 'lidarr', 'readarr'];
-const DOWNLOADER_APP_IDS = ['transmission', 'nzbget'];
+const DOWNLOADER_APP_IDS = ['transmission', 'nzbget', 'qbittorrent', 'sabnzbd'];
 const MEDIA_APP_IDS = ['plex', 'jellyfin', 'emby'];
+const MULTI_INSTANCE_APP_IDS = ['radarr', 'sonarr', 'bazarr'];
+const MAX_MULTI_INSTANCES_PER_APP = 5;
 const DEFAULT_CATEGORY_ORDER = ['Admin', 'Media', 'Manager', 'Games', 'Arr Suite', 'Downloaders', 'Tools'];
 const DEFAULT_CATEGORY_ICON = '/icons/category.svg';
 const ARR_COMBINE_SECTIONS = [
@@ -41,6 +45,12 @@ const ARR_COMBINE_SECTIONS = [
   { key: 'activityQueue', elementId: 'activity-queue' },
   { key: 'calendar', elementId: 'calendar' },
 ];
+const ARR_COMBINED_SECTION_PREFIX = {
+  downloadingSoon: 'arrcombinedsoon',
+  recentlyDownloaded: 'arrcombinedrecent',
+  activityQueue: 'arrcombinedqueue',
+  calendar: 'arrcombinedcalendar',
+};
 const DOWNLOADER_COMBINE_SECTIONS = [
   { key: 'activityQueue', elementId: 'activity-queue' },
 ];
@@ -107,6 +117,12 @@ const APP_OVERVIEW_ELEMENTS = {
   nzbget: [
     { id: 'activity-queue', name: 'Download Queue' },
   ],
+  qbittorrent: [
+    { id: 'activity-queue', name: 'Download Queue' },
+  ],
+  sabnzbd: [
+    { id: 'activity-queue', name: 'Download Queue' },
+  ],
 };
 const PLEX_DISCOVERY_WATCHLISTED_URL = 'https://watch.plex.tv/discover/list/top_watchlisted';
 const PLEX_DISCOVERY_CACHE_TTL_MS = 15 * 60 * 1000;
@@ -166,6 +182,12 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
   appriseConfigKey: '',
   appriseTargets: '',
   appriseTag: '',
+};
+
+const APP_BASE_NAME_MAP = {
+  radarr: 'Radarr',
+  sonarr: 'Sonarr',
+  bazarr: 'Bazarr',
 };
 
 function resolveGeneralSettings(config) {
@@ -937,6 +959,9 @@ app.get('/api/plex/pin/status', async (req, res) => {
 app.get('/dashboard', requireUser, (req, res) => {
   const config = loadConfig();
   const apps = config.apps || [];
+  const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
+    ? config.dashboardRemovedElements
+    : {};
   const categoryEntries = resolveCategoryEntries(config, apps);
   const categoryOrder = categoryEntries.map((entry) => entry.name);
   const appBaseUrls = buildAppBaseUrls(apps, req);
@@ -958,6 +983,21 @@ app.get('/dashboard', requireUser, (req, res) => {
   const rankCategory = buildCategoryRank(categoryOrder);
 
   const accessibleApps = apps.filter((appItem) => canAccess(appItem, role, 'overview'));
+  const arrDashboardCombinedCards = resolveArrDashboardCombinedCards(config, accessibleApps);
+  const arrDashboardAppIds = accessibleApps
+    .filter((appItem) => isAppInSet(appItem.id, ARR_APP_IDS))
+    .map((appItem) => appItem.id);
+  const arrDashboardAppLookup = new Map(
+    accessibleApps
+      .filter((appItem) => isAppInSet(appItem.id, ARR_APP_IDS))
+      .map((appItem) => [normalizeAppId(appItem.id), appItem])
+  );
+  const downloaderDashboardAppIds = accessibleApps
+    .filter((appItem) => isAppInSet(appItem.id, DOWNLOADER_APP_IDS))
+    .map((appItem) => appItem.id);
+  const mediaDashboardAppIds = accessibleApps
+    .filter((appItem) => isAppInSet(appItem.id, MEDIA_APP_IDS))
+    .map((appItem) => appItem.id);
   const appById = new Map(accessibleApps.map((appItem) => [appItem.id, appItem]));
   const elementsByAppId = new Map(
     accessibleApps.map((appItem) => [appItem.id, mergeOverviewElementSettings(appItem)])
@@ -965,7 +1005,11 @@ app.get('/dashboard', requireUser, (req, res) => {
   const dashboardModules = accessibleApps
     .map((appItem) => ({
       app: appItem,
-      elements: (elementsByAppId.get(appItem.id) || []).filter((item) => item.enable && item.dashboard),
+      elements: (elementsByAppId.get(appItem.id) || []).filter((item) => (
+        item.enable
+        && item.dashboard
+        && !dashboardRemovedElements[`app:${appItem.id}:${item.id}`]
+      )),
     }))
     .filter((entry) => entry.elements.length)
     .flatMap((entry) =>
@@ -1004,9 +1048,10 @@ app.get('/dashboard', requireUser, (req, res) => {
 
   ARR_COMBINE_SECTIONS.forEach((section) => {
     const combinedKey = `combined:arr:${section.key}`;
+    if (dashboardRemovedElements[combinedKey]) return;
     const combinedSettings = dashboardCombinedSettings[combinedKey];
     if (combinedSettings && (!combinedSettings.enable || !combinedSettings.dashboard)) return;
-    const sectionModules = buildSectionModules(ARR_APP_IDS, section.elementId);
+    const sectionModules = buildSectionModules(arrDashboardAppIds, section.elementId);
     const combinedModules = sectionModules.filter((item) =>
       Boolean(arrDashboardCombine?.[section.key]?.[item.app.id])
     );
@@ -1014,28 +1059,68 @@ app.get('/dashboard', requireUser, (req, res) => {
     if (!combinedApps.length) return;
 
     const leader = combinedApps[0];
+    const combinedAppIds = combinedApps.map((item) => normalizeAppId(item.app.id)).filter(Boolean);
+    const meta = buildArrCombinedDisplayMeta(arrDashboardAppLookup, section.key, combinedAppIds);
     const combinedEntry = {
       ...leader,
       arrCombined: {
         sectionKey: section.key,
         elementId: section.elementId,
-        appIds: combinedApps.map((item) => item.app.id),
-        appNames: combinedApps.map((item) => item.app.name),
+        appIds: meta.appIds,
+        appNames: meta.appNames,
+        displayName: meta.displayName,
+        iconPath: meta.iconPath,
+        custom: false,
+        cardId: '',
+        moduleKey: ARR_COMBINED_SECTION_PREFIX[section.key] || (`arrcombined-${section.key}`),
       },
       downloaderCombined: null,
       mediaCombined: null,
     };
     const insertIndex = dashboardModules.findIndex((item) =>
-      ARR_APP_IDS.includes(item.app.id) && item.element.id === section.elementId
+      arrDashboardAppIds.includes(item.app.id) && item.element.id === section.elementId
     );
     dashboardModules.splice(insertIndex === -1 ? dashboardModules.length : insertIndex, 0, combinedEntry);
+  });
+  arrDashboardCombinedCards.forEach((card, index) => {
+    const section = getArrCombineSection(card.sectionKey);
+    if (!section) return;
+    const customToken = normalizeCombinedCardToken(card.id) || `card-${index + 1}`;
+    const combinedKey = `combined:arrcustom:${customToken}`;
+    if (dashboardRemovedElements[combinedKey]) return;
+    const combinedSettings = dashboardCombinedSettings[combinedKey];
+    if (combinedSettings && (!combinedSettings.enable || !combinedSettings.dashboard)) return;
+    const sectionModules = buildSectionModules(card.appIds, section.elementId);
+    if (!sectionModules.length) return;
+    const leader = sectionModules[0];
+    const orderedAppIds = [...new Set(sectionModules.map((item) => normalizeAppId(item.app.id)).filter(Boolean))];
+    const meta = buildArrCombinedDisplayMeta(arrDashboardAppLookup, card.sectionKey, orderedAppIds);
+    if (!meta.appIds.length) return;
+    const modulePrefixBase = ARR_COMBINED_SECTION_PREFIX[card.sectionKey] || `arrcombined-${card.sectionKey}`;
+    dashboardModules.push({
+      ...leader,
+      arrCombined: {
+        sectionKey: card.sectionKey,
+        elementId: section.elementId,
+        appIds: meta.appIds,
+        appNames: meta.appNames,
+        displayName: meta.displayName,
+        iconPath: meta.iconPath,
+        custom: true,
+        cardId: customToken,
+        moduleKey: `${modulePrefixBase}-${customToken}`,
+      },
+      downloaderCombined: null,
+      mediaCombined: null,
+    });
   });
 
   DOWNLOADER_COMBINE_SECTIONS.forEach((section) => {
     const combinedKey = `combined:downloader:${section.key}`;
+    if (dashboardRemovedElements[combinedKey]) return;
     const combinedSettings = dashboardCombinedSettings[combinedKey];
     if (combinedSettings && (!combinedSettings.enable || !combinedSettings.dashboard)) return;
-    const sectionModules = buildSectionModules(DOWNLOADER_APP_IDS, section.elementId);
+    const sectionModules = buildSectionModules(downloaderDashboardAppIds, section.elementId);
     const combinedModules = sectionModules.filter((item) =>
       Boolean(downloaderDashboardCombine?.[section.key]?.[item.app.id])
     );
@@ -1055,16 +1140,17 @@ app.get('/dashboard', requireUser, (req, res) => {
       mediaCombined: null,
     };
     const insertIndex = dashboardModules.findIndex((item) =>
-      DOWNLOADER_APP_IDS.includes(item.app.id) && item.element.id === section.elementId
+      downloaderDashboardAppIds.includes(item.app.id) && item.element.id === section.elementId
     );
     dashboardModules.splice(insertIndex === -1 ? dashboardModules.length : insertIndex, 0, combinedEntry);
   });
 
   MEDIA_COMBINE_SECTIONS.forEach((section) => {
     const combinedKey = `combined:media:${section.key}`;
+    if (dashboardRemovedElements[combinedKey]) return;
     const combinedSettings = dashboardCombinedSettings[combinedKey];
     if (combinedSettings && (!combinedSettings.enable || !combinedSettings.dashboard)) return;
-    const sectionModules = buildSectionModules(MEDIA_APP_IDS, section.elementId);
+    const sectionModules = buildSectionModules(mediaDashboardAppIds, section.elementId);
     const combinedModules = sectionModules.filter((item) =>
       Boolean(mediaDashboardCombine?.[section.key]?.[item.app.id])
     );
@@ -1084,13 +1170,16 @@ app.get('/dashboard', requireUser, (req, res) => {
       downloaderCombined: null,
     };
     const insertIndex = dashboardModules.findIndex((item) =>
-      MEDIA_APP_IDS.includes(item.app.id) && item.element.id === section.elementId
+      mediaDashboardAppIds.includes(item.app.id) && item.element.id === section.elementId
     );
     dashboardModules.splice(insertIndex === -1 ? dashboardModules.length : insertIndex, 0, combinedEntry);
   });
 
   const getCombinedOrderKey = (item) => {
-    if (item?.arrCombined) return `combined:arr:${item.arrCombined.sectionKey}`;
+    if (item?.arrCombined) {
+      if (item.arrCombined.custom) return `combined:arrcustom:${item.arrCombined.cardId}`;
+      return `combined:arr:${item.arrCombined.sectionKey}`;
+    }
     if (item?.downloaderCombined) return `combined:downloader:${item.downloaderCombined.sectionKey}`;
     if (item?.mediaCombined) return `combined:media:${item.mediaCombined.sectionKey}`;
     return '';
@@ -1143,6 +1232,7 @@ app.get('/apps/:id', requireUser, (req, res) => {
   if (!canAccess(appItem, role, 'overview')) {
     return res.status(403).send('Overview access denied.');
   }
+  const appWithIcon = { ...appItem, icon: resolvePersistedAppIconPath(appItem) };
 
   res.render('app-overview', {
     user: req.session.user,
@@ -1152,7 +1242,7 @@ app.get('/apps/:id', requireUser, (req, res) => {
     apps: navApps,
     navCategories,
     appBaseUrls,
-    app: appItem,
+    app: appWithIcon,
     overviewElements: mergeOverviewElementSettings(appItem),
     tautulliCards: mergeTautulliCardSettings(appItem),
   });
@@ -1173,6 +1263,7 @@ app.get('/apps/:id/activity', requireAdmin, (req, res) => {
   if (!canAccess(appItem, role, 'overview')) {
     return res.status(403).send('Activity access denied.');
   }
+  const appWithIcon = { ...appItem, icon: resolvePersistedAppIconPath(appItem) };
 
   res.render('app-activity', {
     user: req.session.user,
@@ -1180,7 +1271,7 @@ app.get('/apps/:id/activity', requireAdmin, (req, res) => {
     actualRole,
     page: 'activity',
     navCategories,
-    app: appItem,
+    app: appWithIcon,
   });
 });
 
@@ -1197,23 +1288,24 @@ app.get('/apps/:id/launch', requireUser, async (req, res) => {
   if (!canAccess(appItem, role, 'launch')) {
     return res.status(403).send('Launch access denied.');
   }
+  const appWithIcon = { ...appItem, icon: resolvePersistedAppIconPath(appItem) };
 
   const deepQuery = String(req.query?.q || req.query?.query || '').trim();
   if (deepQuery) {
-    const deepUrl = await resolveDeepLaunchUrl(appItem, req, {
+    const deepUrl = await resolveDeepLaunchUrl(appWithIcon, req, {
       query: deepQuery,
       imdbId: String(req.query?.imdb || '').trim(),
       tmdbId: String(req.query?.tmdb || '').trim(),
       mediaType: String(req.query?.type || '').trim().toLowerCase(),
-      plexToken: String(req.session?.authToken || appItem.plexToken || '').trim(),
+      plexToken: String(req.session?.authToken || appWithIcon.plexToken || '').trim(),
     });
     if (deepUrl) return res.redirect(deepUrl);
   }
 
-  const launchUrl = resolveLaunchUrl(appItem, req);
+  const launchUrl = resolveLaunchUrl(appWithIcon, req);
   if (!launchUrl) return res.status(400).send('Launch URL not configured.');
 
-  const launchMode = resolveEffectiveLaunchMode(appItem, req, normalizeMenu(appItem));
+  const launchMode = resolveEffectiveLaunchMode(appWithIcon, req, normalizeMenu(appWithIcon));
   if (launchMode === 'iframe') {
     const navApps = getNavApps(apps, role, req, categoryOrder);
     const navCategories = buildNavCategories(navApps, categoryEntries);
@@ -1223,7 +1315,7 @@ app.get('/apps/:id/launch', requireUser, async (req, res) => {
       actualRole,
       page: 'launch',
       navCategories,
-      app: appItem,
+      app: appWithIcon,
       launchUrl,
     });
   }
@@ -1247,6 +1339,7 @@ app.get('/apps/:id/settings', requireAdmin, (req, res) => {
   if (!canAccess(appItem, role, 'settings')) {
     return res.status(403).send('App settings access denied.');
   }
+  const appWithIcon = { ...appItem, icon: resolvePersistedAppIconPath(appItem) };
 
   res.render('app-settings', {
     user: req.session.user,
@@ -1255,9 +1348,9 @@ app.get('/apps/:id/settings', requireAdmin, (req, res) => {
     actualRole,
     page: 'settings',
     navCategories,
-    app: appItem,
-    overviewElements: mergeOverviewElementSettings(appItem),
-    tautulliCards: mergeTautulliCardSettings(appItem),
+    app: appWithIcon,
+    overviewElements: mergeOverviewElementSettings(appWithIcon),
+    tautulliCards: mergeTautulliCardSettings(appWithIcon),
   });
 });
 
@@ -1285,6 +1378,11 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
   const notificationSettings = resolveNotificationSettings(config);
   const notificationResult = String(req.query?.notificationResult || '').trim();
   const notificationError = String(req.query?.notificationError || '').trim();
+  const appInstanceResult = String(req.query?.appInstanceResult || '').trim();
+  const appInstanceError = String(req.query?.appInstanceError || '').trim();
+  const defaultAppResult = String(req.query?.defaultAppResult || '').trim();
+  const defaultAppError = String(req.query?.defaultAppError || '').trim();
+  const selectedSettingsAppId = normalizeAppId(req.query?.instance || req.query?.app || '');
   const localUsersResult = String(req.query?.localUsersResult || '').trim();
   const localUsersError = String(req.query?.localUsersError || '').trim();
   const localLoginStore = resolveUserLogins(config).launcharr || {};
@@ -1317,16 +1415,47 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     if (orderDelta !== 0) return orderDelta;
     return String(a.name || '').localeCompare(String(b.name || ''));
   });
+  const settingsAppsWithIcons = settingsApps.map((appItem) => ({
+    ...appItem,
+    icon: resolvePersistedAppIconPath(appItem),
+  }));
+  const arrDashboardCombinedCards = resolveArrDashboardCombinedCards(config, settingsAppsWithIcons);
+  const arrSettingsAppIds = settingsApps
+    .filter((appItem) => isAppInSet(appItem.id, ARR_APP_IDS))
+    .map((appItem) => appItem.id);
+  const arrAppLookup = new Map(
+    settingsAppsWithIcons
+      .filter((appItem) => isAppInSet(appItem.id, ARR_APP_IDS))
+      .map((appItem) => [normalizeAppId(appItem.id), appItem])
+  );
+  const downloaderSettingsAppIds = settingsApps
+    .filter((appItem) => isAppInSet(appItem.id, DOWNLOADER_APP_IDS))
+    .map((appItem) => appItem.id);
+  const mediaSettingsAppIds = settingsApps
+    .filter((appItem) => isAppInSet(appItem.id, MEDIA_APP_IDS))
+    .map((appItem) => appItem.id);
+  const multiInstanceCountsByBase = settingsApps.reduce((acc, appItem) => {
+    const baseId = getAppBaseId(appItem?.id);
+    if (!MULTI_INSTANCE_APP_IDS.includes(baseId)) return acc;
+    acc[baseId] = (acc[baseId] || 0) + 1;
+    return acc;
+  }, {});
   const baseDashboardElements = settingsApps.flatMap((appItem) => {
     const hasOverviewAccess = canAccess(appItem, role, 'overview');
-    if (!hasOverviewAccess && !DOWNLOADER_APP_IDS.includes(appItem.id)) return [];
+    if (!hasOverviewAccess && !isAppInSet(appItem.id, DOWNLOADER_APP_IDS)) return [];
     const elements = mergeOverviewElementSettings(appItem);
+    const baseId = getAppBaseId(appItem?.id);
+    const isMultiInstanceGroup = MULTI_INSTANCE_APP_IDS.includes(baseId) && Number(multiInstanceCountsByBase[baseId] || 0) > 1;
+    const appTitle = String(appItem?.name || '').trim() || getDefaultInstanceName(baseId, appItem?.id);
+    const itemIconPath = resolvePersistedAppIconPath(appItem);
     return elements.map((element) => ({
       appId: appItem.id,
       appName: appItem.name,
       appOrder: appItem.order || 0,
       category: appItem.category || 'Tools',
       element,
+      displayName: isMultiInstanceGroup ? `${appTitle} ${element.name || ''}`.trim() : (element.name || ''),
+      iconPath: itemIconPath,
       appAccess: hasOverviewAccess,
     }));
   });
@@ -1340,6 +1469,17 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
       iconPath,
       combinedType,
     } = options;
+    const resolveCombinedIconPath = (section) => {
+      if (typeof iconPath === 'function') return iconPath(section);
+      if (iconPath && typeof iconPath === 'object') {
+        const bySection = String(section?.key || '').trim();
+        if (bySection && String(iconPath[bySection] || '').trim()) {
+          return String(iconPath[bySection]).trim();
+        }
+        return String(iconPath.default || '').trim();
+      }
+      return String(iconPath || '').trim();
+    };
     let updated = items.map((item) => ({ ...item }));
     sections.forEach((section) => {
       const availableAppIds = new Set(
@@ -1359,11 +1499,35 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
         && item.element?.id === section.elementId
       );
       if (!leaderItem) return;
+      if (combinedType === 'arr') {
+        const meta = buildArrCombinedDisplayMeta(arrAppLookup, section.key, combinedAppIds);
+        updated.push({
+          ...leaderItem,
+          displayName: meta.displayName,
+          iconPath: meta.iconPath,
+          combined: true,
+          combinedType,
+          combinedSection: section.key,
+          combinedApps: meta.appIds,
+          arrCombined: {
+            sectionKey: section.key,
+            elementId: section.elementId,
+            appIds: meta.appIds,
+            appNames: meta.appNames,
+            displayName: meta.displayName,
+            iconPath: meta.iconPath,
+            custom: false,
+            cardId: '',
+            moduleKey: ARR_COMBINED_SECTION_PREFIX[section.key] || (`arrcombined-${section.key}`),
+          },
+        });
+        return;
+      }
       const combinedName = `${labelPrefix} ${leaderItem.element?.name || section.elementId}`;
       updated.push({
         ...leaderItem,
         displayName: combinedName,
-        iconPath,
+        iconPath: resolveCombinedIconPath(section),
         combined: true,
         combinedType,
         combinedSection: section.key,
@@ -1374,15 +1538,52 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
   };
 
   const arrCombinedElements = applyCombinedDashboardElements(baseDashboardElements, {
-    appIds: ARR_APP_IDS,
+    appIds: arrSettingsAppIds,
     sections: ARR_COMBINE_SECTIONS,
     combineMap: arrDashboardCombine,
     labelPrefix: 'Combined',
     iconPath: '/icons/arr-suite.svg',
     combinedType: 'arr',
   });
-  const downloaderCombinedElements = applyCombinedDashboardElements(arrCombinedElements, {
-    appIds: DOWNLOADER_APP_IDS,
+  const arrCombinedElementsWithCustom = arrCombinedElements.map((item) => ({ ...item }));
+  arrDashboardCombinedCards.forEach((card, cardIndex) => {
+    const section = getArrCombineSection(card.sectionKey);
+    if (!section) return;
+    const sourceItems = baseDashboardElements.filter((item) =>
+      item.element?.id === section.elementId
+      && Array.isArray(card.appIds)
+      && card.appIds.includes(item.appId)
+    );
+    if (!sourceItems.length) return;
+    const orderedAppIds = [...new Set(sourceItems.map((item) => normalizeAppId(item.appId)).filter(Boolean))];
+    const meta = buildArrCombinedDisplayMeta(arrAppLookup, card.sectionKey, orderedAppIds);
+    if (!meta.appIds.length) return;
+    const leaderItem = sourceItems[0];
+    const customToken = normalizeCombinedCardToken(card.id) || `card-${cardIndex + 1}`;
+    const modulePrefixBase = ARR_COMBINED_SECTION_PREFIX[card.sectionKey] || `arrcombined-${card.sectionKey}`;
+    arrCombinedElementsWithCustom.push({
+      ...leaderItem,
+      displayName: meta.displayName,
+      iconPath: meta.iconPath,
+      combined: true,
+      combinedType: 'arrcustom',
+      combinedSection: customToken,
+      combinedApps: meta.appIds,
+      arrCombined: {
+        sectionKey: card.sectionKey,
+        elementId: section.elementId,
+        appIds: meta.appIds,
+        appNames: meta.appNames,
+        displayName: meta.displayName,
+        iconPath: meta.iconPath,
+        custom: true,
+        cardId: customToken,
+        moduleKey: `${modulePrefixBase}-${customToken}`,
+      },
+    });
+  });
+  const downloaderCombinedElements = applyCombinedDashboardElements(arrCombinedElementsWithCustom, {
+    appIds: downloaderSettingsAppIds,
     sections: DOWNLOADER_COMBINE_SECTIONS,
     combineMap: downloaderDashboardCombine,
     labelPrefix: 'Combined',
@@ -1390,28 +1591,24 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     combinedType: 'downloader',
   });
   const combinedDashboardElements = applyCombinedDashboardElements(downloaderCombinedElements, {
-    appIds: MEDIA_APP_IDS,
+    appIds: mediaSettingsAppIds,
     sections: MEDIA_COMBINE_SECTIONS,
     combineMap: mediaDashboardCombine,
     labelPrefix: 'Combined',
-    iconPath: '/icons/media-play.svg',
+    iconPath: {
+      active: '/icons/media-play.svg',
+      recent: '/icons/recently-added.svg',
+      default: '/icons/media-play.svg',
+    },
     combinedType: 'media',
-  });
-  const normalizedCombinedDashboardElements = combinedDashboardElements.map((item) => {
-    if (!item?.combined || item.combinedType !== 'media') return item;
-    const selectedApps = Array.isArray(item.combinedApps) ? item.combinedApps.filter(Boolean) : [];
-    if (selectedApps.length !== 1) return item;
-    const sourceId = selectedApps[0];
-    const iconPath = sourceId === 'jellyfin'
-      ? '/icons/jellyfin.png'
-      : (sourceId === 'emby'
-        ? '/icons/emby.png'
-        : (sourceId === 'plex' ? '/icons/plex.png' : item.iconPath));
-    return { ...item, iconPath };
   });
 
   const getCombinedOrderKey = (item) => {
     if (!item || !item.combined) return '';
+    if (item.combinedType === 'arrcustom') {
+      const customId = String(item.combinedSection || item.arrCombined?.cardId || '').trim();
+      return customId ? `combined:arrcustom:${customId}` : '';
+    }
     const section = item.combinedSection || item.element?.id || 'unknown';
     return `combined:${item.combinedType || 'mixed'}:${section}`;
   };
@@ -1424,7 +1621,110 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     const orderValue = Number(item?.element?.order);
     return Number.isFinite(orderValue) ? orderValue : 0;
   };
-  const dashboardElements = normalizedCombinedDashboardElements.sort((a, b) => {
+  const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
+    ? config.dashboardRemovedElements
+    : {};
+  const getDashboardElementKey = (item) => {
+    if (!item) return '';
+    if (item.combined) {
+      if (item.combinedType === 'arrcustom') {
+        const customId = String(item.arrCombined?.cardId || item.combinedSection || '').trim();
+        return customId ? `combined:arrcustom:${customId}` : '';
+      }
+      const section = String(item.combinedSection || item.element?.id || '').trim();
+      return section ? `combined:${item.combinedType || 'mixed'}:${section}` : '';
+    }
+    const appId = String(item.appId || '').trim();
+    const elementId = String(item.element?.id || '').trim();
+    if (!appId || !elementId) return '';
+    return `app:${appId}:${elementId}`;
+  };
+  const dashboardElementsWithKeys = combinedDashboardElements.map((item) => ({
+    ...item,
+    dashboardElementKey: getDashboardElementKey(item),
+  }));
+  const getDashboardAddGroupLabel = (item) => {
+    const baseId = getAppBaseId(item?.appId);
+    const baseTitle = getBaseAppTitle(baseId);
+    const rawName = String(item?.appName || '').trim();
+    if (!MULTI_INSTANCE_APP_IDS.includes(baseId)) {
+      return rawName || baseTitle || 'Apps';
+    }
+    if (!rawName) return baseTitle || 'Apps';
+    const rawLower = rawName.toLowerCase();
+    const baseLower = String(baseTitle || '').trim().toLowerCase();
+    if (!baseLower) return rawName || 'Apps';
+    if (rawLower === baseLower || rawLower.startsWith(`${baseLower} `)) return rawName;
+    return `${baseTitle} ${rawName}`.trim();
+  };
+  const dashboardRemovedAddOptions = dashboardElementsWithKeys
+    .filter((item) => item.dashboardElementKey && !item.combined && Boolean(dashboardRemovedElements[item.dashboardElementKey]))
+    .map((item) => {
+      const groupLabel = getDashboardAddGroupLabel(item);
+      return {
+        key: item.dashboardElementKey,
+        group: groupLabel,
+        appName: groupLabel,
+        name: String(item.displayName || item.element?.name || 'Dashboard item').trim() || 'Dashboard item',
+        icon: String(item.iconPath || resolvePersistedAppIconPath({ id: item.appId }) || '/icons/app.svg').trim() || '/icons/app.svg',
+      };
+    })
+    .sort((a, b) => {
+      const groupDelta = String(a.group || '').localeCompare(String(b.group || ''));
+      if (groupDelta !== 0) return groupDelta;
+      const appDelta = String(a.appName || '').localeCompare(String(b.appName || ''));
+      if (appDelta !== 0) return appDelta;
+      return String(a.name || '').localeCompare(String(b.name || ''));
+    });
+  const hasArrSources = settingsAppsWithIcons.some((appItem) => !appItem?.removed && isAppInSet(appItem.id, ARR_APP_IDS));
+  const dashboardCombinedAddOptions = hasArrSources
+    ? ARR_COMBINE_SECTIONS.map((section) => ({
+      key: `new:arr:${section.key}`,
+      group: 'Create ARR Combined',
+      name: `Combined ${getArrCombineSectionLabel(section.key)}`,
+      icon: getArrCombineSectionIconPath(section.key),
+    }))
+    : [];
+  ARR_COMBINE_SECTIONS.forEach((section) => {
+    const key = `combined:arr:${section.key}`;
+    if (!dashboardRemovedElements[key]) return;
+    dashboardCombinedAddOptions.push({
+      key,
+      group: 'Re-add ARR Combined',
+      name: `Combined ${getArrCombineSectionLabel(section.key)}`,
+      icon: getArrCombineSectionIconPath(section.key),
+    });
+  });
+  DOWNLOADER_COMBINE_SECTIONS.forEach((section) => {
+    const key = `combined:downloader:${section.key}`;
+    if (!dashboardRemovedElements[key]) return;
+    dashboardCombinedAddOptions.push({
+      key,
+      group: 'Re-add Downloader Combined',
+      name: 'Combined Activity Queue',
+      icon: '/icons/download.svg',
+    });
+  });
+  MEDIA_COMBINE_SECTIONS.forEach((section) => {
+    const key = `combined:media:${section.key}`;
+    if (!dashboardRemovedElements[key]) return;
+    const sectionLabel = section.key === 'recent' ? 'Recently Added' : 'Active Streams';
+    const iconPath = section.key === 'recent' ? '/icons/recently-added.svg' : '/icons/media-play.svg';
+    dashboardCombinedAddOptions.push({
+      key,
+      group: 'Re-add Media Combined',
+      name: `Combined ${sectionLabel}`,
+      icon: iconPath,
+    });
+  });
+  dashboardCombinedAddOptions.sort((a, b) => {
+    const groupDelta = String(a.group || '').localeCompare(String(b.group || ''));
+    if (groupDelta !== 0) return groupDelta;
+    return String(a.name || '').localeCompare(String(b.name || ''));
+  });
+  const dashboardElements = dashboardElementsWithKeys
+    .filter((item) => !item.dashboardElementKey || !dashboardRemovedElements[item.dashboardElementKey])
+    .sort((a, b) => {
     const orderDelta = getDashboardOrder(a) - getDashboardOrder(b);
     if (orderDelta !== 0) return orderDelta;
     const appNameDelta = String(a.appName || '').localeCompare(String(b.appName || ''));
@@ -1433,6 +1733,18 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
   });
   const navApps = getNavApps(apps, role, req, categoryOrder);
   const navCategories = buildNavCategories(navApps, categoryEntries);
+  const defaultAppCatalog = loadDefaultApps()
+    .map((appItem) => {
+      const id = normalizeAppId(appItem?.id);
+      if (!id) return null;
+      return {
+        id,
+        name: String(appItem?.name || '').trim() || getBaseAppTitle(getAppBaseId(id)),
+        icon: resolvePersistedAppIconPath({ ...appItem, id }),
+        category: String(appItem?.category || '').trim() || 'Tools',
+      };
+    })
+    .filter(Boolean);
   const systemIconDefaults = getDefaultSystemIconOptions();
   const systemIconCustom = getCustomSystemIconOptions();
   const appIconDefaults = getDefaultAppIconOptions(apps);
@@ -1441,7 +1753,7 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
   res.render('settings', {
     user: req.session.user,
     admins,
-    apps: settingsApps,
+    apps: settingsAppsWithIcons,
     categories: categoryOrder,
     categoryEntries,
     categoryIcons,
@@ -1454,12 +1766,12 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     systemIconCustom,
     appIconDefaults,
     appIconCustom,
-    arrApps: settingsApps.filter((appItem) => ARR_APP_IDS.includes(appItem.id)),
+    arrApps: settingsAppsWithIcons.filter((appItem) => !appItem?.removed && isAppInSet(appItem.id, ARR_APP_IDS)),
     arrDashboardCombine,
     arrCombinedQueueDisplay,
-    mediaApps: settingsApps.filter((appItem) => MEDIA_APP_IDS.includes(appItem.id)),
+    mediaApps: settingsAppsWithIcons.filter((appItem) => !appItem?.removed && isAppInSet(appItem.id, MEDIA_APP_IDS)),
     mediaDashboardCombine,
-    downloaderApps: apps.filter((appItem) => DOWNLOADER_APP_IDS.includes(appItem.id)),
+    downloaderApps: settingsAppsWithIcons.filter((appItem) => !appItem?.removed && isAppInSet(appItem.id, DOWNLOADER_APP_IDS)),
     downloaderDashboardCombine,
     downloaderCombinedQueueDisplay,
     logSettings,
@@ -1467,6 +1779,19 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     notificationSettings,
     notificationResult,
     notificationError,
+    appInstanceResult,
+    appInstanceError,
+    arrCombinedCardResult: String(req.query?.arrCombinedCardResult || '').trim(),
+    arrCombinedCardError: String(req.query?.arrCombinedCardError || '').trim(),
+    arrDashboardCombinedCards,
+    dashboardCombinedAddOptions,
+    dashboardElementResult: String(req.query?.dashboardElementResult || '').trim(),
+    dashboardElementError: String(req.query?.dashboardElementError || '').trim(),
+    dashboardRemovedAddOptions,
+    defaultAppCatalog,
+    defaultAppResult,
+    defaultAppError,
+    selectedSettingsAppId,
     localUsers,
     localUsersResult,
     localUsersError,
@@ -1480,7 +1805,13 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
 app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
   const config = loadConfig();
   const shouldUpdateTautulliCards = Boolean(req.body.tautulliCardsForm);
-  const dashboardCombinedOrder = {};
+  const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
+    ? config.dashboardRemovedElements
+    : {};
+  const existingDashboardCombinedOrder = (config && typeof config.dashboardCombinedOrder === 'object' && config.dashboardCombinedOrder)
+    ? config.dashboardCombinedOrder
+    : {};
+  const dashboardCombinedOrder = { ...existingDashboardCombinedOrder };
   Object.entries(req.body || {}).forEach(([key, value]) => {
     if (!key.startsWith('dashboard_combined_') || !key.endsWith('_order')) return;
     const raw = Number(value);
@@ -1493,9 +1824,16 @@ app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
     const mapKey = `combined:${combinedType}:${combinedSection}`;
     dashboardCombinedOrder[mapKey] = raw;
   });
+  const existingDashboardCombinedSettings = (config && typeof config.dashboardCombinedSettings === 'object' && config.dashboardCombinedSettings)
+    ? config.dashboardCombinedSettings
+    : {};
   const dashboardCombinedSettings = {};
   ARR_COMBINE_SECTIONS.forEach((section) => {
     const mapKey = `combined:arr:${section.key}`;
+    if (dashboardRemovedElements[mapKey] && existingDashboardCombinedSettings[mapKey]) {
+      dashboardCombinedSettings[mapKey] = existingDashboardCombinedSettings[mapKey];
+      return;
+    }
     dashboardCombinedSettings[mapKey] = {
       enable: Boolean(req.body[`dashboard_combined_arr_${section.key}_enable`]),
       dashboard: Boolean(req.body[`dashboard_combined_arr_${section.key}_dashboard`]),
@@ -1503,6 +1841,10 @@ app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
   });
   DOWNLOADER_COMBINE_SECTIONS.forEach((section) => {
     const mapKey = `combined:downloader:${section.key}`;
+    if (dashboardRemovedElements[mapKey] && existingDashboardCombinedSettings[mapKey]) {
+      dashboardCombinedSettings[mapKey] = existingDashboardCombinedSettings[mapKey];
+      return;
+    }
     dashboardCombinedSettings[mapKey] = {
       enable: Boolean(req.body[`dashboard_combined_downloader_${section.key}_enable`]),
       dashboard: Boolean(req.body[`dashboard_combined_downloader_${section.key}_dashboard`]),
@@ -1510,10 +1852,31 @@ app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
   });
   MEDIA_COMBINE_SECTIONS.forEach((section) => {
     const mapKey = `combined:media:${section.key}`;
+    if (dashboardRemovedElements[mapKey] && existingDashboardCombinedSettings[mapKey]) {
+      dashboardCombinedSettings[mapKey] = existingDashboardCombinedSettings[mapKey];
+      return;
+    }
     dashboardCombinedSettings[mapKey] = {
       enable: Boolean(req.body[`dashboard_combined_media_${section.key}_enable`]),
       dashboard: Boolean(req.body[`dashboard_combined_media_${section.key}_dashboard`]),
     };
+  });
+  Object.keys(req.body || {}).forEach((key) => {
+    const match = key.match(/^dashboard_combined_arrcustom_(.+)_present$/);
+    if (!match) return;
+    const customToken = normalizeCombinedCardToken(match[1] || '');
+    if (!customToken) return;
+    const mapKey = `combined:arrcustom:${customToken}`;
+    dashboardCombinedSettings[mapKey] = {
+      enable: Boolean(req.body[`dashboard_combined_arrcustom_${customToken}_enable`]),
+      dashboard: Boolean(req.body[`dashboard_combined_arrcustom_${customToken}_dashboard`]),
+    };
+  });
+  Object.entries(existingDashboardCombinedSettings).forEach(([mapKey, value]) => {
+    if (!String(mapKey || '').startsWith('combined:arrcustom:')) return;
+    if (!dashboardRemovedElements[mapKey]) return;
+    if (dashboardCombinedSettings[mapKey]) return;
+    dashboardCombinedSettings[mapKey] = value;
   });
   const apps = (config.apps || []).map((appItem) => ({
     ...appItem,
@@ -1524,19 +1887,36 @@ app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
   }));
   const arrDashboardCombine = resolveArrDashboardCombineSettings(config, apps);
   ARR_COMBINE_SECTIONS.forEach((section) => {
+    const mapKey = `combined:arr:${section.key}`;
+    if (dashboardRemovedElements[mapKey]) return;
     arrDashboardCombine[section.key] = arrDashboardCombine[section.key] || {};
     apps
-      .filter((appItem) => ARR_APP_IDS.includes(appItem.id))
+      .filter((appItem) => isAppInSet(appItem.id, ARR_APP_IDS))
       .forEach((appItem) => {
         const field = `arr_combine_${section.key}_${appItem.id}`;
         arrDashboardCombine[section.key][appItem.id] = Boolean(req.body[field]);
       });
   });
+  const arrSelectableAppIds = apps
+    .filter((appItem) => !appItem?.removed && isAppInSet(appItem.id, ARR_APP_IDS))
+    .map((appItem) => normalizeAppId(appItem.id))
+    .filter(Boolean);
+  const arrDashboardCombinedCards = resolveArrDashboardCombinedCards(config, apps).map((card) => {
+    const cardKey = `combined:arrcustom:${card.id}`;
+    if (dashboardRemovedElements[cardKey]) return card;
+    const selected = arrSelectableAppIds.filter((appId) => Boolean(req.body[`arrcustom_combine_${card.id}_${appId}`]));
+    return {
+      ...card,
+      appIds: selected.length ? selected : [...arrSelectableAppIds],
+    };
+  });
   const downloaderDashboardCombine = resolveDownloaderDashboardCombineSettings(config, apps);
   DOWNLOADER_COMBINE_SECTIONS.forEach((section) => {
+    const mapKey = `combined:downloader:${section.key}`;
+    if (dashboardRemovedElements[mapKey]) return;
     downloaderDashboardCombine[section.key] = downloaderDashboardCombine[section.key] || {};
     apps
-      .filter((appItem) => DOWNLOADER_APP_IDS.includes(appItem.id))
+      .filter((appItem) => isAppInSet(appItem.id, DOWNLOADER_APP_IDS))
       .forEach((appItem) => {
         const field = `downloader_combine_${section.key}_${appItem.id}`;
         downloaderDashboardCombine[section.key][appItem.id] = Boolean(req.body[field]);
@@ -1544,9 +1924,11 @@ app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
   });
   const mediaDashboardCombine = resolveMediaDashboardCombineSettings(config, apps);
   MEDIA_COMBINE_SECTIONS.forEach((section) => {
+    const mapKey = `combined:media:${section.key}`;
+    if (dashboardRemovedElements[mapKey]) return;
     mediaDashboardCombine[section.key] = mediaDashboardCombine[section.key] || {};
     apps
-      .filter((appItem) => MEDIA_APP_IDS.includes(appItem.id))
+      .filter((appItem) => isAppInSet(appItem.id, MEDIA_APP_IDS))
       .forEach((appItem) => {
         const field = `media_combine_${section.key}_${appItem.id}`;
         mediaDashboardCombine[section.key][appItem.id] = Boolean(req.body[field]);
@@ -1584,10 +1966,220 @@ app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
     downloaderDashboardCombine,
     arrCombinedQueueDisplay,
     downloaderCombinedQueueDisplay,
+    arrDashboardCombinedCards,
     dashboardCombinedOrder,
     dashboardCombinedSettings,
   });
   res.redirect('/settings');
+});
+
+app.post('/settings/dashboard-elements/remove', requireSettingsAdmin, (req, res) => {
+  const config = loadConfig();
+  const key = String(req.body?.dashboard_element_key || req.body?.key || '').trim();
+  if (!key) {
+    return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&dashboardElementError=Missing+dashboard+item+key.');
+  }
+  const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
+    ? { ...config.dashboardRemovedElements }
+    : {};
+  dashboardRemovedElements[key] = true;
+  saveConfig({
+    ...config,
+    dashboardRemovedElements,
+  });
+  return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&dashboardElementResult=removed');
+});
+
+app.post('/settings/dashboard-elements/add', requireSettingsAdmin, (req, res) => {
+  const config = loadConfig();
+  const key = String(req.body?.dashboard_element_key || req.body?.key || '').trim();
+  if (!key) {
+    return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&dashboardElementError=Select+a+dashboard+item+to+add.');
+  }
+  const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
+    ? { ...config.dashboardRemovedElements }
+    : {};
+  delete dashboardRemovedElements[key];
+  saveConfig({
+    ...config,
+    dashboardRemovedElements,
+  });
+  return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&dashboardElementResult=added');
+});
+
+app.post('/settings/dashboard-combined/add', requireSettingsAdmin, (req, res) => {
+  const config = loadConfig();
+  const key = String(req.body?.dashboard_combined_key || req.body?.key || '').trim();
+  if (!key) {
+    return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&arrCombinedCardError=Select+a+combined+card+to+add.');
+  }
+  const newArrMatch = key.match(/^new:arr:(.+)$/);
+  if (newArrMatch) {
+    const sectionKey = String(newArrMatch[1] || '').trim();
+    if (!getArrCombineSection(sectionKey)) {
+      return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&arrCombinedCardError=Invalid+combined+section+selected.');
+    }
+    const apps = Array.isArray(config.apps) ? config.apps : [];
+    const allowedAppIds = [
+      ...new Set(
+        apps
+          .filter((appItem) => !appItem?.removed && isAppInSet(appItem?.id, ARR_APP_IDS))
+          .map((appItem) => normalizeAppId(appItem?.id))
+          .filter(Boolean)
+      ),
+    ];
+    if (!allowedAppIds.length) {
+      return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&arrCombinedCardError=No+ARR+sources+available+to+build+a+dashboard+card.');
+    }
+    const existingCards = resolveArrDashboardCombinedCards(config, apps);
+    const cardId = normalizeCombinedCardToken(buildCombinedCardId());
+    const nextCards = [...existingCards, {
+      id: cardId,
+      sectionKey,
+      appIds: allowedAppIds,
+    }];
+
+    const combinedKey = `combined:arrcustom:${cardId}`;
+    const existingCombinedSettings = (config && typeof config.dashboardCombinedSettings === 'object' && config.dashboardCombinedSettings)
+      ? { ...config.dashboardCombinedSettings }
+      : {};
+    existingCombinedSettings[combinedKey] = { enable: true, dashboard: true };
+    const existingCombinedOrder = (config && typeof config.dashboardCombinedOrder === 'object' && config.dashboardCombinedOrder)
+      ? { ...config.dashboardCombinedOrder }
+      : {};
+    const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
+      ? { ...config.dashboardRemovedElements }
+      : {};
+    const maxOrder = Math.max(
+      0,
+      ...Object.values(existingCombinedOrder)
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value))
+    );
+    existingCombinedOrder[combinedKey] = maxOrder + 1;
+    delete dashboardRemovedElements[combinedKey];
+
+    saveConfig({
+      ...config,
+      arrDashboardCombinedCards: nextCards,
+      dashboardCombinedSettings: existingCombinedSettings,
+      dashboardCombinedOrder: existingCombinedOrder,
+      dashboardRemovedElements,
+    });
+    return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&arrCombinedCardResult=added');
+  }
+  const allowedKeys = new Set([
+    ...ARR_COMBINE_SECTIONS.map((section) => `combined:arr:${section.key}`),
+    ...DOWNLOADER_COMBINE_SECTIONS.map((section) => `combined:downloader:${section.key}`),
+    ...MEDIA_COMBINE_SECTIONS.map((section) => `combined:media:${section.key}`),
+  ]);
+  if (!allowedKeys.has(key)) {
+    return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&arrCombinedCardError=Invalid+combined+card+selection.');
+  }
+  const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
+    ? { ...config.dashboardRemovedElements }
+    : {};
+  delete dashboardRemovedElements[key];
+  saveConfig({
+    ...config,
+    dashboardRemovedElements,
+  });
+  return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&arrCombinedCardResult=added');
+});
+
+app.post('/settings/dashboard-combined/arr/add', requireSettingsAdmin, (req, res) => {
+  const config = loadConfig();
+  const apps = Array.isArray(config.apps) ? config.apps : [];
+  const sectionKey = String(req.body?.arr_combined_section || req.body?.section || '').trim();
+  if (!getArrCombineSection(sectionKey)) {
+    return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&arrCombinedCardError=Invalid+combined+section+selected.');
+  }
+
+  const allowedAppIds = [
+    ...new Set(
+      apps
+        .filter((appItem) => !appItem?.removed && isAppInSet(appItem?.id, ARR_APP_IDS))
+        .map((appItem) => normalizeAppId(appItem?.id))
+        .filter(Boolean)
+    ),
+  ];
+  if (!allowedAppIds.length) {
+    return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&arrCombinedCardError=No+ARR+sources+available+to+build+a+dashboard+card.');
+  }
+
+  const existingCards = resolveArrDashboardCombinedCards(config, apps);
+  const cardId = normalizeCombinedCardToken(buildCombinedCardId());
+  const nextCards = [...existingCards, {
+    id: cardId,
+    sectionKey,
+    appIds: allowedAppIds,
+  }];
+
+  const combinedKey = `combined:arrcustom:${cardId}`;
+  const existingCombinedSettings = (config && typeof config.dashboardCombinedSettings === 'object' && config.dashboardCombinedSettings)
+    ? { ...config.dashboardCombinedSettings }
+    : {};
+  existingCombinedSettings[combinedKey] = { enable: true, dashboard: true };
+  const existingCombinedOrder = (config && typeof config.dashboardCombinedOrder === 'object' && config.dashboardCombinedOrder)
+    ? { ...config.dashboardCombinedOrder }
+    : {};
+  const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
+    ? { ...config.dashboardRemovedElements }
+    : {};
+  const maxOrder = Math.max(
+    0,
+    ...Object.values(existingCombinedOrder)
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value))
+  );
+  existingCombinedOrder[combinedKey] = maxOrder + 1;
+  delete dashboardRemovedElements[combinedKey];
+
+  saveConfig({
+    ...config,
+    arrDashboardCombinedCards: nextCards,
+    dashboardCombinedSettings: existingCombinedSettings,
+    dashboardCombinedOrder: existingCombinedOrder,
+    dashboardRemovedElements,
+  });
+  return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&arrCombinedCardResult=added');
+});
+
+app.post('/settings/dashboard-combined/arr/delete', requireSettingsAdmin, (req, res) => {
+  const config = loadConfig();
+  const apps = Array.isArray(config.apps) ? config.apps : [];
+  const cardId = normalizeCombinedCardToken(req.body?.id || '');
+  if (!cardId) {
+    return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&arrCombinedCardError=Missing+combined+card+id.');
+  }
+  const existingCards = resolveArrDashboardCombinedCards(config, apps);
+  const nextCards = existingCards.filter((card) => card.id !== cardId);
+  if (nextCards.length === existingCards.length) {
+    return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&arrCombinedCardError=Combined+card+not+found.');
+  }
+
+  const combinedKey = `combined:arrcustom:${cardId}`;
+  const existingCombinedSettings = (config && typeof config.dashboardCombinedSettings === 'object' && config.dashboardCombinedSettings)
+    ? { ...config.dashboardCombinedSettings }
+    : {};
+  const existingCombinedOrder = (config && typeof config.dashboardCombinedOrder === 'object' && config.dashboardCombinedOrder)
+    ? { ...config.dashboardCombinedOrder }
+    : {};
+  const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
+    ? { ...config.dashboardRemovedElements }
+    : {};
+  delete existingCombinedSettings[combinedKey];
+  delete existingCombinedOrder[combinedKey];
+  delete dashboardRemovedElements[combinedKey];
+
+  saveConfig({
+    ...config,
+    arrDashboardCombinedCards: nextCards,
+    dashboardCombinedSettings: existingCombinedSettings,
+    dashboardCombinedOrder: existingCombinedOrder,
+    dashboardRemovedElements,
+  });
+  return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&arrCombinedCardResult=removed');
 });
 
 app.get('/user-settings', requireUser, (req, res) => {
@@ -1870,7 +2462,7 @@ app.post('/settings/apps', requireSettingsAdmin, (req, res) => {
   ARR_COMBINE_SECTIONS.forEach((section) => {
     arrDashboardCombine[section.key] = arrDashboardCombine[section.key] || {};
     apps
-      .filter((appItem) => ARR_APP_IDS.includes(appItem.id))
+      .filter((appItem) => isAppInSet(appItem.id, ARR_APP_IDS))
       .forEach((appItem) => {
         const field = `arr_combine_${section.key}_${appItem.id}`;
         arrDashboardCombine[section.key][appItem.id] = Boolean(req.body[field]);
@@ -1880,7 +2472,7 @@ app.post('/settings/apps', requireSettingsAdmin, (req, res) => {
   DOWNLOADER_COMBINE_SECTIONS.forEach((section) => {
     downloaderDashboardCombine[section.key] = downloaderDashboardCombine[section.key] || {};
     apps
-      .filter((appItem) => DOWNLOADER_APP_IDS.includes(appItem.id))
+      .filter((appItem) => isAppInSet(appItem.id, DOWNLOADER_APP_IDS))
       .forEach((appItem) => {
         const field = `downloader_combine_${section.key}_${appItem.id}`;
         downloaderDashboardCombine[section.key][appItem.id] = Boolean(req.body[field]);
@@ -1890,7 +2482,7 @@ app.post('/settings/apps', requireSettingsAdmin, (req, res) => {
   MEDIA_COMBINE_SECTIONS.forEach((section) => {
     mediaDashboardCombine[section.key] = mediaDashboardCombine[section.key] || {};
     apps
-      .filter((appItem) => MEDIA_APP_IDS.includes(appItem.id))
+      .filter((appItem) => isAppInSet(appItem.id, MEDIA_APP_IDS))
       .forEach((appItem) => {
         const field = `media_combine_${section.key}_${appItem.id}`;
         mediaDashboardCombine[section.key][appItem.id] = Boolean(req.body[field]);
@@ -1930,6 +2522,225 @@ app.post('/settings/apps', requireSettingsAdmin, (req, res) => {
     downloaderCombinedQueueDisplay,
   });
   res.redirect('/settings');
+});
+
+app.post('/settings/apps/instances/add', requireSettingsAdmin, (req, res) => {
+  const config = loadConfig();
+  const apps = Array.isArray(config.apps) ? config.apps : [];
+  const sourceId = normalizeAppId(req.body?.sourceId || '');
+  const baseId = getAppBaseId(req.body?.baseId || sourceId);
+  const focusApp = sourceId || baseId;
+  const redirectWithError = (message) => {
+    const appParam = encodeURIComponent(String(focusApp || baseId || '').trim());
+    const encodedMessage = encodeURIComponent(String(message || 'Unable to add instance.').trim());
+    return res.redirect(`/settings?tab=app&app=${appParam}&appInstanceError=${encodedMessage}`);
+  };
+
+  if (!MULTI_INSTANCE_APP_IDS.includes(baseId)) {
+    return redirectWithError('Unsupported app for instances.');
+  }
+
+  const sameBaseApps = apps.filter((appItem) => getAppBaseId(appItem?.id) === baseId);
+  if (sameBaseApps.length >= MAX_MULTI_INSTANCES_PER_APP) {
+    return redirectWithError(`Maximum ${MAX_MULTI_INSTANCES_PER_APP} instances reached for ${getBaseAppTitle(baseId)}.`);
+  }
+
+  const nextId = buildNextInstanceId(baseId, apps);
+  if (!nextId) {
+    return redirectWithError(`Unable to allocate a new ${getBaseAppTitle(baseId)} instance id.`);
+  }
+
+  const sourceApp = sameBaseApps.find((appItem) => normalizeAppId(appItem?.id) === sourceId)
+    || sameBaseApps[0]
+    || loadDefaultApps().find((appItem) => normalizeAppId(appItem?.id) === baseId);
+  if (!sourceApp) {
+    return redirectWithError(`Missing ${getBaseAppTitle(baseId)} template app.`);
+  }
+
+  const category = String(sourceApp.category || 'Arr Suite').trim() || 'Arr Suite';
+  const maxOrder = Math.max(
+    0,
+    ...apps
+      .filter((appItem) => String(appItem?.category || '').trim().toLowerCase() === category.toLowerCase())
+      .map((appItem) => Number(appItem?.order) || 0)
+  );
+
+  const newApp = {
+    ...sourceApp,
+    id: nextId,
+    name: getDefaultInstanceName(baseId, nextId),
+    instanceName: '',
+    icon: resolvePersistedAppIconPath({ ...sourceApp, id: nextId }),
+    localUrl: '',
+    remoteUrl: '',
+    url: '',
+    apiKey: '',
+    username: '',
+    password: '',
+    plexToken: '',
+    plexMachine: '',
+    order: maxOrder + 1,
+    favourite: false,
+  };
+
+  saveConfig({ ...config, apps: [...apps, newApp] });
+  const appParam = encodeURIComponent(nextId);
+  return res.redirect(`/settings?tab=app&app=${appParam}&appInstanceResult=added`);
+});
+
+app.post('/settings/apps/instances/delete', requireSettingsAdmin, (req, res) => {
+  const config = loadConfig();
+  const apps = Array.isArray(config.apps) ? config.apps : [];
+  const appId = normalizeAppId(req.body?.appId || '');
+  const baseId = getAppBaseId(appId);
+  const appParam = encodeURIComponent(baseId || appId || '');
+  const redirectWithError = (message) => {
+    const encodedMessage = encodeURIComponent(String(message || 'Unable to delete instance.').trim());
+    return res.redirect(`/settings?tab=app&app=${appParam}&appInstanceError=${encodedMessage}`);
+  };
+
+  if (!appId || !MULTI_INSTANCE_APP_IDS.includes(baseId)) {
+    return redirectWithError('Unsupported app for instance deletion.');
+  }
+
+  const sameBaseApps = apps.filter((appItem) => getAppBaseId(appItem?.id) === baseId);
+  if (!sameBaseApps.length) {
+    return redirectWithError('Instance not found.');
+  }
+
+  const sortedInstances = [...sameBaseApps].sort((a, b) => {
+    const aSuffix = getInstanceSuffix(a?.id, baseId);
+    const bSuffix = getInstanceSuffix(b?.id, baseId);
+    const aOrder = Number.isFinite(aSuffix) ? aSuffix : Number.MAX_SAFE_INTEGER;
+    const bOrder = Number.isFinite(bSuffix) ? bSuffix : Number.MAX_SAFE_INTEGER;
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    return String(a?.id || '').localeCompare(String(b?.id || ''));
+  });
+
+  const firstInstanceId = normalizeAppId(sortedInstances[0]?.id);
+  if (!firstInstanceId || appId === firstInstanceId) {
+    return redirectWithError('The first instance cannot be deleted.');
+  }
+
+  if (!sameBaseApps.some((appItem) => normalizeAppId(appItem?.id) === appId)) {
+    return redirectWithError('Instance not found.');
+  }
+
+  const nextApps = apps.filter((appItem) => normalizeAppId(appItem?.id) !== appId);
+  saveConfig({ ...config, apps: nextApps });
+  return res.redirect(`/settings?tab=app&app=${appParam}&appInstanceResult=deleted`);
+});
+
+app.post('/settings/default-apps/add', requireSettingsAdmin, (req, res) => {
+  const config = loadConfig();
+  const apps = Array.isArray(config.apps) ? config.apps : [];
+  const defaultAppId = normalizeAppId(req.body?.default_app_id || req.body?.id || '');
+  const requestedCategory = String(req.body?.default_app_category || req.body?.category || '').trim();
+  const redirectWithError = (message) => {
+    const encodedMessage = encodeURIComponent(String(message || 'Unable to add default app.').trim());
+    return res.redirect(`/settings?tab=custom&defaultAppError=${encodedMessage}`);
+  };
+
+  if (!defaultAppId) {
+    return redirectWithError('Select a default app to add.');
+  }
+
+  const defaultTemplate = loadDefaultApps().find((appItem) => normalizeAppId(appItem?.id) === defaultAppId);
+  if (!defaultTemplate) {
+    return redirectWithError('Default app not found.');
+  }
+
+  const categoryOrder = resolveCategoryOrder(config, apps, { includeAppCategories: false });
+  const categoryKeys = new Set(categoryOrder.map((item) => String(item || '').trim().toLowerCase()).filter(Boolean));
+  const fallbackCategory = categoryOrder.find((item) => String(item || '').trim().toLowerCase() === 'tools')
+    || categoryOrder[0]
+    || 'Tools';
+  const templateCategory = String(defaultTemplate?.category || '').trim();
+  const resolvedCategory = categoryKeys.has(requestedCategory.toLowerCase())
+    ? requestedCategory
+    : (categoryKeys.has(templateCategory.toLowerCase()) ? templateCategory : fallbackCategory);
+
+  const existingIndex = apps.findIndex((appItem) => normalizeAppId(appItem?.id) === defaultAppId);
+  const baseTemplate = {
+    ...defaultTemplate,
+    id: defaultAppId,
+    name: String(defaultTemplate?.name || '').trim() || getBaseAppTitle(getAppBaseId(defaultAppId)),
+    icon: resolvePersistedAppIconPath({ ...defaultTemplate, id: defaultAppId }),
+    category: resolvedCategory,
+  };
+  const current = existingIndex >= 0 ? apps[existingIndex] : null;
+  const nextAppSeed = current ? { ...baseTemplate, ...current, id: defaultAppId } : baseTemplate;
+  const nextApp = {
+    ...nextAppSeed,
+    custom: false,
+    removed: false,
+    favourite: false,
+    launchMode: 'disabled',
+    menu: buildDisabledMenuAccess(),
+    overviewElements: buildDisabledOverviewElements(nextAppSeed),
+  };
+
+  if (existingIndex >= 0) {
+    const nextApps = [...apps];
+    nextApps[existingIndex] = nextApp;
+    saveConfig({ ...config, apps: nextApps });
+  } else {
+    const category = String(nextApp.category || 'Tools').trim() || 'Tools';
+    const maxOrder = Math.max(
+      0,
+      ...apps
+        .filter((appItem) => String(appItem?.category || '').trim().toLowerCase() === category.toLowerCase())
+        .map((appItem) => Number(appItem?.order) || 0)
+    );
+    saveConfig({ ...config, apps: [...apps, { ...nextApp, order: maxOrder + 1 }] });
+  }
+
+  return res.redirect('/settings?tab=custom&defaultAppResult=added');
+});
+
+app.post('/settings/default-apps/remove', requireSettingsAdmin, (req, res) => {
+  const config = loadConfig();
+  const apps = Array.isArray(config.apps) ? config.apps : [];
+  const defaultAppId = normalizeAppId(req.body?.id || req.body?.default_app_id || '');
+  const wantsJson = String(req.get('content-type') || '').toLowerCase().includes('application/json')
+    || String(req.get('accept') || '').toLowerCase().includes('application/json');
+  const replyError = (message, status = 400) => {
+    if (wantsJson) return res.status(status).json({ error: String(message || 'Unable to remove default app.') });
+    const encodedMessage = encodeURIComponent(String(message || 'Unable to remove default app.').trim());
+    return res.redirect(`/settings?tab=custom&defaultAppError=${encodedMessage}`);
+  };
+
+  if (!defaultAppId) {
+    return replyError('Missing default app id.');
+  }
+
+  const defaultExists = loadDefaultApps().some((appItem) => normalizeAppId(appItem?.id) === defaultAppId);
+  if (!defaultExists) {
+    return replyError('Only default apps can be removed here.');
+  }
+
+  const appIndex = apps.findIndex((appItem) => normalizeAppId(appItem?.id) === defaultAppId);
+  if (appIndex === -1) {
+    return replyError('Default app not found.', 404);
+  }
+
+  const current = apps[appIndex];
+  if (current?.custom) {
+    return replyError('Custom apps must be removed with the custom app delete action.');
+  }
+
+  const nextApps = [...apps];
+  nextApps[appIndex] = {
+    ...current,
+    removed: true,
+    favourite: false,
+    launchMode: 'disabled',
+    menu: buildDisabledMenuAccess(),
+    overviewElements: buildDisabledOverviewElements(current),
+  };
+  saveConfig({ ...config, apps: nextApps });
+  if (wantsJson) return res.json({ ok: true });
+  return res.redirect('/settings?tab=custom&defaultAppResult=removed');
 });
 
 app.post('/settings/icons/upload', requireSettingsAdmin, (req, res) => {
@@ -2356,6 +3167,14 @@ app.post('/apps/:id/settings', requireAdmin, (req, res) => {
   };
   const apps = (config.apps || []).map((appItem) => {
     if (appItem.id !== req.params.id) return appItem;
+    const baseId = getAppBaseId(appItem.id);
+    const supportsInstances = MULTI_INSTANCE_APP_IDS.includes(baseId);
+    const nextInstanceName = supportsInstances && !isDisplayOnlyUpdate
+      ? String(req.body?.instanceName || '').trim()
+      : String(appItem.instanceName || '').trim();
+    const nextName = supportsInstances
+      ? (nextInstanceName || getDefaultInstanceName(baseId, appItem.id))
+      : String(appItem.name || '').trim();
     const overviewElements = shouldUpdateOverviewElements
       ? buildOverviewElementsFromRequest(appItem, req.body)
       : appItem.overviewElements;
@@ -2364,6 +3183,9 @@ app.post('/apps/:id/settings', requireAdmin, (req, res) => {
       : appItem.tautulliCards;
     return {
       ...appItem,
+      name: nextName || appItem.name || getBaseAppTitle(baseId),
+      instanceName: supportsInstances ? nextInstanceName : '',
+      icon: resolvePersistedAppIconPath(appItem),
       localUrl: isDisplayOnlyUpdate
         ? appItem.localUrl || ''
         : (req.body.localUrl !== undefined ? req.body.localUrl : (appItem.localUrl || '')),
@@ -3910,6 +4732,15 @@ function buildBasicAuthHeader(username, password) {
   return `Basic ${Buffer.from(`${user}:${pass}`).toString('base64')}`;
 }
 
+function buildAppApiUrl(baseUrl, suffixPath) {
+  const url = new URL(baseUrl);
+  const suffix = String(suffixPath || '').trim().replace(/^\/+/, '');
+  const basePath = String(url.pathname || '/').replace(/\/+$/, '');
+  const joined = `${basePath}/${suffix}`.replace(/\/{2,}/g, '/');
+  url.pathname = joined.startsWith('/') ? joined : `/${joined}`;
+  return url;
+}
+
 async function fetchTransmissionQueue(baseUrl, authHeader) {
   const rpcUrl = new URL('/transmission/rpc', baseUrl);
   const payload = {
@@ -4015,9 +4846,102 @@ async function fetchNzbgetQueue(baseUrl, authHeader) {
   }
 }
 
+async function fetchQbittorrentQueue(baseUrl, username, password) {
+  const user = String(username || '').trim();
+  const pass = String(password || '').trim();
+  let cookieHeader = '';
+
+  if (user || pass) {
+    const loginUrl = buildAppApiUrl(baseUrl, 'api/v2/auth/login');
+    const loginPayload = new URLSearchParams({
+      username: user,
+      password: pass,
+    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+    try {
+      const response = await fetch(loginUrl.toString(), {
+        method: 'POST',
+        headers: {
+          Accept: 'text/plain',
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        },
+        body: loginPayload.toString(),
+        signal: controller.signal,
+      });
+      const text = await response.text();
+      if (!response.ok || !/^ok\.?$/i.test(String(text || '').trim())) {
+        return { error: `qBittorrent authentication failed (${response.status}).` };
+      }
+      const setCookie = String(response.headers.get('set-cookie') || '').trim();
+      const firstCookie = setCookie.split(';')[0].trim();
+      if (firstCookie) cookieHeader = firstCookie;
+    } catch (err) {
+      return { error: safeMessage(err) || 'Failed to authenticate with qBittorrent.' };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  const infoUrl = buildAppApiUrl(baseUrl, 'api/v2/torrents/info');
+  const headers = { Accept: 'application/json' };
+  if (cookieHeader) headers.Cookie = cookieHeader;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+  try {
+    const response = await fetch(infoUrl.toString(), {
+      headers,
+      signal: controller.signal,
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      return { error: `qBittorrent request failed (${response.status}).` };
+    }
+    const parsed = text ? JSON.parse(text) : [];
+    const list = Array.isArray(parsed) ? parsed : [];
+    return { items: list };
+  } catch (err) {
+    return { error: safeMessage(err) || 'Failed to reach qBittorrent.' };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchSabnzbdQueue(baseUrl, apiKey, authHeader) {
+  const queueUrl = buildAppApiUrl(baseUrl, 'api');
+  queueUrl.searchParams.set('mode', 'queue');
+  queueUrl.searchParams.set('output', 'json');
+  if (apiKey) queueUrl.searchParams.set('apikey', apiKey);
+
+  const headers = { Accept: 'application/json' };
+  if (authHeader) headers.Authorization = authHeader;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+  try {
+    const response = await fetch(queueUrl.toString(), {
+      headers,
+      signal: controller.signal,
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      return { error: `SABnzbd request failed (${response.status}).` };
+    }
+    const parsed = text ? JSON.parse(text) : {};
+    const slots = parsed?.queue?.slots;
+    const list = Array.isArray(slots) ? slots : [];
+    return { items: list };
+  } catch (err) {
+    return { error: safeMessage(err) || 'Failed to reach SABnzbd.' };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 app.get('/api/downloaders/:appId/queue', requireUser, async (req, res) => {
   const appId = String(req.params.appId || '').trim().toLowerCase();
-  if (!['transmission', 'nzbget'].includes(appId)) {
+  if (!['transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(appId)) {
     return res.status(400).json({ error: 'Unsupported downloader app.' });
   }
 
@@ -4038,15 +4962,23 @@ app.get('/api/downloaders/:appId/queue', requireUser, async (req, res) => {
   if (!candidates.length) return res.status(400).json({ error: `Missing ${appItem.name || appId} URL.` });
 
   const authHeader = buildBasicAuthHeader(appItem.username || '', appItem.password || '');
+  const apiKey = String(appItem.apiKey || '').trim();
   let lastError = '';
 
   for (let index = 0; index < candidates.length; index += 1) {
     const baseUrl = candidates[index];
     if (!baseUrl) continue;
     try {
-      const result = appId === 'transmission'
-        ? await fetchTransmissionQueue(baseUrl, authHeader)
-        : await fetchNzbgetQueue(baseUrl, authHeader);
+      let result;
+      if (appId === 'transmission') {
+        result = await fetchTransmissionQueue(baseUrl, authHeader);
+      } else if (appId === 'nzbget') {
+        result = await fetchNzbgetQueue(baseUrl, authHeader);
+      } else if (appId === 'qbittorrent') {
+        result = await fetchQbittorrentQueue(baseUrl, appItem.username || '', appItem.password || '');
+      } else {
+        result = await fetchSabnzbdQueue(baseUrl, apiKey, authHeader);
+      }
       if (result.items) {
         pushLog({
           level: 'info',
@@ -4085,7 +5017,7 @@ app.get('/api/arr/:appId/:version/*', requireUser, async (req, res) => {
     });
     return res.status(status).json({ error: message });
   };
-  if (!ARR_APP_IDS.includes(appId)) {
+  if (!isAppInSet(appId, ARR_APP_IDS)) {
     return reject(400, 'Unsupported ARR app.', { appId, version, path: pathSuffix });
   }
   if (version !== 'v1' && version !== 'v3') {
@@ -4367,6 +5299,13 @@ function getNavApps(apps, role, req, categoryOrder = DEFAULT_CATEGORY_ORDER, gen
 
   return apps
     .map((appItem) => {
+      const baseId = getAppBaseId(appItem?.id);
+      const supportsInstances = MULTI_INSTANCE_APP_IDS.includes(baseId);
+      const instanceName = supportsInstances ? String(appItem?.instanceName || '').trim() : '';
+      const resolvedName = supportsInstances
+        ? (instanceName || String(appItem?.name || '').trim() || getDefaultInstanceName(baseId, appItem?.id))
+        : (String(appItem?.name || '').trim() || getBaseAppTitle(baseId));
+      const resolvedIcon = resolvePersistedAppIconPath(appItem);
       const access = getMenuAccess(appItem, role);
       const menuAccess = {
         ...access,
@@ -4375,6 +5314,8 @@ function getNavApps(apps, role, req, categoryOrder = DEFAULT_CATEGORY_ORDER, gen
       };
       return {
         ...appItem,
+        name: resolvedName,
+        icon: resolvedIcon,
         launchMode: resolveAppLaunchMode(appItem, normalizeMenu(appItem)),
         effectiveLaunchMode: resolveEffectiveLaunchMode(appItem, req),
         menuAccess,
@@ -4501,7 +5442,26 @@ function normalizeMenu(appItem) {
 
 function getOverviewElements(appItem) {
   if (!appItem) return [];
-  return APP_OVERVIEW_ELEMENTS[appItem.id] || [];
+  return APP_OVERVIEW_ELEMENTS[getAppBaseId(appItem.id)] || [];
+}
+
+function buildDisabledMenuAccess() {
+  return {
+    overview: { user: false, admin: false },
+    launch: { user: false, admin: false },
+    settings: { user: false, admin: false },
+  };
+}
+
+function buildDisabledOverviewElements(appItem) {
+  const elements = getOverviewElements(appItem);
+  return elements.map((element, index) => ({
+    id: element.id,
+    enable: false,
+    dashboard: false,
+    favourite: false,
+    order: index + 1,
+  }));
 }
 
 function normalizeCategoryName(value) {
@@ -5258,6 +6218,126 @@ function isPrivateIp(ip) {
   return false;
 }
 
+function getArrCombineSection(sectionKey) {
+  const key = String(sectionKey || '').trim();
+  if (!key) return null;
+  return ARR_COMBINE_SECTIONS.find((section) => section.key === key) || null;
+}
+
+function getArrCombineSectionLabel(sectionKey) {
+  const section = getArrCombineSection(sectionKey);
+  if (!section) return 'Combined';
+  if (section.key === 'downloadingSoon') return 'Downloading Soon';
+  if (section.key === 'recentlyDownloaded') return 'Recently Downloaded';
+  if (section.key === 'activityQueue') return 'Activity Queue';
+  if (section.key === 'calendar') return 'Calendar';
+  return String(section.elementId || section.key || 'Combined');
+}
+
+function getArrCombineSectionIconPath(sectionKey) {
+  const section = getArrCombineSection(sectionKey);
+  if (!section) return '/icons/arr-suite.svg';
+  if (section.key === 'downloadingSoon') return '/icons/downloading-soon.svg';
+  if (section.key === 'recentlyDownloaded') return '/icons/recently-added.svg';
+  if (section.key === 'activityQueue') return '/icons/activity-queue.svg';
+  if (section.key === 'calendar') return '/icons/arr-suite.svg';
+  return '/icons/arr-suite.svg';
+}
+
+function normalizeCombinedCardToken(value) {
+  const normalized = String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/-+/g, '-').replace(/^[-_]+|[-_]+$/g, '');
+  return normalized;
+}
+
+function buildCombinedCardId() {
+  return `card-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function resolveArrDashboardCombinedCards(config, apps) {
+  const configured = Array.isArray(config?.arrDashboardCombinedCards) ? config.arrDashboardCombinedCards : [];
+  const allowedAppIds = [
+    ...new Set(
+      (Array.isArray(apps) ? apps : [])
+        .filter((appItem) => !appItem?.removed)
+        .map((appItem) => normalizeAppId(appItem?.id))
+        .filter((id) => isAppInSet(id, ARR_APP_IDS))
+    ),
+  ];
+  const allowedAppIdSet = new Set(allowedAppIds);
+  const cards = [];
+  const seen = new Set();
+  configured.forEach((entry) => {
+    const baseId = normalizeCombinedCardToken(entry?.id || '');
+    if (!baseId) return;
+    const sectionKey = String(entry?.sectionKey || '').trim();
+    if (!getArrCombineSection(sectionKey)) return;
+    const rawAppIds = Array.isArray(entry?.appIds) ? entry.appIds : [entry?.appIds];
+    const selectedAppIds = [...new Set(
+      rawAppIds
+        .map((appId) => normalizeAppId(appId))
+        .filter((appId) => allowedAppIdSet.has(appId))
+    )];
+    const appIds = selectedAppIds.length ? selectedAppIds : [...allowedAppIds];
+    if (!appIds.length) return;
+    let nextId = baseId;
+    if (seen.has(nextId)) {
+      let suffix = 2;
+      while (seen.has(`${baseId}-${suffix}`)) suffix += 1;
+      nextId = `${baseId}-${suffix}`;
+    }
+    seen.add(nextId);
+    cards.push({
+      id: nextId,
+      sectionKey,
+      appIds,
+    });
+  });
+  return cards;
+}
+
+function buildArrCombinedDisplayMeta(appLookup, sectionKey, appIds) {
+  const sectionLabel = getArrCombineSectionLabel(sectionKey);
+  const combinedTitle = `Combined ${sectionLabel}`.trim();
+  const selectedApps = (Array.isArray(appIds) ? appIds : [])
+    .map((appId) => appLookup.get(normalizeAppId(appId)))
+    .filter(Boolean);
+  if (!selectedApps.length) {
+    return {
+      appIds: [],
+      appNames: [],
+      iconPath: '/icons/app-arr.svg',
+      displayName: combinedTitle,
+    };
+  }
+  const selectedAppIds = selectedApps.map((appItem) => normalizeAppId(appItem.id)).filter(Boolean);
+  const selectedAppNames = selectedApps.map((appItem) => String(appItem.name || '').trim()).filter(Boolean);
+  const baseIds = [...new Set(selectedApps.map((appItem) => getAppBaseId(appItem.id)).filter(Boolean))];
+  if (selectedApps.length === 1) {
+    const only = selectedApps[0];
+    return {
+      appIds: selectedAppIds,
+      appNames: selectedAppNames,
+      iconPath: resolvePersistedAppIconPath(only),
+      displayName: combinedTitle,
+    };
+  }
+  if (baseIds.length === 1) {
+    const baseId = baseIds[0];
+    return {
+      appIds: selectedAppIds,
+      appNames: selectedAppNames,
+      iconPath: getDefaultIconPathForAppId(baseId),
+      displayName: combinedTitle,
+    };
+  }
+  return {
+    appIds: selectedAppIds,
+    appNames: selectedAppNames,
+    iconPath: '/icons/app-arr.svg',
+    displayName: combinedTitle,
+  };
+}
+
 function getOrCreatePlexClientId() {
   try {
     if (!fs.existsSync(DATA_DIR)) {
@@ -5282,7 +6362,7 @@ function resolveArrDashboardCombineSettings(config, apps) {
     : {};
   const appIds = (Array.isArray(apps) ? apps : [])
     .map((appItem) => String(appItem?.id || '').trim().toLowerCase())
-    .filter((id) => ARR_APP_IDS.includes(id));
+    .filter((id) => isAppInSet(id, ARR_APP_IDS));
   const hasConfigured = ARR_COMBINE_SECTIONS.some((section) => {
     const sectionValue = configured && typeof configured[section.key] === 'object' ? configured[section.key] : null;
     return sectionValue && Object.keys(sectionValue).length > 0;
@@ -5306,7 +6386,7 @@ function resolveDownloaderDashboardCombineSettings(config, apps) {
     : {};
   const appIds = (Array.isArray(apps) ? apps : [])
     .map((appItem) => String(appItem?.id || '').trim().toLowerCase())
-    .filter((id) => DOWNLOADER_APP_IDS.includes(id));
+    .filter((id) => isAppInSet(id, DOWNLOADER_APP_IDS));
   const hasConfigured = DOWNLOADER_COMBINE_SECTIONS.some((section) => {
     const sectionValue = configured && typeof configured[section.key] === 'object' ? configured[section.key] : null;
     return sectionValue && Object.keys(sectionValue).length > 0;
@@ -5330,7 +6410,7 @@ function resolveMediaDashboardCombineSettings(config, apps) {
     : {};
   const appIds = (Array.isArray(apps) ? apps : [])
     .map((appItem) => String(appItem?.id || '').trim().toLowerCase())
-    .filter((id) => MEDIA_APP_IDS.includes(id));
+    .filter((id) => isAppInSet(id, MEDIA_APP_IDS));
   const hasConfigured = MEDIA_COMBINE_SECTIONS.some((section) => {
     const sectionValue = configured && typeof configured[section.key] === 'object' ? configured[section.key] : null;
     return sectionValue && Object.keys(sectionValue).length > 0;
@@ -5352,12 +6432,92 @@ function normalizeAppId(value) {
   return String(value || '').trim().toLowerCase();
 }
 
+function getAppBaseId(value) {
+  const id = normalizeAppId(value);
+  if (!id) return '';
+  const matched = MULTI_INSTANCE_APP_IDS.find((baseId) => id === baseId || id.startsWith(`${baseId}-`));
+  return matched || id;
+}
+
+function isAppInSet(appId, baseIds) {
+  const baseId = getAppBaseId(appId);
+  return Array.isArray(baseIds) && baseIds.includes(baseId);
+}
+
+function getInstanceSuffix(appId, baseId = '') {
+  const normalized = normalizeAppId(appId);
+  const resolvedBase = normalizeAppId(baseId) || getAppBaseId(normalized);
+  if (!normalized || !resolvedBase) return NaN;
+  const match = normalized.match(new RegExp(`^${resolvedBase}-(\\d+)$`));
+  if (!match) return normalized === resolvedBase ? 1 : NaN;
+  return Number(match[1]);
+}
+
+function getBaseAppTitle(baseId) {
+  const key = normalizeAppId(baseId);
+  if (!key) return 'App';
+  if (APP_BASE_NAME_MAP[key]) return APP_BASE_NAME_MAP[key];
+  return key.charAt(0).toUpperCase() + key.slice(1);
+}
+
+function getDefaultInstanceName(baseId, appId) {
+  const title = getBaseAppTitle(baseId);
+  const suffix = getInstanceSuffix(appId, baseId);
+  if (Number.isFinite(suffix) && suffix > 1) return `${title} ${suffix}`;
+  return title;
+}
+
+function buildNextInstanceId(baseId, apps = []) {
+  const key = normalizeAppId(baseId);
+  if (!key || !MULTI_INSTANCE_APP_IDS.includes(key)) return '';
+  const used = new Set(
+    (Array.isArray(apps) ? apps : [])
+      .map((appItem) => normalizeAppId(appItem?.id))
+      .filter((appId) => getAppBaseId(appId) === key)
+  );
+  for (let index = 2; index <= MAX_MULTI_INSTANCES_PER_APP; index += 1) {
+    const candidate = `${key}-${index}`;
+    if (!used.has(candidate)) return candidate;
+  }
+  return '';
+}
+
+function getDefaultIconPathForAppId(appId) {
+  const baseId = getAppBaseId(appId);
+  const normalizedBaseId = normalizeAppId(baseId);
+  if (!normalizedBaseId) return '/icons/app.svg';
+  const pngPath = path.join(ICONS_DIR, `${normalizedBaseId}.png`);
+  if (fs.existsSync(pngPath)) {
+    return `/icons/${normalizedBaseId}.png`;
+  }
+  const svgPath = path.join(ICONS_DIR, `${normalizedBaseId}.svg`);
+  if (fs.existsSync(svgPath)) {
+    return `/icons/${normalizedBaseId}.svg`;
+  }
+  return '/icons/app.svg';
+}
+
+function iconPathExists(iconPath) {
+  const normalized = String(iconPath || '').trim();
+  if (!normalized.startsWith('/icons/')) return false;
+  const relativePath = normalized.replace(/^\/+/, '');
+  const resolvedPath = path.normalize(path.join(PUBLIC_DIR, relativePath));
+  if (!resolvedPath.startsWith(PUBLIC_DIR)) return false;
+  return fs.existsSync(resolvedPath);
+}
+
+function resolvePersistedAppIconPath(appItem) {
+  const configuredPath = String(appItem?.icon || '').trim();
+  if (configuredPath && iconPathExists(configuredPath)) return configuredPath;
+  return getDefaultIconPathForAppId(appItem?.id);
+}
+
 function resolveQueueColumnLabels(appItem) {
-  const appId = String(appItem?.id || '').trim().toLowerCase();
-  if (appId === 'nzbget') {
+  const appId = getAppBaseId(appItem?.id);
+  if (appId === 'nzbget' || appId === 'sabnzbd') {
     return { detailLabel: 'Category', subDetailLabel: 'Status' };
   }
-  if (appId === 'transmission') {
+  if (appId === 'transmission' || appId === 'qbittorrent') {
     return { detailLabel: 'Status', subDetailLabel: 'Rate' };
   }
   if (appId === 'radarr') {

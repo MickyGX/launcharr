@@ -18,6 +18,16 @@
     }
   });
 
+  function resolveArrBaseId(value) {
+    const appId = String(value || '').trim().toLowerCase();
+    if (!appId) return '';
+    if (appId === 'radarr' || appId.startsWith('radarr-')) return 'radarr';
+    if (appId === 'sonarr' || appId.startsWith('sonarr-')) return 'sonarr';
+    if (appId === 'lidarr' || appId.startsWith('lidarr-')) return 'lidarr';
+    if (appId === 'readarr' || appId.startsWith('readarr-')) return 'readarr';
+    return appId;
+  }
+
   function resolveConfigs() {
     const list = [];
     const multi = Array.isArray(window.ARR_OVERVIEW_CONFIGS) ? window.ARR_OVERVIEW_CONFIGS : [];
@@ -51,6 +61,7 @@
       const sources = Array.isArray(entry.sources)
         ? entry.sources.map((source) => ({
           appId: String(source?.appId || '').trim().toLowerCase(),
+          appBaseId: resolveArrBaseId(source?.appId),
           appName: String(source?.appName || source?.appId || '').trim(),
           baseUrl: String(source?.baseUrl || '').trim(),
           baseUrls: Array.isArray(source?.baseUrls) ? source.baseUrls.map((url) => String(url || '').trim()).filter(Boolean) : [],
@@ -85,6 +96,7 @@
       ? config.sources
         .map((source) => ({
           appId: String(source?.appId || '').trim().toLowerCase(),
+          appBaseId: resolveArrBaseId(source?.appId),
           appName: String(source?.appName || source?.appId || '').trim() || source?.appId || '',
           baseUrl: normalizeBaseUrl(String(source?.baseUrl || '').trim()),
           baseUrls: Array.isArray(source?.baseUrls)
@@ -95,6 +107,7 @@
         .filter((source) => source.appId && (source.baseUrl || source.baseUrls.length) && source.apiKey)
       : [{
         appId,
+        appBaseId: resolveArrBaseId(appId),
         appName,
         baseUrl: normalizeBaseUrl(String(config.baseUrl || '').trim()),
         baseUrls: [normalizeBaseUrl(String(config.baseUrl || '').trim())].filter(Boolean),
@@ -112,6 +125,7 @@
         if (!baseUrl || !apiKey) return;
         sources.push({
           appId: sourceId,
+          appBaseId: resolveArrBaseId(sourceId),
           appName: String(single.appName || sourceId).trim() || sourceId,
           baseUrl,
           baseUrls: [baseUrl],
@@ -119,7 +133,7 @@
         });
       });
     }
-    const activeSources = sources.filter((source) => source.baseUrl && source.apiKey);
+    const activeSources = sources.filter((source) => (source.baseUrl || (Array.isArray(source.baseUrls) && source.baseUrls.length)) && source.apiKey);
     const root = document.querySelector('.plex-overview') || document.documentElement;
     const defaultDisplaySettings = {
       showSubtitle: true,
@@ -161,6 +175,7 @@
         prevBtn: document.getElementById(appId + 'SoonPrevBtn'),
         nextBtn: document.getElementById(appId + 'SoonNextBtn'),
         mediaFilter: document.getElementById(appId + 'SoonTypeFilter'),
+        sourceFilter: document.getElementById(appId + 'SoonSourceFilter'),
         windowFilter: document.getElementById(appId + 'SoonWindowFilter'),
         items: [],
         carousel: null,
@@ -171,6 +186,7 @@
         prevBtn: document.getElementById(appId + 'RecentPrevBtn'),
         nextBtn: document.getElementById(appId + 'RecentNextBtn'),
         mediaFilter: document.getElementById(appId + 'RecentMediaFilter'),
+        sourceFilter: document.getElementById(appId + 'RecentSourceFilter'),
         typeFilter: document.getElementById(appId + 'RecentTypeFilter'),
         windowFilter: document.getElementById(appId + 'RecentWindowFilter'),
         items: [],
@@ -180,6 +196,7 @@
         table: document.querySelector('#' + appId + '-activity-queue .queue-table'),
         body: document.getElementById(appId + 'QueueBody'),
         typeFilter: document.getElementById(appId + 'QueueTypeFilter'),
+        sourceFilter: document.getElementById(appId + 'QueueSourceFilter'),
         sortHeaders: Array.from(document.querySelectorAll('#' + appId + '-activity-queue .queue-row.header > div')),
         sortDir: 'asc',
         sortIndex: 0,
@@ -195,6 +212,7 @@
         monthPrevBtn: document.getElementById(appId + 'CalendarMonthPrevBtn'),
         monthNextBtn: document.getElementById(appId + 'CalendarMonthNextBtn'),
         typeFilter: document.getElementById(appId + 'CalendarTypeFilter'),
+        sourceFilter: document.getElementById(appId + 'CalendarSourceFilter'),
         mobileModeBtn: document.getElementById(appId + 'CalendarMobileModeBtn'),
         overlay: document.getElementById(appId + 'CalendarOverlay'),
         overlayList: document.getElementById(appId + 'CalendarOverlayList'),
@@ -236,7 +254,9 @@
         onView: openItemModal,
         renderCard: (item) => renderCard(item, moduleDisplaySettings.soon),
       });
+      syncSourceFilterOptions(modules.soon.sourceFilter, modules.soon.mediaFilter?.value || 'all');
       modules.soon.mediaFilter?.addEventListener('change', applySoonFilters);
+      modules.soon.sourceFilter?.addEventListener('change', applySoonFilters);
       modules.soon.windowFilter?.addEventListener('change', applySoonFilters);
       if (isCombined) bindCombinedLogoToFilter(modules.soon.mediaFilter);
       loadSoon();
@@ -251,7 +271,9 @@
         onView: openItemModal,
         renderCard: (item) => renderCard(item, moduleDisplaySettings.recent),
       });
+      syncSourceFilterOptions(modules.recent.sourceFilter, modules.recent.mediaFilter?.value || 'all');
       modules.recent.mediaFilter?.addEventListener('change', applyRecentFilters);
+      modules.recent.sourceFilter?.addEventListener('change', applyRecentFilters);
       modules.recent.typeFilter?.addEventListener('change', applyRecentFilters);
       modules.recent.windowFilter?.addEventListener('change', applyRecentFilters);
       if (isCombined) bindCombinedLogoToFilter(modules.recent.mediaFilter);
@@ -260,7 +282,9 @@
 
     if (hasQueue) {
       syncQueueTableLayout();
+      syncSourceFilterOptions(modules.queue.sourceFilter, modules.queue.typeFilter?.value || 'all');
       modules.queue.typeFilter?.addEventListener('change', applyQueueFilters);
+      modules.queue.sourceFilter?.addEventListener('change', applyQueueFilters);
       if (isCombined) bindCombinedLogoToFilter(modules.queue.typeFilter);
       if (modules.queue.sortHeaders?.length) {
         modules.queue.sortHeaders.forEach((header, index) => {
@@ -638,7 +662,7 @@
     }
 
     function mediaKindFromAppId(value) {
-      const app = String(value || '').toLowerCase();
+      const app = resolveArrBaseId(value);
       if (app === 'radarr') return 'movie';
       if (app === 'sonarr') return 'tv';
       if (app === 'lidarr') return 'music';
@@ -893,31 +917,32 @@
     }
 
     function calendarParamsForApp(appSourceId, startDate, endDate) {
+      const appBaseId = resolveArrBaseId(appSourceId);
       const shared = {
         start: startDate.toISOString().slice(0, 10),
         end: endDate.toISOString().slice(0, 10),
       };
-      if (appSourceId === 'sonarr') {
+      if (appBaseId === 'sonarr') {
         return {
           ...shared,
           includeSeries: true,
           includeEpisodeFile: false,
         };
       }
-      if (appSourceId === 'radarr') {
+      if (appBaseId === 'radarr') {
         return {
           ...shared,
           includeMovie: true,
         };
       }
-      if (appSourceId === 'lidarr') {
+      if (appBaseId === 'lidarr') {
         return {
           ...shared,
           includeArtist: true,
           includeAlbum: true,
         };
       }
-      if (appSourceId === 'readarr') {
+      if (appBaseId === 'readarr') {
         return {
           ...shared,
           includeAuthor: true,
@@ -928,33 +953,34 @@
     }
 
     function historyParamsForApp(appSourceId) {
+      const appBaseId = resolveArrBaseId(appSourceId);
       const shared = {
         page: 1,
         pageSize: 100,
         sortKey: 'date',
         sortDirection: 'descending',
       };
-      if (appSourceId === 'sonarr') {
+      if (appBaseId === 'sonarr') {
         return {
           ...shared,
           includeSeries: true,
           includeEpisode: true,
         };
       }
-      if (appSourceId === 'radarr') {
+      if (appBaseId === 'radarr') {
         return {
           ...shared,
           includeMovie: true,
         };
       }
-      if (appSourceId === 'lidarr') {
+      if (appBaseId === 'lidarr') {
         return {
           ...shared,
           includeArtist: true,
           includeAlbum: true,
         };
       }
-      if (appSourceId === 'readarr') {
+      if (appBaseId === 'readarr') {
         return {
           ...shared,
           includeAuthor: true,
@@ -1215,6 +1241,7 @@
       const dateValue = resolveSoonDate(entry);
       const airTimestamp = new Date(dateValue).getTime();
       const sourceName = String(entry?.__arrAppName || '').trim();
+      const sourceAppId = String(entry?.__arrAppId || '').trim().toLowerCase();
 
       return {
         id: 'soon-' + String(entry?.id || Math.random()),
@@ -1228,6 +1255,9 @@
         overview: resolveOverview(entry, entity),
         imdbId: externalIds.imdbId,
         tmdbId: externalIds.tmdbId,
+        sourceAppId,
+        sourceAppBaseId: resolveArrBaseId(sourceAppId),
+        sourceAppName: sourceName,
         airTimestamp: Number.isFinite(airTimestamp) ? airTimestamp : Number.MAX_SAFE_INTEGER,
         window: 'all',
       };
@@ -1248,6 +1278,7 @@
       const entry = record?.episode || record?.track || record || {};
       const subtitleParts = [];
       const sourceName = String(record?.__arrAppName || '').trim();
+      const sourceAppId = String(record?.__arrAppId || '').trim().toLowerCase();
       const code = episodeCode(entry?.seasonNumber, entry?.episodeNumber);
       if (code) subtitleParts.push(code);
       if (entry?.title && entry !== record) subtitleParts.push(String(entry.title));
@@ -1276,6 +1307,9 @@
         overview: resolveOverview(record, entity),
         imdbId: externalIds.imdbId,
         tmdbId: externalIds.tmdbId,
+        sourceAppId,
+        sourceAppBaseId: resolveArrBaseId(sourceAppId),
+        sourceAppName: sourceName,
         recentKey: recentKeyForRecord(record, entity, externalIds),
         eventType: type,
         timestamp: Number.isFinite(timestamp) ? timestamp : 0,
@@ -1445,6 +1479,9 @@
         overview: resolveOverview(entry, entity),
         imdbId: externalIds.imdbId,
         tmdbId: externalIds.tmdbId,
+        sourceAppId: String(entry?.__arrAppId || '').trim().toLowerCase(),
+        sourceAppBaseId: resolveArrBaseId(entry?.__arrAppId),
+        sourceAppName: String(entry?.__arrAppName || '').trim(),
       };
     }
 
@@ -1478,6 +1515,9 @@
         overview: resolveOverview(entry, entity),
         imdbId: externalIds.imdbId,
         tmdbId: externalIds.tmdbId,
+        sourceAppId: String(entry?.__arrAppId || '').trim().toLowerCase(),
+        sourceAppBaseId: resolveArrBaseId(entry?.__arrAppId),
+        sourceAppName: String(entry?.__arrAppName || '').trim(),
       };
     }
 
@@ -1540,6 +1580,9 @@
         overview: resolveOverview(entry, entity),
         imdbId: externalIds.imdbId,
         tmdbId: externalIds.tmdbId,
+        sourceAppId: String(entry?.__arrAppId || '').trim().toLowerCase(),
+        sourceAppBaseId: resolveArrBaseId(entry?.__arrAppId),
+        sourceAppName: String(entry?.__arrAppName || '').trim(),
       };
     }
 
@@ -1573,15 +1616,92 @@
         overview: resolveOverview(entry, entity),
         imdbId: externalIds.imdbId,
         tmdbId: externalIds.tmdbId,
+        sourceAppId: String(entry?.__arrAppId || '').trim().toLowerCase(),
+        sourceAppBaseId: resolveArrBaseId(entry?.__arrAppId),
+        sourceAppName: String(entry?.__arrAppName || '').trim(),
       };
+    }
+
+    function sourceFilterMatches(item, selectedSource) {
+      const sourceValue = String(selectedSource || 'all').trim().toLowerCase();
+      if (sourceValue === 'all') return true;
+      const itemSourceId = String(item?.sourceAppId || '').trim().toLowerCase();
+      return itemSourceId === sourceValue;
+    }
+
+    function mediaValueToBaseId(value) {
+      const mediaValue = String(value || 'all').trim().toLowerCase();
+      if (mediaValue === 'movie') return 'radarr';
+      if (mediaValue === 'tv' || mediaValue === 'show') return 'sonarr';
+      if (mediaValue === 'music') return 'lidarr';
+      if (mediaValue === 'book') return 'readarr';
+      return '';
+    }
+
+    function sourceFilterOptionCache(sourceFilter) {
+      if (!sourceFilter) return [];
+      if (!Array.isArray(sourceFilter.__allOptions)) {
+        sourceFilter.__allOptions = Array.from(sourceFilter.options || []).map((option) => ({
+          value: String(option?.value || '').trim().toLowerCase(),
+          label: String(option?.textContent || option?.label || option?.value || '').trim(),
+          baseId: String(option?.dataset?.baseId || '').trim().toLowerCase(),
+        })).filter((option) => option.value);
+      }
+      return sourceFilter.__allOptions;
+    }
+
+    function createSourceFilterOption(definition) {
+      const option = document.createElement('option');
+      option.value = String(definition?.value || '').trim().toLowerCase();
+      option.textContent = String(definition?.label || definition?.value || '').trim();
+      if (definition?.baseId) option.dataset.baseId = String(definition.baseId).trim().toLowerCase();
+      return option;
+    }
+
+    function syncSelectFilterIcon(selectElement) {
+      if (!selectElement) return;
+      const wrap = selectElement.closest('.plex-select');
+      if (!wrap) return;
+      if (wrap.classList.contains('plex-filter-source')) {
+        const selectedOption = selectElement.options?.[selectElement.selectedIndex];
+        const baseId = String(selectedOption?.dataset?.baseId || '').trim().toLowerCase();
+        wrap.dataset.filterValue = baseId || 'all';
+        return;
+      }
+      wrap.dataset.filterValue = String(selectElement.value || 'all').toLowerCase();
+    }
+
+    function syncSourceFilterOptions(sourceFilter, mediaValue) {
+      if (!sourceFilter) return;
+      const options = sourceFilterOptionCache(sourceFilter);
+      if (!options.length) return;
+
+      const requiredBaseId = mediaValueToBaseId(mediaValue);
+      const previousValue = String(sourceFilter.value || 'all').trim().toLowerCase();
+      const filteredOptions = options.filter((option) => {
+        if (option.value === 'all') return true;
+        if (!requiredBaseId) return true;
+        return option.baseId === requiredBaseId;
+      });
+
+      sourceFilter.innerHTML = '';
+      filteredOptions.forEach((option) => sourceFilter.appendChild(createSourceFilterOption(option)));
+
+      const nextValue = filteredOptions.some((option) => option.value === previousValue) ? previousValue : 'all';
+      sourceFilter.value = nextValue;
+      syncSelectFilterIcon(sourceFilter);
+      sourceFilter.dispatchEvent(new CustomEvent('arr:options-updated'));
     }
 
     function applySoonFilters() {
       if (!modules.soon.carousel) return;
       const mediaValue = String(modules.soon.mediaFilter?.value || 'all');
+      syncSourceFilterOptions(modules.soon.sourceFilter, mediaValue);
+      const sourceValue = String(modules.soon.sourceFilter?.value || 'all');
       const windowValue = String(modules.soon.windowFilter?.value || 'month');
       const filtered = modules.soon.items
         .filter((item) => {
+          if (!sourceFilterMatches(item, sourceValue)) return false;
           if (mediaValue !== 'all' && item.kind !== mediaValue) return false;
           if (windowValue === 'today') return item.window === 'today';
           if (windowValue === 'week') return item.window === 'today' || item.window === 'week';
@@ -1594,10 +1714,13 @@
     function applyRecentFilters() {
       if (!modules.recent.carousel) return;
       const mediaValue = String(modules.recent.mediaFilter?.value || 'all');
+      syncSourceFilterOptions(modules.recent.sourceFilter, mediaValue);
+      const sourceValue = String(modules.recent.sourceFilter?.value || 'all');
       const typeValue = String(modules.recent.typeFilter?.value || 'imported');
       const windowValue = String(modules.recent.windowFilter?.value || 'month');
       const filtered = modules.recent.items
         .filter((item) => {
+          if (!sourceFilterMatches(item, sourceValue)) return false;
           if (mediaValue !== 'all' && item.kind !== mediaValue) return false;
           if (typeValue !== 'all' && item.eventType !== typeValue) return false;
           const timestamp = Number(item.timestamp || 0);
@@ -1615,7 +1738,13 @@
     function applyQueueFilters() {
       if (!hasQueue) return;
       const typeValue = String(modules.queue.typeFilter?.value || 'all');
-      const filtered = modules.queue.items.filter((item) => typeValue === 'all' || item.kind === typeValue);
+      syncSourceFilterOptions(modules.queue.sourceFilter, typeValue);
+      const sourceValue = String(modules.queue.sourceFilter?.value || 'all');
+      const filtered = modules.queue.items.filter((item) => {
+        if (!sourceFilterMatches(item, sourceValue)) return false;
+        if (typeValue !== 'all' && item.kind !== typeValue) return false;
+        return true;
+      });
       filtered.sort((a, b) => {
         const left = queueSortValue(a, modules.queue.sortIndex);
         const right = queueSortValue(b, modules.queue.sortIndex);
@@ -1935,9 +2064,12 @@
     function applyCalendarFilters(forceResetSelection = false) {
       if (!hasCalendar) return;
       const typeValue = String(modules.calendar.typeFilter?.value || 'all').toLowerCase();
+      syncSourceFilterOptions(modules.calendar.sourceFilter, typeValue);
+      const sourceValue = String(modules.calendar.sourceFilter?.value || 'all').toLowerCase();
       const filtered = modules.calendar.allItems
         .filter((item) => {
           if (!item?.calendarDateKey) return false;
+          if (!sourceFilterMatches(item, sourceValue)) return false;
           if (typeValue !== 'all' && String(item.kind || '').toLowerCase() !== typeValue) return false;
           return true;
         })
@@ -2012,7 +2144,9 @@
       modules.calendar.monthTodayBtn?.addEventListener('click', jumpCalendarToToday);
       modules.calendar.monthPrevBtn?.addEventListener('click', () => shiftCalendarMonth(-1));
       modules.calendar.monthNextBtn?.addEventListener('click', () => shiftCalendarMonth(1));
+      syncSourceFilterOptions(modules.calendar.sourceFilter, modules.calendar.typeFilter?.value || 'all');
       modules.calendar.typeFilter?.addEventListener('change', () => applyCalendarFilters(true));
+      modules.calendar.sourceFilter?.addEventListener('change', () => applyCalendarFilters(true));
       const titleSwipeTarget = modules.calendar.monthLabel?.closest('.plex-title') || modules.calendar.monthLabel;
       bindCalendarSwipeTarget(titleSwipeTarget);
       const gridSwipeTarget = modules.calendar.grid?.closest('.arr-calendar-pane--grid') || modules.calendar.grid;
@@ -2053,7 +2187,7 @@
               ...entry,
               __arrAppId: source.appId,
               __arrAppName: source.appName,
-              __arrBaseUrl: source.baseUrl,
+              __arrBaseUrl: source.baseUrl || (Array.isArray(source.baseUrls) ? source.baseUrls[0] : '') || '',
               __arrApiKey: source.apiKey,
             }));
           })
@@ -2124,7 +2258,7 @@
                 ...entry,
                 __arrAppId: source.appId,
                 __arrAppName: source.appName,
-                __arrBaseUrl: source.baseUrl,
+                __arrBaseUrl: source.baseUrl || (Array.isArray(source.baseUrls) ? source.baseUrls[0] : '') || '',
                 __arrApiKey: source.apiKey,
               });
             });
@@ -2176,7 +2310,7 @@
                 ...entry,
                 __arrAppId: source.appId,
                 __arrAppName: source.appName,
-                __arrBaseUrl: source.baseUrl,
+                __arrBaseUrl: source.baseUrl || (Array.isArray(source.baseUrls) ? source.baseUrls[0] : '') || '',
                 __arrApiKey: source.apiKey,
               });
             });
@@ -2224,7 +2358,8 @@
         for (let index = 0; index < activeSources.length; index += 1) {
           const source = activeSources[index];
           try {
-            if (source.appId === 'sonarr') {
+            const sourceBaseId = source.appBaseId || resolveArrBaseId(source.appId);
+            if (sourceBaseId === 'sonarr') {
               let payload = null;
               try {
                 payload = await fetchArr('queue/details', {
@@ -2257,14 +2392,14 @@
               const list = sonarrQueue
                 .map((entry) => ({
                   ...entry,
-                  __arrBaseUrl: source.baseUrl,
+                  __arrBaseUrl: source.baseUrl || (Array.isArray(source.baseUrls) ? source.baseUrls[0] : '') || '',
                   __arrApiKey: source.apiKey,
                   __arrAppName: source.appName,
                   __arrAppId: source.appId,
                 }))
                 .map(mapQueueSonarrItem);
               mapped = mapped.concat(list);
-            } else if (source.appId === 'radarr') {
+            } else if (sourceBaseId === 'radarr') {
               const payload = await fetchArr('queue', {
                 includeMovie: true,
                 includeUnknownMovieItems: true,
@@ -2272,14 +2407,14 @@
               const list = queueArray(payload)
                 .map((entry) => ({
                   ...entry,
-                  __arrBaseUrl: source.baseUrl,
+                  __arrBaseUrl: source.baseUrl || (Array.isArray(source.baseUrls) ? source.baseUrls[0] : '') || '',
                   __arrApiKey: source.apiKey,
                   __arrAppName: source.appName,
                   __arrAppId: source.appId,
                 }))
                 .map(mapQueueRadarrItem);
               mapped = mapped.concat(list);
-            } else if (source.appId === 'lidarr') {
+            } else if (sourceBaseId === 'lidarr') {
               const payload = await fetchArr('queue', {
                 includeArtist: true,
                 includeAlbum: true,
@@ -2289,14 +2424,14 @@
               const list = queueArray(payload)
                 .map((entry) => ({
                   ...entry,
-                  __arrBaseUrl: source.baseUrl,
+                  __arrBaseUrl: source.baseUrl || (Array.isArray(source.baseUrls) ? source.baseUrls[0] : '') || '',
                   __arrApiKey: source.apiKey,
                   __arrAppName: source.appName,
                   __arrAppId: source.appId,
                 }))
                 .map(mapQueueLidarrItem);
               mapped = mapped.concat(list);
-            } else if (source.appId === 'readarr') {
+            } else if (sourceBaseId === 'readarr') {
               const payload = await fetchArr('queue', {
                 includeAuthor: true,
                 includeBook: true,
@@ -2305,7 +2440,7 @@
               const list = queueArray(payload)
                 .map((entry) => ({
                   ...entry,
-                  __arrBaseUrl: source.baseUrl,
+                  __arrBaseUrl: source.baseUrl || (Array.isArray(source.baseUrls) ? source.baseUrls[0] : '') || '',
                   __arrApiKey: source.apiKey,
                   __arrAppName: source.appName,
                   __arrAppId: source.appId,

@@ -85,6 +85,28 @@
   <link rel="apple-touch-icon" href="/icons/launcharr-icon.png" />
 </head>
 <body class="dash-body">
+  <%
+    const resolveAppBaseId = (value) => {
+      const id = String(value || '').trim().toLowerCase();
+      if (!id) return '';
+      if (id === 'radarr' || id.startsWith('radarr-')) return 'radarr';
+      if (id === 'sonarr' || id.startsWith('sonarr-')) return 'sonarr';
+      if (id === 'lidarr' || id.startsWith('lidarr-')) return 'lidarr';
+      if (id === 'readarr' || id.startsWith('readarr-')) return 'readarr';
+      if (id === 'bazarr' || id.startsWith('bazarr-')) return 'bazarr';
+      return id;
+    };
+    const resolveAppIconPath = (appItem) => {
+      const customIcon = String(appItem?.icon || '').trim();
+      if (customIcon) return customIcon;
+      const baseId = resolveAppBaseId(appItem?.id);
+      if (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'nzbget', 'qbittorrent', 'sabnzbd', 'jellyfin', 'emby', 'bazarr'].includes(baseId)) {
+        return `/icons/${baseId}.png`;
+      }
+      return `/icons/${baseId || 'app'}.svg`;
+    };
+    const isArrAppId = (value) => ['sonarr', 'radarr', 'lidarr', 'readarr'].includes(resolveAppBaseId(value));
+  %>
   <div class="dash-frame">
     <aside class="dash-sidebar">
       <div class="dash-brand">
@@ -117,7 +139,7 @@
                       <% category.apps.forEach((appItem) => { %>
                         <div class="nav-accordion-item<%= appItem.id === app.id && (!((appItem.favourite || appItem.favorite)) || appItem.navFavourite) ? ' open' : '' %>">
                           <button class="nav-accordion-trigger" type="button">
-                            <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'jellyfin', 'emby'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+                            <img class="nav-icon app-icon" src="<%= resolveAppIconPath(appItem) %>" alt="" onerror="this.src='/icons/app.svg'" />
                             <span class="nav-label"><%= appItem.name %></span>
                           </button>
                           <div class="nav-accordion-panel">
@@ -155,7 +177,7 @@
                 <% category.apps.forEach((appItem) => { %>
                   <div class="nav-accordion-item<%= appItem.id === app.id && (!((appItem.favourite || appItem.favorite)) || appItem.navFavourite) ? ' open' : '' %>">
                     <button class="nav-accordion-trigger" type="button">
-                      <img class="nav-icon app-icon" src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'jellyfin', 'emby'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+                      <img class="nav-icon app-icon" src="<%= resolveAppIconPath(appItem) %>" alt="" onerror="this.src='/icons/app.svg'" />
                       <span class="nav-label"><%= appItem.name %></span>
                     </button>
                     <div class="nav-accordion-panel">
@@ -234,6 +256,7 @@
 
     <section class="dash-main">
       <% 
+        const appBaseId = resolveAppBaseId(app.id);
         const menu = app.menu || {};
         const overview = menu.overview || {};
         const launch = menu.launch || {};
@@ -242,9 +265,9 @@
         const hasMenu = Boolean(menu.overview || menu.launch || menu.settings);
         const enabled = hasMenu ? Boolean(overview[roleKey] || launch[roleKey] || settingsMenu[roleKey]) : true;
         const hasUrl = Boolean(app.localUrl || app.remoteUrl);
-        const hasToken = app.id === 'plex'
+        const hasToken = appBaseId === 'plex'
           ? Boolean(app.plexToken)
-          : (['jellyfin', 'emby'].includes(app.id) ? Boolean(app.apiKey) : true);
+          : (['jellyfin', 'emby'].includes(appBaseId) ? Boolean(app.apiKey) : true);
         const statusOk = enabled && hasUrl && hasToken;
       %>
       <div class="main-window-bar">
@@ -252,7 +275,7 @@
           <img class="toggle-icon" src="/icons/sidebar-toggle.svg" alt="" />
         </button>
         <div class="main-window-title">
-          <img class="main-window-icon" src="<%= app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'jellyfin', 'emby'].includes(app.id) ? '/icons/' + app.id + '.png' : '/icons/' + app.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+          <img class="main-window-icon" src="<%= resolveAppIconPath(app) %>" alt="" onerror="this.src='/icons/app.svg'" />
           <span class="main-window-app"><%= app.name %></span>
           <span class="main-window-rest">| Overview</span>
         </div>
@@ -262,7 +285,7 @@
         </div>
       </div>
 
-      <% if (app.id === 'plex') { %>
+      <% if (appBaseId === 'plex') { %>
         <%
           const overviewItems = Array.isArray(overviewElements) ? overviewElements : [];
           const overviewById = new Map(overviewItems.map((item) => [item.id, item]));
@@ -463,11 +486,11 @@
         </div>
       <% } %>
 
-      <% if (app.id === 'jellyfin' || app.id === 'emby') { %>
+      <% if (appBaseId === 'jellyfin' || appBaseId === 'emby') { %>
         <%
           const mediaPrefix = app.id;
-          const mediaLabel = app.id === 'emby' ? 'Emby' : 'Jellyfin';
-          const mediaLogo = app.icon || `/icons/${app.id}.png`;
+          const mediaLabel = appBaseId === 'emby' ? 'Emby' : 'Jellyfin';
+          const mediaLogo = resolveAppIconPath(app);
           const overviewItems = Array.isArray(overviewElements) ? overviewElements : [];
           const overviewById = new Map(overviewItems.map((item) => [item.id, item]));
           const activeSettings = overviewById.get('active') || { enable: true, order: 1 };
@@ -569,7 +592,7 @@
         </div>
       <% } %>
 
-      <% if (app.id === 'tautulli') { %>
+      <% if (appBaseId === 'tautulli') { %>
         <%
           const overviewItems = Array.isArray(overviewElements) ? overviewElements : [];
           const showStats = overviewItems.some((item) => item.id === 'watch-stats' && item.enable !== false);
@@ -660,20 +683,21 @@
         <% } %>
       <% } %>
 
-      <% if (['sonarr', 'radarr', 'lidarr', 'readarr'].includes(app.id)) { %>
+      <% if (isArrAppId(app.id)) { %>
         <%
+          const arrBaseId = resolveAppBaseId(app.id);
           const overviewItems = Array.isArray(overviewElements) ? overviewElements : [];
           const overviewById = new Map(overviewItems.map((item) => [item.id, item]));
           const downloadingSoonSettings = overviewById.get('downloading-soon') || { enable: true, order: 1 };
           const recentlyDownloadedSettings = overviewById.get('recently-downloaded') || { enable: true, order: 2 };
           const activityQueueSettings = overviewById.get('activity-queue') || { enable: true, order: 3 };
           const calendarSettings = overviewById.get('calendar') || { enable: true, order: 4 };
-          const arrLogo = '/icons/' + app.id + '.png';
+          const arrLogo = resolveAppIconPath(app);
           const appPrefix = app.id;
           const orderedArrSections = [
             { id: 'downloading-soon', settings: downloadingSoonSettings },
             { id: 'recently-downloaded', settings: recentlyDownloadedSettings },
-            ...(app.id === 'sonarr' || app.id === 'radarr' || app.id === 'lidarr' || app.id === 'readarr'
+            ...(isArrAppId(app.id)
               ? [
                 { id: 'activity-queue', settings: activityQueueSettings },
                 { id: 'calendar', settings: calendarSettings },
@@ -812,16 +836,16 @@
                     <div class="plex-select plex-icon plex-filter-media" title="Type">
                       <select id="<%= appPrefix %>QueueTypeFilter" aria-label="Queue type">
                         <option value="all" selected>All</option>
-                        <% if (appPrefix === 'sonarr') { %>
+                        <% if (arrBaseId === 'sonarr') { %>
                           <option value="tv">TV</option>
                         <% } %>
-                        <% if (appPrefix === 'radarr') { %>
+                        <% if (arrBaseId === 'radarr') { %>
                           <option value="movie">Movies</option>
                         <% } %>
-                        <% if (appPrefix === 'lidarr') { %>
+                        <% if (arrBaseId === 'lidarr') { %>
                           <option value="music">Music</option>
                         <% } %>
-                        <% if (appPrefix === 'readarr') { %>
+                        <% if (arrBaseId === 'readarr') { %>
                           <option value="book">Books</option>
                         <% } %>
                       </select>
@@ -840,8 +864,8 @@
                   <div class="queue-table <%= queueClasses %>" style="--queue-visible-rows:<%= queueVisibleRows %>">
                     <div class="queue-row header">
                       <div class="queue-col-title">Title</div>
-                      <div class="queue-col-detail"><%= appPrefix === 'lidarr' ? 'Album' : (appPrefix === 'readarr' ? 'Author' : (appPrefix === 'radarr' ? 'Year' : 'Episode')) %></div>
-                      <div class="queue-col-subdetail"><%= appPrefix === 'lidarr' ? 'Track' : (appPrefix === 'readarr' ? 'Book' : (appPrefix === 'radarr' ? 'Studio' : 'Episode Title')) %></div>
+                      <div class="queue-col-detail"><%= arrBaseId === 'lidarr' ? 'Album' : (arrBaseId === 'readarr' ? 'Author' : (arrBaseId === 'radarr' ? 'Year' : 'Episode')) %></div>
+                      <div class="queue-col-subdetail"><%= arrBaseId === 'lidarr' ? 'Track' : (arrBaseId === 'readarr' ? 'Book' : (arrBaseId === 'radarr' ? 'Studio' : 'Episode Title')) %></div>
                       <div class="queue-col-size">Quality</div>
                       <div class="queue-col-protocol">Protocol</div>
                       <div class="queue-col-time">Time Left</div>
@@ -916,17 +940,19 @@
         </div>
       <% } %>
 
-      <% if (['transmission', 'nzbget'].includes(app.id)) { %>
+      <% if (['transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(appBaseId)) { %>
         <%
           const overviewItems = Array.isArray(overviewElements) ? overviewElements : [];
           const overviewById = new Map(overviewItems.map((item) => [item.id, item]));
           const activityQueueSettings = overviewById.get('activity-queue') || { enable: true, order: 1 };
-          const appLogo = app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'jellyfin', 'emby'].includes(app.id)
+          const appLogo = app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'nzbget', 'qbittorrent', 'sabnzbd', 'jellyfin', 'emby'].includes(app.id)
             ? '/icons/' + app.id + '.png'
             : '/icons/' + app.id + '.svg');
           const appPrefix = app.id;
-          const queueDetailLabel = appPrefix === 'nzbget' ? 'Category' : 'Status';
-          const queueSubDetailLabel = appPrefix === 'nzbget' ? 'Status' : 'Rate';
+          const isTorrentDownloader = ['transmission', 'qbittorrent'].includes(appPrefix);
+          const isUsenetDownloader = ['nzbget', 'sabnzbd'].includes(appPrefix);
+          const queueDetailLabel = isUsenetDownloader ? 'Category' : 'Status';
+          const queueSubDetailLabel = isUsenetDownloader ? 'Status' : 'Rate';
           const orderedDownloaderSections = [
             { id: 'activity-queue', settings: activityQueueSettings },
           ]
@@ -969,17 +995,20 @@
                     <div class="plex-select plex-icon plex-filter-status" title="Status">
                       <select id="<%= appPrefix %>QueueStatusFilter" aria-label="Queue status">
                         <option value="all" selected>All</option>
-                        <% if (appPrefix === 'transmission') { %>
+                        <% if (isTorrentDownloader) { %>
                           <option value="active">Active</option>
                           <option value="downloading">Downloading</option>
+                          <option value="queued">Queued</option>
                           <option value="seeding">Seeding</option>
                           <option value="paused">Paused</option>
-                          <option value="finished">Finished</option>
+                          <option value="completed">Completed</option>
                           <option value="error">Error</option>
                         <% } else { %>
                           <option value="downloading">Downloading</option>
                           <option value="queued">Queued</option>
                           <option value="paused">Paused</option>
+                          <option value="completed">Completed</option>
+                          <option value="error">Error</option>
                         <% } %>
                       </select>
                     </div>
@@ -1015,7 +1044,7 @@
         </div>
       <% } %>
 
-      <% if (['pulsarr', 'seerr'].includes(app.id)) { %>
+      <% if (['pulsarr', 'seerr'].includes(appBaseId)) { %>
         <%
           const requestAppId = app.id;
           const requestPrefix = requestAppId;
@@ -1243,7 +1272,7 @@
         </div>
       <% } %>
 
-      <% if (app.id !== 'plex' && app.id !== 'jellyfin' && app.id !== 'emby' && app.id !== 'tautulli' && !['sonarr', 'radarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'transmission', 'nzbget'].includes(app.id)) { %>
+      <% if (appBaseId !== 'plex' && appBaseId !== 'jellyfin' && appBaseId !== 'emby' && appBaseId !== 'tautulli' && !isArrAppId(app.id) && !['pulsarr', 'seerr', 'prowlarr', 'transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(appBaseId)) { %>
         <div class="dash-panel overview-panel">
           <div class="panel-header">
             <h2>App Overview</h2>
@@ -1440,7 +1469,7 @@
       });
     });
   </script>
-  <% if (app.id === 'plex') { %>
+  <% if (appBaseId === 'plex') { %>
     <script>
       window.PLEX_OVERVIEW_CONFIG = <%- JSON.stringify({
         baseUrl: (appBaseUrls && appBaseUrls[app.id]) || app.localUrl || app.remoteUrl || '',
@@ -1462,9 +1491,9 @@
     </script>
     <script src="/plex-overview.js"></script>
   <% } %>
-  <% if (app.id === 'jellyfin' || app.id === 'emby') { %>
+  <% if (appBaseId === 'jellyfin' || appBaseId === 'emby') { %>
     <script>
-      window.<%= app.id === 'emby' ? 'EMBY_OVERVIEW_CONFIG' : 'JELLYFIN_OVERVIEW_CONFIG' %> = <%- JSON.stringify({
+      window.<%= appBaseId === 'emby' ? 'EMBY_OVERVIEW_CONFIG' : 'JELLYFIN_OVERVIEW_CONFIG' %> = <%- JSON.stringify({
         baseUrl: (appBaseUrls && appBaseUrls[app.id]) || app.localUrl || app.remoteUrl || app.url || '',
         apiKey: app.apiKey || '',
         displaySettings: (Array.isArray(overviewElements) ? overviewElements : []).reduce((acc, item) => {
@@ -1481,9 +1510,9 @@
         }, {})
       }) %>;
     </script>
-    <script src="/<%= app.id %>-overview.js"></script>
+    <script src="/<%= appBaseId %>-overview.js"></script>
   <% } %>
-  <% if (app.id === 'tautulli') { %>
+  <% if (appBaseId === 'tautulli') { %>
     <% const plexApp = apps.find((appItem) => appItem.id === 'plex'); %>
     <% const activeTautulliCards = (Array.isArray(tautulliCards) ? tautulliCards : []).filter((item) => item.enable).sort((a, b) => (a.order || 0) - (b.order || 0)).map((item) => item.id); %>
     <script>
@@ -1496,7 +1525,7 @@
     </script>
     <script src="/tautulli-overview.js"></script>
   <% } %>
-  <% if (['sonarr', 'radarr', 'lidarr', 'readarr'].includes(app.id)) { %>
+  <% if (isArrAppId(app.id)) { %>
     <script>
       window.ARR_OVERVIEW_CONFIG = <%- JSON.stringify({
         appId: app.id,
@@ -1520,7 +1549,7 @@
     </script>
     <script src="/arr-overview.js?v=<%= assetVersion %>"></script>
   <% } %>
-  <% if (['transmission', 'nzbget'].includes(app.id)) { %>
+  <% if (['transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(appBaseId)) { %>
     <script>
       window.DOWNLOADER_QUEUE_CONFIG = <%- JSON.stringify({
         appId: app.id,
@@ -1530,7 +1559,7 @@
     </script>
     <script src="/downloaders-queue.js"></script>
   <% } %>
-  <% if (['pulsarr', 'seerr'].includes(app.id)) { %>
+  <% if (['pulsarr', 'seerr'].includes(appBaseId)) { %>
     <script>
       window.PULSARR_OVERVIEW_CONFIG = <%- JSON.stringify({
         appId: app.id,
@@ -1554,7 +1583,7 @@
     </script>
     <script src="/pulsarr-overview.js"></script>
   <% } %>
-  <% if (app.id === 'prowlarr') { %>
+  <% if (appBaseId === 'prowlarr') { %>
     <script>
       window.PROWLARR_OVERVIEW_CONFIG = <%- JSON.stringify({
         appId: app.id,

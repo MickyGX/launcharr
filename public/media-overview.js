@@ -403,6 +403,26 @@
     var showUsername = settings.showUsername !== false;
     var rows = Array.isArray(items) ? items : [];
     if (!rows.length) {
+      if (opts.emptyCard) {
+        var emptyTitle = opts.emptyTitle ? String(opts.emptyTitle) : 'No items found';
+        var emptySubtitle = opts.emptySubtitle ? String(opts.emptySubtitle) : 'Check back soon';
+        track.innerHTML =
+          '<div class="plex-card">' +
+            '<div class="plex-poster-wrap">' +
+              '<div class="plex-poster-well" style="height:calc(var(--plex-posterH) * 1px);display:flex;align-items:center;justify-content:center">' +
+                '<div class="plex-placeholder" style="height:100%;width:100%;justify-content:center">' +
+                  '<div class="plex-placeholder-big">' + escapeHtml(emptyTitle) + '</div>' +
+                  '<div class="plex-placeholder-small">' + escapeHtml(emptySubtitle) + '</div>' +
+                '</div>' +
+              '</div>' +
+            '</div>' +
+            '<div class="plex-footer">' +
+              '<div class="plex-name">All quiet</div>' +
+              '<div class="plex-meta">Check back soon</div>' +
+            '</div>' +
+          '</div>';
+        return;
+      }
       track.innerHTML = '<div class="plex-empty">' + escapeHtml(opts.emptyMessage || 'No items found.') + '</div>';
       return;
     }
@@ -553,6 +573,9 @@
         track.__mediaItems = merged;
         renderTrack(track, merged, config.displaySettings, {
           emptyMessage: config.section === 'active' ? 'No active streams.' : 'No recently added items.',
+          emptyCard: config.section === 'active',
+          emptyTitle: config.section === 'active' ? 'No active streams' : 'No items found',
+          emptySubtitle: config.section === 'active' ? 'Nothing is playing right now' : 'Check back soon',
           showSourceBadge: config.section === 'active',
         });
       });

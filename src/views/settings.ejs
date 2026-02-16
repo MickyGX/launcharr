@@ -251,6 +251,55 @@
         .replace(/</g, '\\u003c')
         .replace(/\u2028/g, '\\u2028')
         .replace(/\u2029/g, '\\u2029'); %>
+      <%
+        const resolveAppBaseId = (value) => {
+          const id = String(value || '').trim().toLowerCase();
+          if (!id) return '';
+          if (id === 'radarr' || id.startsWith('radarr-')) return 'radarr';
+          if (id === 'sonarr' || id.startsWith('sonarr-')) return 'sonarr';
+          if (id === 'bazarr' || id.startsWith('bazarr-')) return 'bazarr';
+          return id;
+        };
+        const appInstanceBaseTitles = {
+          radarr: 'Radarr',
+          sonarr: 'Sonarr',
+          bazarr: 'Bazarr',
+        };
+        const resolveAppBaseTitle = (value) => {
+          const key = resolveAppBaseId(value);
+          if (!key) return 'App';
+          if (appInstanceBaseTitles[key]) return appInstanceBaseTitles[key];
+          return key.charAt(0).toUpperCase() + key.slice(1);
+        };
+        const resolveAppInstanceSuffix = (value, baseHint = '') => {
+          const id = String(value || '').trim().toLowerCase();
+          const baseId = resolveAppBaseId(baseHint || id);
+          if (!id || !baseId) return NaN;
+          const match = id.match(new RegExp(`^${baseId}-(\\d+)$`));
+          if (!match) return id === baseId ? 1 : NaN;
+          return Number(match[1]);
+        };
+        const resolveInstanceTabLabel = (appItem) => {
+          const baseId = resolveAppBaseId(appItem?.id);
+          const baseTitle = resolveAppBaseTitle(baseId);
+          const instanceName = String(appItem?.instanceName || '').trim();
+          if (instanceName && instanceName.toLowerCase() !== baseTitle.toLowerCase()) {
+            return instanceName;
+          }
+          const suffix = resolveAppInstanceSuffix(appItem?.id, baseId);
+          if (Number.isFinite(suffix) && suffix > 1) return `${baseTitle} ${suffix}`;
+          return baseTitle;
+        };
+        const resolveAppIconPath = (appItem) => {
+          const customIcon = String(appItem?.icon || '').trim();
+          if (customIcon) return customIcon;
+          const baseId = resolveAppBaseId(appItem?.id);
+          if (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'nzbget', 'qbittorrent', 'sabnzbd', 'jellyfin', 'emby', 'bazarr'].includes(baseId)) {
+            return `/icons/${baseId}.png`;
+          }
+          return `/icons/${baseId || 'app'}.svg`;
+        };
+      %>
       <div class="settings-tabs" role="tablist" aria-label="Settings tabs">
         <button class="settings-tab-btn is-active" type="button" data-tab="general">
           <img class="settings-tab-icon" src="/icons/settings.svg" alt="" />
@@ -429,9 +478,9 @@
                   </button>
                   <div class="icon-picker-menu" role="listbox" aria-label="Category icon">
                     <% (Array.isArray(categoryIcons) ? categoryIcons : []).forEach((iconPath) => { %>
-                      <button class="icon-picker-option" type="button" data-value="<%= iconPath %>" role="option">
+                      <button class="icon-picker-option" type="button" data-value="<%= iconPath %>" data-label="<%= iconPath.replace('/icons/', '') %>" role="option">
                         <img class="icon-picker-icon" src="<%= iconPath %>" alt="" />
-                        <span><%= iconPath.replace('/icons/', '') %></span>
+                        <span class="icon-picker-option-label"><%= iconPath.replace('/icons/', '') %></span>
                       </button>
                     <% }) %>
                   </div>
@@ -480,6 +529,23 @@
                   </div>
                 </div>
                 <% const availableCategories = Array.isArray(categories) && categories.length ? categories : ['Tools']; %>
+                <% const defaultCatalog = Array.isArray(defaultAppCatalog) ? defaultAppCatalog : []; %>
+                <% const defaultAppIdSet = new Set(defaultCatalog.map((entry) => String(entry?.id || '').trim().toLowerCase()).filter(Boolean)); %>
+                <% const displayApps = (Array.isArray(apps) ? apps : []).filter((appItem) => !appItem?.removed); %>
+                <% const missingDefaultApps = defaultCatalog
+                  .filter((entry) => {
+                    const targetId = String(entry?.id || '').trim().toLowerCase();
+                    if (!targetId) return false;
+                    const existing = (Array.isArray(apps) ? apps : []).find((appItem) => String(appItem?.id || '').trim().toLowerCase() === targetId);
+                    return !existing || Boolean(existing?.removed);
+                  })
+                  .sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || ''))); %>
+                <% const missingDefaultAppGroups = missingDefaultApps.reduce((acc, entry) => {
+                  const group = String(entry?.category || 'Tools').trim() || 'Tools';
+                  if (!acc[group]) acc[group] = [];
+                  acc[group].push(entry);
+                  return acc;
+                }, {}); %>
                 <% const categoryOptions = availableCategories.map((value) => {
                   const label = String(value || '').trim();
                   const initials = label
@@ -495,7 +561,7 @@
                   { value: 'new-tab', label: 'New Tab', short: 'Tab' },
                   { value: 'iframe', label: 'iFrame', short: 'Frame' },
                 ]; %>
-                <% apps.forEach((app, index) => { %>
+                <% displayApps.forEach((app, index) => { %>
                   <% const menu = app.menu || {}; %>
                   <% const overview = menu.overview || {}; %>
                   <% const launch = menu.launch || {}; %>
@@ -517,11 +583,12 @@
                   <% const orderValue = Number.isFinite(app.order) ? app.order : index + 1; %>
                   <% const favouriteValue = Boolean(app.favourite || app.favorite); %>
                   <% const isCustomApp = Boolean(app.custom); %>
+                  <% const isDefaultApp = defaultAppIdSet.has(String(app.id || '').trim().toLowerCase()); %>
                   <% const categoryRank = Math.max(0, categoryOptions.findIndex((option) => option.value === currentCategory)); %>
                   <div class="settings-row settings-row--display settings-row--draggable <%= adminEnabled ? '' : 'is-disabled' %>" data-category="<%= currentCategory %>" data-category-rank="<%= categoryRank %>" draggable="true">
                     <div class="settings-app settings-app--draggable">
                       <button class="order-button settings-drag-handle settings-drag-handle--app" type="button" title="Drag to reorder within category" aria-label="Drag to reorder within category">&#x2630;</button>
-                      <img class="nav-icon app-icon" src="<%= app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'jellyfin', 'emby'].includes(app.id) ? '/icons/' + app.id + '.png' : '/icons/' + app.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+                      <img class="nav-icon app-icon" src="<%= resolveAppIconPath(app) %>" alt="" onerror="this.src='/icons/app.svg'" />
                       <span class="settings-app-name"><%= app.name %></span>
                     </div>
                     <div class="settings-cell">
@@ -555,12 +622,77 @@
                 <button class="order-button custom-app-edit" type="button" title="<%= isCustomApp ? 'Edit custom app' : 'Only custom apps can be edited' %>" aria-label="Edit app" <%= isCustomApp ? 'data-app-id="' + app.id + '" data-app-name="' + app.name + '" data-app-category="' + (app.category || 'Tools') + '" data-app-icon="' + (app.icon || '') + '"' : 'disabled' %>>Edit</button>
                     </div>
                     <div class="settings-cell">
-                      <button class="order-button custom-app-delete" type="button" title="<%= isCustomApp ? 'Delete custom app' : 'Only custom apps can be deleted' %>" aria-label="Delete app" <%= isCustomApp ? 'data-app-id="' + app.id + '"' : 'disabled' %>>&times;</button>
+                      <% if (isCustomApp) { %>
+                        <button class="order-button custom-app-delete" type="button" title="Delete custom app" aria-label="Delete app" data-app-id="<%= app.id %>">&times;</button>
+                      <% } else if (isDefaultApp) { %>
+                        <button
+                          class="order-button default-app-delete"
+                          type="submit"
+                          name="id"
+                          value="<%= app.id %>"
+                          formaction="/settings/default-apps/remove"
+                          formmethod="post"
+                          title="Remove default app"
+                          aria-label="Remove default app"
+                          onclick="return window.confirm('Remove this default app? You can re-add it later.');"
+                        >&times;</button>
+                      <% } else { %>
+                        <button class="order-button default-app-delete" type="button" title="Only custom/default apps can be deleted here" aria-label="Delete app" disabled>&times;</button>
+                      <% } %>
                     </div>
                     <input type="hidden" class="settings-order-input" name="display_order_<%= app.id %>" value="<%= orderValue %>" />
                   </div>
                 <% }) %>
               </div>
+              <div class="category-manager-add app-manager-add default-app-add-row" id="defaultAppForm">
+                <div class="icon-picker default-app-picker" data-default-app-picker>
+                  <button class="settings-select icon-picker-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+                    <span class="icon-picker-preview" aria-hidden="true"></span>
+                    <span class="icon-picker-label">Select default app</span>
+                  </button>
+                  <div class="icon-picker-menu" role="listbox" aria-label="Default app">
+                    <% if (missingDefaultApps.length) { %>
+                      <% Object.keys(missingDefaultAppGroups).sort((a, b) => String(a || '').localeCompare(String(b || ''))).forEach((groupName) => { %>
+                        <div class="icon-picker-group-label"><%= groupName %></div>
+                        <% missingDefaultAppGroups[groupName].forEach((entry) => { %>
+                          <button
+                            class="icon-picker-option"
+                            type="button"
+                            role="option"
+                            data-default-app-option
+                            data-value="<%= entry.id %>"
+                            data-label="<%= entry.name %>"
+                            data-default-category="<%= String(entry.category || 'Tools') %>"
+                            data-preview="<%= entry.icon || '/icons/app.svg' %>"
+                          >
+                            <img class="icon-picker-icon" src="<%= entry.icon || '/icons/app.svg' %>" alt="" onerror="this.src='/icons/app.svg'" />
+                            <span class="icon-picker-option-label"><%= entry.name %></span>
+                          </button>
+                        <% }) %>
+                      <% }) %>
+                    <% } else { %>
+                      <div class="icon-picker-empty">No default apps available</div>
+                    <% } %>
+                  </div>
+                  <input type="hidden" name="default_app_id" id="defaultAppSelect" value="" />
+                </div>
+                <select class="settings-select app-manager-select default-app-category-select" name="default_app_category" id="defaultAppCategory">
+                  <% categoryOptions.forEach((option) => { %>
+                    <option value="<%= option.value %>"><%= option.label %></option>
+                  <% }) %>
+                </select>
+                <button class="primary-button default-app-add-btn" type="submit" formaction="/settings/default-apps/add" formmethod="post" <%= missingDefaultApps.length ? '' : 'disabled' %>>Add default app</button>
+              </div>
+              <%
+                const defaultAppResultMap = {
+                  added: 'Default app added. It is disabled for sidebar, overview, and dashboard by default.',
+                  removed: 'Default app removed from sidebar manager. Re-add it anytime from the dropdown.',
+                };
+                const defaultAppNotice = defaultAppError
+                  ? defaultAppError
+                  : (defaultAppResultMap[defaultAppResult] || 'Add or remove default apps from sidebar manager.');
+              %>
+              <span class="settings-users-note<%= defaultAppError ? ' settings-users-note--error' : '' %>" id="defaultAppNote"><%= defaultAppNotice %></span>
               <div class="category-manager-add app-manager-add" id="customAppForm">
                 <input type="text" id="customAppName" class="category-manager-input" placeholder="Custom app name" />
                 <select id="customAppCategory" class="settings-select app-manager-select">
@@ -575,9 +707,9 @@
                   </button>
                   <div class="icon-picker-menu" role="listbox" aria-label="App icon">
                     <% (Array.isArray(appIcons) ? appIcons : []).forEach((iconPath) => { %>
-                      <button class="icon-picker-option" type="button" data-value="<%= iconPath %>" role="option">
+                      <button class="icon-picker-option" type="button" data-value="<%= iconPath %>" data-label="<%= iconPath.replace('/icons/', '') %>" role="option">
                         <img class="icon-picker-icon" src="<%= iconPath %>" alt="" />
-                        <span><%= iconPath.replace('/icons/', '') %></span>
+                        <span class="icon-picker-option-label"><%= iconPath.replace('/icons/', '') %></span>
                       </button>
                     <% }) %>
                   </div>
@@ -610,14 +742,27 @@
                     <img class="settings-head-icon" src="/icons/dashboard.svg" alt="" />
                     <span class="settings-head-label">Dashboard</span>
                   </div>
-                  <div class="settings-cell--blank" aria-hidden="true"></div>
+                  <div>
+                    <img class="settings-head-icon" src="/icons/expand.svg" alt="" />
+                    <span class="settings-head-label">Options</span>
+                  </div>
+                  <div>
+                    <img class="settings-head-icon" src="/icons/delete.svg" alt="" />
+                    <span class="settings-head-label">Delete</span>
+                  </div>
                 </div>
                 <% (Array.isArray(dashboardElements) ? dashboardElements : []).forEach((item, index) => { %>
                   <% const element = item.element || {}; %>
-                  <% const rowKey = `${String(item.appId)}-${String(element.id || index)}-${item.combined ? 'combined' : 'single'}`; %>
+                  <% const combinedRowToken = item.combined
+                    ? `${String(item.combinedType || 'combined')}-${String(item.combinedSection || element.id || index)}`
+                    : `single-${index}`; %>
+                  <% const rowKey = `${String(item.appId)}-${String(element.id || index)}-${combinedRowToken}`; %>
                   <% const categoryRank = Math.max(0, (categories || []).indexOf(item.category || 'Tools')); %>
                   <% const displayName = item.displayName || element.name; %>
-                  <% const elementIcon = item.iconPath || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'jellyfin', 'emby'].includes(item.appId) ? `/icons/${item.appId}.png` : `/icons/${item.appId}.svg`); %>
+                  <% const elementIcon = item.iconPath || resolveAppIconPath({ id: item.appId }); %>
+                  <% const isArrCombined = item.combined && (item.combinedType === 'arr' || item.combinedType === 'arrcustom'); %>
+                  <% const isCustomArrCombined = item.combinedType === 'arrcustom'; %>
+                  <% const canRemoveDashboardItem = Boolean(item.dashboardElementKey); %>
                   <% const showWatchCardsPanel = item.appId === 'tautulli' && (element.id === 'watch-stats' || element.id === 'watch-stats-wheel') && tautulliItems.length; %>
                   <% const combinedOrderKey = item.combined ? `combined:${item.combinedType || 'mixed'}:${item.combinedSection || element.id || 'unknown'}` : ''; %>
                   <% const combinedOrderValue = combinedOrderKey && dashboardCombinedOrder ? Number(dashboardCombinedOrder[combinedOrderKey]) : NaN; %>
@@ -657,6 +802,16 @@
                         <img class="settings-expand-icon" src="/icons/expand.svg" alt="" />
                       </button>
                     </div>
+                    <div class="settings-cell settings-delete-cell">
+                      <button
+                        class="order-button default-app-delete settings-dashboard-delete"
+                        type="button"
+                        data-dashboard-element-key="<%= item.dashboardElementKey || '' %>"
+                        title="Remove dashboard item"
+                        aria-label="Remove dashboard item"
+                        <%= canRemoveDashboardItem ? '' : 'disabled' %>
+                      >&times;</button>
+                    </div>
                   </div>
                   <div class="settings-collapsible is-collapsed settings-inline-collapsible" id="dashboardOptions-<%= rowKey %>">
                     <div class="settings-card">
@@ -682,8 +837,8 @@
                           <% }) %>
                         </div>
                       <% } %>
-                      <% if (item.combined && item.combinedType === 'arr') { %>
-                        <% const arrSectionKey = item.combinedSection || 'activityQueue'; %>
+                      <% if (isArrCombined) { %>
+                        <% const arrSectionKey = isCustomArrCombined ? (item.arrCombined?.sectionKey || 'activityQueue') : (item.combinedSection || 'activityQueue'); %>
                         <% const arrSectionLabel = arrSectionKey === 'downloadingSoon'
                           ? 'Downloading Soon'
                           : (arrSectionKey === 'recentlyDownloaded'
@@ -692,13 +847,20 @@
                         <div class="settings-card-title">Combined <%= arrSectionLabel %> Sources</div>
                         <div class="settings-combined-grid settings-combined-grid--arr" data-section="<%= arrSectionKey %>">
                           <% arrApps.forEach((app) => { %>
+                            <% const arrIconPath = resolveAppIconPath(app); %>
+                            <% const isChecked = isCustomArrCombined
+                              ? (Array.isArray(item.arrCombined?.appIds) && item.arrCombined.appIds.includes(app.id))
+                              : Boolean(arrDashboardCombine?.[arrSectionKey]?.[app.id]); %>
+                            <% const arrSourceName = isCustomArrCombined
+                              ? `arrcustom_combine_${item.arrCombined?.cardId}_${app.id}`
+                              : `arr_combine_${arrSectionKey}_${app.id}`; %>
                             <label class="settings-combined-item">
-                              <img class="settings-combined-icon" src="/icons/<%= app.id %>.png" alt="" onerror="this.src='/icons/app.svg'" />
+                              <img class="settings-combined-icon" src="<%= arrIconPath %>" alt="" onerror="this.src='/icons/app.svg'" />
                               <span class="settings-combined-name"><%= app.name %></span>
                               <input
                                 type="checkbox"
-                                name="arr_combine_<%= arrSectionKey %>_<%= app.id %>"
-                                <%= arrDashboardCombine?.[arrSectionKey]?.[app.id] ? 'checked' : '' %>
+                                name="<%= arrSourceName %>"
+                                <%= isChecked ? 'checked' : '' %>
                               />
                             </label>
                           <% }) %>
@@ -773,37 +935,19 @@
                       <% if (item.combined && item.combinedType === 'downloader' && element.id === 'activity-queue') { %>
                         <% const combinedDownloaderApps = (Array.isArray(downloaderApps) && downloaderApps.length)
                           ? downloaderApps
-                          : (Array.isArray(apps) ? apps.filter((appItem) => ['transmission', 'nzbget'].includes(appItem.id)) : []); %>
-                        <div class="settings-card-title">Combined Download Queue Display</div>
-                        <div class="settings-table settings-table--arr-combine">
-                          <div class="settings-row settings-row--arr-combine settings-head">
-                            <div>
-                              <img class="settings-head-icon" src="/icons/download.svg" alt="" />
-                              <span class="settings-head-label">Downloader</span>
-                            </div>
-                            <div class="settings-cell settings-cell--blank" aria-hidden="true"></div>
-                            <div class="settings-cell settings-cell--blank" aria-hidden="true"></div>
-                            <div>
-                              <img class="settings-head-icon" src="/icons/activity-queue.svg" alt="" />
-                              <span class="settings-head-label">Activity Queue</span>
-                            </div>
-                          </div>
+                          : (Array.isArray(apps) ? apps.filter((appItem) => ['transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(appItem.id)) : []); %>
+                        <div class="settings-card-title">Combined Download Queue Sources</div>
+                        <div class="settings-combined-grid settings-combined-grid--arr" data-section="activityQueue">
                           <% combinedDownloaderApps.forEach((app) => { %>
-                            <div class="settings-row settings-row--arr-combine">
-                              <div class="settings-app">
-                                <img class="nav-icon app-icon" src="<%= app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'jellyfin', 'emby'].includes(app.id) ? '/icons/' + app.id + '.png' : '/icons/' + app.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
-                                <span class="settings-app-name"><%= app.name %></span>
-                              </div>
-                              <div class="settings-cell settings-cell--blank" aria-hidden="true"></div>
-                              <div class="settings-cell settings-cell--blank" aria-hidden="true"></div>
-                              <div class="settings-cell">
-                                <input
-                                  type="checkbox"
-                                  name="downloader_combine_activityQueue_<%= app.id %>"
-                                  <%= downloaderDashboardCombine?.activityQueue?.[app.id] ? 'checked' : '' %>
-                                />
-                              </div>
-                            </div>
+                            <label class="settings-combined-item">
+                              <img class="settings-combined-icon" src="<%= resolveAppIconPath(app) %>" alt="" onerror="this.src='/icons/app.svg'" />
+                              <span class="settings-combined-name"><%= app.name %></span>
+                              <input
+                                type="checkbox"
+                                name="downloader_combine_activityQueue_<%= app.id %>"
+                                <%= downloaderDashboardCombine?.activityQueue?.[app.id] ? 'checked' : '' %>
+                              />
+                            </label>
                           <% }) %>
                         </div>
                         <div class="settings-card-title" style="margin-top:12px;">Combined Download Queue Display Options</div>
@@ -860,7 +1004,7 @@
                           </label>
                           <label class="radio-pill">
                             <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_queue_col_size" <%= element.queueShowSize !== false ? 'checked' : '' %> />
-                            <span><%= ['transmission', 'nzbget'].includes(item.appId) ? 'Size' : 'Quality' %></span>
+                            <span><%= ['transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(item.appId) ? 'Size' : 'Quality' %></span>
                           </label>
                           <label class="radio-pill">
                             <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_queue_col_protocol" <%= element.queueShowProtocol !== false ? 'checked' : '' %> />
@@ -922,6 +1066,108 @@
                   </div>
                 <% }) %>
               </div>
+              <%
+                const dashboardElementResultMap = {
+                  added: 'Dashboard item added back.',
+                  removed: 'Dashboard item removed. Re-add it from the list below.',
+                };
+                const dashboardElementNotice = dashboardElementError
+                  ? dashboardElementError
+                  : (dashboardElementResultMap[dashboardElementResult] || 'Remove dashboard rows and re-add them as needed.');
+                const dashboardAddOptions = Array.isArray(dashboardRemovedAddOptions) ? dashboardRemovedAddOptions : [];
+                const dashboardAddGroups = dashboardAddOptions.reduce((acc, entry) => {
+                  const groupName = String(entry?.group || 'Apps').trim() || 'Apps';
+                  if (!acc[groupName]) acc[groupName] = [];
+                  acc[groupName].push(entry);
+                  return acc;
+                }, {});
+              %>
+              <div class="category-manager-add app-manager-add dashboard-element-add-row" id="dashboardElementAddForm">
+                <div class="icon-picker dashboard-element-picker" data-dashboard-element-picker>
+                  <button class="settings-select icon-picker-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+                    <span class="icon-picker-preview" aria-hidden="true"></span>
+                    <span class="icon-picker-label">Select dashboard item</span>
+                  </button>
+                  <div class="icon-picker-menu" role="listbox" aria-label="Dashboard item">
+                    <% if (dashboardAddOptions.length) { %>
+                      <% Object.keys(dashboardAddGroups).sort((a, b) => String(a || '').localeCompare(String(b || ''))).forEach((groupName) => { %>
+                        <div class="icon-picker-group-label"><%= groupName %></div>
+                        <% dashboardAddGroups[groupName].forEach((entry) => { %>
+                          <button
+                            class="icon-picker-option"
+                            type="button"
+                            role="option"
+                            data-dashboard-element-option
+                            data-value="<%= entry.key %>"
+                            data-label="<%= entry.name %>"
+                            data-preview="<%= entry.icon || '/icons/app.svg' %>"
+                          >
+                            <img class="icon-picker-icon" src="<%= entry.icon || '/icons/app.svg' %>" alt="" onerror="this.src='/icons/app.svg'" />
+                            <span class="icon-picker-option-label"><%= entry.name %></span>
+                          </button>
+                        <% }) %>
+                      <% }) %>
+                    <% } else { %>
+                      <div class="icon-picker-empty">No removed dashboard items</div>
+                    <% } %>
+                  </div>
+                  <input type="hidden" name="dashboard_element_key" id="dashboardElementSelect" value="" />
+                </div>
+                <button class="primary-button dashboard-element-add-btn" type="submit" formaction="/settings/dashboard-elements/add" formmethod="post" <%= dashboardAddOptions.length ? '' : 'disabled' %>>Add Dashboard Card</button>
+              </div>
+              <span class="settings-users-note<%= dashboardElementError ? ' settings-users-note--error' : '' %>"><%= dashboardElementNotice %></span>
+              <%
+                const arrCombinedCardResultMap = {
+                  added: 'Combined card added.',
+                  removed: 'Combined card removed.',
+                };
+                const arrCombinedCardNotice = arrCombinedCardError
+                  ? arrCombinedCardError
+                  : (arrCombinedCardResultMap[arrCombinedCardResult] || 'Add combined cards here, then set sources inside each card options.');
+              %>
+              <% const arrCombinedOptions = Array.isArray(dashboardCombinedAddOptions) ? dashboardCombinedAddOptions : []; %>
+              <div class="category-manager-add app-manager-add dashboard-combined-add-row" id="dashboardCombinedAddForm">
+                <div class="icon-picker dashboard-combined-picker" data-dashboard-combined-picker>
+                  <button class="settings-select icon-picker-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+                    <span class="icon-picker-preview" aria-hidden="true"></span>
+                    <span class="icon-picker-label">Select combined card</span>
+                  </button>
+                  <div class="icon-picker-menu" role="listbox" aria-label="Combined card section">
+                    <% if (arrCombinedOptions.length) { %>
+                      <%
+                        const combinedOptionGroups = arrCombinedOptions.reduce((acc, entry) => {
+                          const groupName = String(entry?.group || 'Combined Cards').trim() || 'Combined Cards';
+                          if (!acc[groupName]) acc[groupName] = [];
+                          acc[groupName].push(entry);
+                          return acc;
+                        }, {});
+                      %>
+                      <% Object.keys(combinedOptionGroups).sort((a, b) => String(a || '').localeCompare(String(b || ''))).forEach((groupName) => { %>
+                        <div class="icon-picker-group-label"><%= groupName %></div>
+                        <% combinedOptionGroups[groupName].forEach((option) => { %>
+                          <button
+                            class="icon-picker-option"
+                            type="button"
+                            role="option"
+                            data-dashboard-combined-option
+                            data-value="<%= option.key %>"
+                            data-label="<%= option.name %>"
+                            data-preview="<%= option.icon || '/icons/arr-suite.svg' %>"
+                          >
+                            <img class="icon-picker-icon" src="<%= option.icon || '/icons/arr-suite.svg' %>" alt="" onerror="this.src='/icons/arr-suite.svg'" />
+                            <span class="icon-picker-option-label"><%= option.name %></span>
+                          </button>
+                        <% }) %>
+                      <% }) %>
+                    <% } else { %>
+                      <div class="icon-picker-empty">No combined sections available</div>
+                    <% } %>
+                  </div>
+                  <input type="hidden" name="dashboard_combined_key" id="dashboardCombinedKeySelect" value="" />
+                </div>
+                <button class="primary-button dashboard-combined-add-btn" type="submit" formaction="/settings/dashboard-combined/add" formmethod="post" <%= arrCombinedOptions.length ? '' : 'disabled' %>>Add Combined Card</button>
+              </div>
+              <span class="settings-users-note<%= arrCombinedCardError ? ' settings-users-note--error' : '' %>"><%= arrCombinedCardNotice %></span>
               <button class="primary-button" type="submit">Save dashboard settings</button>
             </form>
           </div>
@@ -1241,6 +1487,18 @@
           <span class="panel-sub">Switch apps below to edit settings on this page.</span>
         </div>
         <%
+          const appInstanceResultMap = {
+            added: 'New instance created.',
+            deleted: 'Instance deleted.',
+          };
+          const appInstanceNotice = appInstanceError
+            ? appInstanceError
+            : (appInstanceResultMap[appInstanceResult] || '');
+        %>
+        <% if (appInstanceNotice) { %>
+          <span class="settings-users-note<%= appInstanceError ? ' settings-users-note--error' : '' %>"><%= appInstanceNotice %></span>
+        <% } %>
+        <%
           const appSettingsNav = [];
           const appSettingsSeen = new Set();
           (Array.isArray(navCategories) ? navCategories : []).forEach((category) => {
@@ -1251,89 +1509,198 @@
               appSettingsNav.push(appItem);
             });
           });
+          const appSettingsPanels = [];
+          const appSettingsPanelSeen = new Set();
+          appSettingsNav.forEach((appItem) => {
+            const id = String(appItem?.id || '').trim();
+            const baseId = resolveAppBaseId(id);
+            const isMultiInstanceApp = ['radarr', 'sonarr', 'bazarr'].includes(baseId);
+            const panelKey = isMultiInstanceApp ? `base:${baseId}` : `app:${id}`;
+            if (!id || appSettingsPanelSeen.has(panelKey)) return;
+            appSettingsPanelSeen.add(panelKey);
+            appSettingsPanels.push(appItem);
+          });
         %>
-        <% if (appSettingsNav.length) { %>
+        <% if (appSettingsPanels.length) { %>
           <div class="app-settings-switcher" role="navigation" aria-label="Application settings pages">
-            <% appSettingsNav.forEach((appItem, appIndex) => { %>
+            <% appSettingsPanels.forEach((appItem, appIndex) => { %>
+              <%
+                const switcherBaseId = resolveAppBaseId(appItem.id);
+                const switcherLabel = ['radarr', 'sonarr', 'bazarr'].includes(switcherBaseId)
+                  ? resolveAppBaseTitle(switcherBaseId)
+                  : appItem.name;
+              %>
               <button
                 class="app-settings-switcher-btn<%= appIndex === 0 ? ' is-active' : '' %>"
                 type="button"
                 data-settings-app-button
                 data-app-id="<%= appItem.id %>"
-                title="<%= appItem.name %> settings"
-                aria-label="<%= appItem.name %> settings"
+                title="<%= switcherLabel %> settings"
+                aria-label="<%= switcherLabel %> settings"
               >
                 <img
                   class="app-settings-switcher-icon nav-icon app-icon"
-                  src="<%= appItem.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'jellyfin', 'emby'].includes(appItem.id) ? '/icons/' + appItem.id + '.png' : '/icons/' + appItem.id + '.svg') %>"
+                  src="<%= resolveAppIconPath(appItem) %>"
                   alt=""
                   onerror="this.src='/icons/app.svg'"
                 />
-                <span class="app-settings-switcher-text"><%= appItem.name %></span>
+                <span class="app-settings-switcher-text"><%= switcherLabel %></span>
               </button>
             <% }) %>
           </div>
-          <% appSettingsNav.forEach((appItem, appIndex) => { %>
+          <% appSettingsPanels.forEach((appItem, appIndex) => { %>
             <%
-              const appMenu = appItem.menu || {};
+              const appBaseId = resolveAppBaseId(appItem.id);
+              const requestedAppId = String(selectedSettingsAppId || '').trim().toLowerCase();
+              const supportsInstances = ['radarr', 'sonarr', 'bazarr'].includes(appBaseId);
+              const instanceItems = supportsInstances
+                ? appSettingsNav
+                  .filter((entry) => resolveAppBaseId(entry.id) === appBaseId)
+                  .slice()
+                  .sort((a, b) => {
+                    const aSuffix = resolveAppInstanceSuffix(a?.id, appBaseId);
+                    const bSuffix = resolveAppInstanceSuffix(b?.id, appBaseId);
+                    const aOrder = Number.isFinite(aSuffix) ? aSuffix : Number.MAX_SAFE_INTEGER;
+                    const bOrder = Number.isFinite(bSuffix) ? bSuffix : Number.MAX_SAFE_INTEGER;
+                    if (aOrder !== bOrder) return aOrder - bOrder;
+                    return String(a?.id || '').localeCompare(String(b?.id || ''));
+                  })
+                : [appItem];
+              const activeInstanceItem = supportsInstances
+                ? (instanceItems.find((entry) => String(entry?.id || '').trim().toLowerCase() === requestedAppId) || instanceItems[0] || appItem)
+                : appItem;
+              const panelAppItem = activeInstanceItem || appItem;
+              const appMenu = panelAppItem.menu || {};
               const appOverview = appMenu.overview || {};
               const appLaunch = appMenu.launch || {};
               const appSettingsMenu = appMenu.settings || {};
               const appRoleKey = role === 'admin' || role === 'co-admin' ? 'admin' : 'user';
               const appHasMenu = Boolean(appMenu.overview || appMenu.launch || appMenu.settings);
               const appEnabled = appHasMenu ? Boolean(appOverview[appRoleKey] || appLaunch[appRoleKey] || appSettingsMenu[appRoleKey]) : true;
-              const appHasUrl = Boolean(appItem.localUrl || appItem.remoteUrl);
-              const appHasToken = appItem.id === 'plex'
-                ? Boolean(appItem.plexToken)
-                : (['jellyfin', 'emby'].includes(appItem.id) ? Boolean(appItem.apiKey) : true);
+              const appHasUrl = Boolean(panelAppItem.localUrl || panelAppItem.remoteUrl);
+              const appIsArrSuite = String(panelAppItem.category || '').toLowerCase() === 'arr suite';
+              const appRequiresApiKey = appIsArrSuite || ['tautulli', 'jellyfin', 'emby', 'prowlarr', 'sabnzbd'].includes(appBaseId);
+              const appHasToken = appBaseId === 'plex'
+                ? Boolean(panelAppItem.plexToken)
+                : (appRequiresApiKey ? Boolean(panelAppItem.apiKey) : true);
               const appStatusOk = appEnabled && appHasUrl && appHasToken;
-              const appIsArrSuite = String(appItem.category || '').toLowerCase() === 'arr suite';
+              const baseInstanceCount = instanceItems.length;
+              const canAddInstance = supportsInstances && baseInstanceCount < 5;
+              const firstInstanceItem = supportsInstances && instanceItems.length ? instanceItems[0] : null;
+              const remainingInstanceItems = supportsInstances && instanceItems.length > 1 ? instanceItems.slice(1) : [];
+              const activeAppId = String(panelAppItem?.id || '').trim();
+              const instancePlaceholder = appBaseId === 'radarr'
+                ? 'Movies (e.g. 4K)'
+                : (appBaseId === 'sonarr' ? 'TV (e.g. Anime)' : 'Subtitles (e.g. Foreign)');
             %>
             <div class="app-settings-panel<%= appIndex === 0 ? ' is-active' : '' %>" data-settings-app-panel data-app-id="<%= appItem.id %>">
               <div class="settings-card">
-                <div class="settings-card-title"><%= appItem.name %> connection</div>
+                <div class="settings-card-title"><%= supportsInstances ? resolveAppBaseTitle(appBaseId) : panelAppItem.name %> connection</div>
                 <div class="settings-card-sub"><%= appStatusOk ? 'Configured and enabled.' : 'Needs attention: check URL or credentials.' %></div>
-                <form method="post" action="/apps/<%= appItem.id %>/settings?from=settings" class="settings-form">
+                <% if (supportsInstances) { %>
+                  <div class="settings-subtabs app-instance-tabs" role="tablist" aria-label="<%= resolveAppBaseTitle(appBaseId) %> instance tabs">
+                    <% if (firstInstanceItem) { %>
+                      <a
+                        class="settings-subtab-btn<%= String(firstInstanceItem.id || '').trim() === activeAppId ? ' is-active' : '' %>"
+                        data-instance-id="<%= String(firstInstanceItem.id || '').trim().toLowerCase() %>"
+                        href="/settings?tab=app&app=<%= encodeURIComponent(String(firstInstanceItem.id || '').trim()) %>"
+                      >
+                        <span class="settings-subtab-text"><%= resolveInstanceTabLabel(firstInstanceItem) %></span>
+                      </a>
+                    <% } %>
+                    <% remainingInstanceItems.forEach((instanceEntry) => { %>
+                      <div class="app-instance-tab-entry">
+                        <a
+                          class="settings-subtab-btn<%= String(instanceEntry.id || '').trim() === activeAppId ? ' is-active' : '' %>"
+                          data-instance-id="<%= String(instanceEntry.id || '').trim().toLowerCase() %>"
+                          href="/settings?tab=app&app=<%= encodeURIComponent(String(instanceEntry.id || '').trim()) %>"
+                        >
+                          <span class="settings-subtab-text"><%= resolveInstanceTabLabel(instanceEntry) %></span>
+                        </a>
+                        <form
+                          method="post"
+                          action="/settings/apps/instances/delete"
+                          class="app-instance-tab-delete-form"
+                          onsubmit="return confirm('Delete this instance? This cannot be undone.');"
+                        >
+                          <input type="hidden" name="appId" value="<%= String(instanceEntry.id || '').trim() %>" />
+                          <button
+                            class="app-instance-tab-delete"
+                            type="submit"
+                            title="Delete <%= resolveInstanceTabLabel(instanceEntry) %>"
+                            aria-label="Delete <%= resolveInstanceTabLabel(instanceEntry) %>"
+                          >
+                            <img src="/icons/delete.svg" alt="" />
+                          </button>
+                        </form>
+                      </div>
+                    <% }) %>
+                    <% if (canAddInstance) { %>
+                      <form method="post" action="/settings/apps/instances/add" class="app-instance-tab-add-form">
+                        <input type="hidden" name="baseId" value="<%= appBaseId %>" />
+                        <input type="hidden" name="sourceId" value="<%= panelAppItem.id %>" />
+                        <button
+                          class="settings-subtab-btn app-instance-tab-add"
+                          type="submit"
+                          title="Add <%= resolveAppBaseTitle(appBaseId) %> instance"
+                          aria-label="Add <%= resolveAppBaseTitle(appBaseId) %> instance"
+                        >
+                          +
+                        </button>
+                      </form>
+                    <% } %>
+                  </div>
+                  <div class="settings-users-actions">
+                    <span class="settings-users-note">Instances: <%= baseInstanceCount %>/5</span>
+                  </div>
+                <% } %>
+                <form method="post" action="/apps/<%= panelAppItem.id %>/settings?from=settings" class="settings-form">
+                  <% if (supportsInstances) { %>
+                    <label class="field">
+                      <span>Instance Name</span>
+                      <input type="text" name="instanceName" value="<%= panelAppItem.instanceName || '' %>" placeholder="<%= instancePlaceholder %>" />
+                    </label>
+                  <% } %>
                   <label class="field">
                     <span>Local URL</span>
-                    <input type="text" name="localUrl" value="<%= appItem.localUrl || '' %>" placeholder="http://192.168.x.x:port" />
+                    <input type="text" name="localUrl" value="<%= panelAppItem.localUrl || '' %>" placeholder="http://192.168.x.x:port" />
                   </label>
                   <label class="field">
                     <span>Remote URL</span>
-                    <input type="text" name="remoteUrl" value="<%= appItem.remoteUrl || '' %>" placeholder="https://app.example.com" />
+                    <input type="text" name="remoteUrl" value="<%= panelAppItem.remoteUrl || '' %>" placeholder="https://app.example.com" />
                   </label>
-                  <% if (appItem.id === 'plex') { %>
+                  <% if (panelAppItem.id === 'plex') { %>
                     <% const appAdminOwner = (Array.isArray(admins) && admins.length) ? admins[0] : ''; %>
                     <label class="field">
                       <span>Plex Token</span>
-                      <input type="password" name="plexToken" value="<%= appItem.plexToken || '' %>" placeholder="Plex token" />
+                      <input type="password" name="plexToken" value="<%= panelAppItem.plexToken || '' %>" placeholder="Plex token" />
                     </label>
                     <label class="field">
                       <span>Plex Machine</span>
-                      <input type="password" name="plexMachine" value="<%= appItem.plexMachine || '' %>" placeholder="Machine identifier" />
+                      <input type="password" name="plexMachine" value="<%= panelAppItem.plexMachine || '' %>" placeholder="Machine identifier" />
                     </label>
                     <label class="field">
                       <span>Plex Admin User</span>
                       <input type="text" name="plexAdminUser" value="<%= appAdminOwner %>" placeholder="admin@plex.tv" />
                     </label>
                   <% } %>
-                  <% if (appItem.id === 'tautulli' || appIsArrSuite || appItem.id === 'jellyfin' || appItem.id === 'emby') { %>
+                  <% if (appRequiresApiKey) { %>
                     <label class="field">
                       <span>API Key</span>
-                      <input type="password" name="apiKey" value="<%= appItem.apiKey || '' %>" placeholder="<%= appItem.name %> API key" />
+                      <input type="password" name="apiKey" value="<%= panelAppItem.apiKey || '' %>" placeholder="<%= panelAppItem.name %> API key" />
                     </label>
                   <% } %>
-                  <% if (appItem.id === 'nzbget' || appItem.id === 'transmission') { %>
+                  <% if (['nzbget', 'transmission', 'qbittorrent', 'sabnzbd'].includes(panelAppItem.id)) { %>
                     <label class="field">
                       <span>Username</span>
-                      <input type="text" name="username" value="<%= appItem.username || '' %>" placeholder="<%= appItem.name %> username" />
+                      <input type="text" name="username" value="<%= panelAppItem.username || '' %>" placeholder="<%= panelAppItem.name %> username" />
                     </label>
                     <label class="field">
                       <span>Password</span>
-                      <input type="password" name="password" value="<%= appItem.password || '' %>" placeholder="<%= appItem.name %> password" />
+                      <input type="password" name="password" value="<%= panelAppItem.password || '' %>" placeholder="<%= panelAppItem.name %> password" />
                     </label>
                   <% } %>
-                  <button class="primary-button" type="submit">Save <%= appItem.name %> settings</button>
+                  <button class="primary-button" type="submit">Save <%= panelAppItem.name %> settings</button>
                 </form>
               </div>
             </div>
@@ -1522,24 +1889,29 @@
     };
 
       const formatIconLabel = (value) => String(value || '').replace('/icons/', '');
-      const initIconPicker = (root, hiddenInput) => {
+      const initIconPicker = (root, hiddenInput, options = {}) => {
         if (!root || !hiddenInput) {
           return { setSelection: () => {} };
         }
+        const onChange = typeof options.onChange === 'function' ? options.onChange : null;
         const trigger = root.querySelector('.icon-picker-trigger');
         const label = root.querySelector('.icon-picker-label');
         const preview = root.querySelector('.icon-picker-preview');
         const menu = root.querySelector('.icon-picker-menu');
-        const setSelection = (value, labelText) => {
+        const setSelection = (value, labelText, optionEl = null) => {
           hiddenInput.value = value || '';
+          const explicitPreview = optionEl ? String(optionEl.dataset.preview || '').trim() : '';
+          const valuePreview = String(value || '').trim();
+          const previewSrc = explicitPreview || (valuePreview.startsWith('/icons/') ? valuePreview : '');
           if (preview) {
-            preview.innerHTML = value
-              ? '<img src="' + value + '" alt=\"\" />'
+            preview.innerHTML = previewSrc
+              ? '<img src="' + previewSrc + '" alt=\"\" />'
               : '';
           }
           if (label) {
             label.textContent = labelText || 'Select icon';
           }
+          if (onChange) onChange(hiddenInput.value, optionEl);
         };
         const close = () => {
           if (!menu || !trigger) return;
@@ -1555,13 +1927,12 @@
             const option = event.target.closest('.icon-picker-option');
             if (!option) return;
             const value = String(option.dataset.value || '').trim();
-            const labelText = option.textContent.trim();
-            setSelection(value, labelText);
+            const labelText = String(option.dataset.label || option.textContent || '').trim();
+            setSelection(value, labelText, option);
             close();
           });
           document.addEventListener('click', (event) => {
-            if (event.target.closest('[data-icon-picker]')) return;
-            if (event.target.closest('[data-app-icon-picker]')) return;
+            if (root.contains(event.target)) return;
             close();
           });
           document.addEventListener('keydown', (event) => {
@@ -1569,7 +1940,7 @@
             close();
           });
         }
-        return { setSelection };
+        return { setSelection, close };
       };
 
       const initIconUploadForms = () => {
@@ -1693,9 +2064,11 @@
     };
 
     if (customTabButtons.length) {
+      const requestedCustomTab = String(queryParams.get('settingsCustomTab') || queryParams.get('subtab') || '').trim();
+      const hasRequestedCustom = requestedCustomTab && customTabPanels.some((panel) => panel.dataset.subtab === requestedCustomTab);
       const storedCustomTab = safeStorage.get('settingsCustomTab');
       const hasStoredCustom = storedCustomTab && customTabPanels.some((panel) => panel.dataset.subtab === storedCustomTab);
-      setCustomTab(hasStoredCustom ? storedCustomTab : customTabButtons[0].dataset.subtab, false);
+      setCustomTab(hasRequestedCustom ? requestedCustomTab : (hasStoredCustom ? storedCustomTab : customTabButtons[0].dataset.subtab), false);
       customTabButtons.forEach((btn) => {
         btn.addEventListener('click', () => setCustomTab(btn.dataset.subtab));
       });
@@ -1703,6 +2076,14 @@
 
     const appSettingsButtons = Array.from(document.querySelectorAll('[data-settings-app-button]'));
     const appSettingsPanels = Array.from(document.querySelectorAll('[data-settings-app-panel]'));
+    const resolveAppBaseId = (value) => {
+      const id = String(value || '').trim().toLowerCase();
+      if (!id) return '';
+      if (id === 'radarr' || id.startsWith('radarr-')) return 'radarr';
+      if (id === 'sonarr' || id.startsWith('sonarr-')) return 'sonarr';
+      if (id === 'bazarr' || id.startsWith('bazarr-')) return 'bazarr';
+      return id;
+    };
     const setAppSettingsPanel = (appId, persist = true) => {
       if (!appId) return;
       appSettingsButtons.forEach((button) => {
@@ -1710,17 +2091,42 @@
         button.classList.toggle('is-active', isActive);
       });
       appSettingsPanels.forEach((panel) => {
-        panel.classList.toggle('is-active', panel.dataset.appId === appId);
+        const isActive = panel.dataset.appId === appId;
+        panel.classList.toggle('is-active', isActive);
+        if (!isActive) return;
+        const instanceTabs = Array.from(panel.querySelectorAll('.app-instance-tabs .settings-subtab-btn[data-instance-id]'));
+        if (!instanceTabs.length) return;
+        const requestedInstanceId = String(queryParams.get('app') || queryParams.get('instance') || '').trim().toLowerCase();
+        let activeInstanceId = requestedInstanceId && instanceTabs.some((tab) => tab.dataset.instanceId === requestedInstanceId)
+          ? requestedInstanceId
+          : (instanceTabs.find((tab) => tab.classList.contains('is-active'))?.dataset.instanceId || String(instanceTabs[0]?.dataset.instanceId || ''));
+        if (!instanceTabs.some((tab) => tab.dataset.instanceId === activeInstanceId)) {
+          activeInstanceId = String(instanceTabs[0]?.dataset.instanceId || '');
+        }
+        instanceTabs.forEach((tab) => {
+          tab.classList.toggle('is-active', tab.dataset.instanceId === activeInstanceId);
+        });
       });
       if (persist) safeStorage.set('settingsAppPanel', appId);
     };
     if (appSettingsButtons.length && appSettingsPanels.length) {
       const hasAppPanel = (appId) => appSettingsPanels.some((panel) => panel.dataset.appId === appId);
+      const resolveAppPanelId = (value) => {
+        const requested = String(value || '').trim();
+        if (!requested) return '';
+        if (hasAppPanel(requested)) return requested;
+        const baseId = resolveAppBaseId(requested);
+        if (!baseId) return '';
+        const matchedPanel = appSettingsPanels.find((panel) => resolveAppBaseId(panel.dataset.appId) === baseId);
+        return matchedPanel ? String(matchedPanel.dataset.appId || '').trim() : '';
+      };
       const requestedAppPanel = String(queryParams.get('app') || '').trim();
       const storedAppPanel = String(safeStorage.get('settingsAppPanel') || '').trim();
-      const initialAppPanel = hasAppPanel(requestedAppPanel)
-        ? requestedAppPanel
-        : (hasAppPanel(storedAppPanel) ? storedAppPanel : appSettingsButtons[0].dataset.appId);
+      const resolvedRequestedAppPanel = resolveAppPanelId(requestedAppPanel);
+      const resolvedStoredAppPanel = resolveAppPanelId(storedAppPanel);
+      const initialAppPanel = resolvedRequestedAppPanel
+        || resolvedStoredAppPanel
+        || appSettingsButtons[0].dataset.appId;
       setAppSettingsPanel(initialAppPanel, false);
       appSettingsButtons.forEach((button) => {
         button.addEventListener('click', () => {
@@ -2118,6 +2524,17 @@
 
       try {
         const customAppForm = document.getElementById('customAppForm');
+        const defaultAppForm = document.getElementById('defaultAppForm');
+        const defaultAppPicker = defaultAppForm?.querySelector('[data-default-app-picker]');
+        const defaultAppSelect = document.getElementById('defaultAppSelect');
+        const defaultAppCategory = document.getElementById('defaultAppCategory');
+        const defaultAppNote = document.getElementById('defaultAppNote');
+        const dashboardElementAddForm = document.getElementById('dashboardElementAddForm');
+        const dashboardElementPicker = dashboardElementAddForm?.querySelector('[data-dashboard-element-picker]');
+        const dashboardElementSelect = document.getElementById('dashboardElementSelect');
+        const dashboardCombinedAddForm = document.getElementById('dashboardCombinedAddForm');
+        const dashboardCombinedPicker = dashboardCombinedAddForm?.querySelector('[data-dashboard-combined-picker]');
+        const dashboardCombinedSelect = document.getElementById('dashboardCombinedKeySelect');
         const customAppName = document.getElementById('customAppName');
         const customAppCategory = document.getElementById('customAppCategory');
         const customAppIconSelect = document.getElementById('customAppIconSelect');
@@ -2129,14 +2546,65 @@
         let customAppIconPath = '';
         let customAppEditId = '';
         const appsSettingsForm = document.querySelector('.settings-subtab-panel[data-subtab="apps"] form');
+        const dashboardSettingsForm = document.getElementById('dashboardElementsForm');
 
         const setCustomAppNote = (text, error = false) => {
           if (!customAppNote) return;
           customAppNote.textContent = text;
           customAppNote.classList.toggle('settings-users-note--error', Boolean(error));
         };
+        const setDefaultAppNote = (text, error = false) => {
+          if (!defaultAppNote) return;
+          defaultAppNote.textContent = text;
+          defaultAppNote.classList.toggle('settings-users-note--error', Boolean(error));
+        };
 
         const appIconPickerApi = initIconPicker(appIconPicker, customAppIconSelect);
+        const getDefaultAppOptions = () => Array.from(defaultAppPicker?.querySelectorAll('.icon-picker-option[data-default-app-option]') || []);
+        const syncDefaultAppCategory = (selectedOption = null) => {
+          if (!defaultAppSelect || !defaultAppCategory) return;
+          const option = selectedOption || getDefaultAppOptions().find((entry) => String(entry.dataset.value || '').trim() === String(defaultAppSelect.value || '').trim());
+          const suggested = option ? String(option.dataset.defaultCategory || '').trim() : '';
+          if (!suggested) return;
+          const exists = Array.from(defaultAppCategory.options || []).some((entry) => String(entry.value || '').trim() === suggested);
+          if (exists) defaultAppCategory.value = suggested;
+        };
+        const defaultAppPickerApi = initIconPicker(defaultAppPicker, defaultAppSelect, {
+          onChange: (_value, option) => syncDefaultAppCategory(option),
+        });
+        const defaultAppOptions = getDefaultAppOptions();
+        if (defaultAppOptions.length) {
+          const firstDefault = defaultAppOptions[0];
+          const firstValue = String(firstDefault.dataset.value || '').trim();
+          const firstLabel = String(firstDefault.dataset.label || firstDefault.textContent || '').trim();
+          defaultAppPickerApi.setSelection(firstValue, firstLabel, firstDefault);
+        } else {
+          defaultAppPickerApi.setSelection('', 'No default apps available');
+        }
+        const dashboardElementPickerApi = initIconPicker(dashboardElementPicker, dashboardElementSelect);
+        const dashboardElementOptions = Array.from(dashboardElementPicker?.querySelectorAll('.icon-picker-option[data-dashboard-element-option]') || []);
+        if (dashboardElementOptions.length) {
+          const firstDashboardOption = dashboardElementOptions[0];
+          dashboardElementPickerApi.setSelection(
+            String(firstDashboardOption.dataset.value || '').trim(),
+            String(firstDashboardOption.dataset.label || firstDashboardOption.textContent || '').trim(),
+            firstDashboardOption
+          );
+        } else {
+          dashboardElementPickerApi.setSelection('', 'No removed dashboard items');
+        }
+        const dashboardCombinedPickerApi = initIconPicker(dashboardCombinedPicker, dashboardCombinedSelect);
+        const dashboardCombinedOptions = Array.from(dashboardCombinedPicker?.querySelectorAll('.icon-picker-option[data-dashboard-combined-option]') || []);
+        if (dashboardCombinedOptions.length) {
+          const firstCombinedOption = dashboardCombinedOptions[0];
+          dashboardCombinedPickerApi.setSelection(
+            String(firstCombinedOption.dataset.value || '').trim(),
+            String(firstCombinedOption.dataset.label || firstCombinedOption.textContent || '').trim(),
+            firstCombinedOption
+          );
+        } else {
+          dashboardCombinedPickerApi.setSelection('', 'No combined sections available');
+        }
 
         customAppSubmit?.addEventListener('click', async () => {
           const name = String(customAppName?.value || '').trim();
@@ -2166,6 +2634,10 @@
         appsSettingsForm?.addEventListener('submit', () => {
           safeStorage.set('settingsTab', 'custom');
           safeStorage.set('settingsCustomTab', 'apps');
+        });
+        dashboardSettingsForm?.addEventListener('submit', () => {
+          safeStorage.set('settingsTab', 'custom');
+          safeStorage.set('settingsCustomTab', 'dashboard');
         });
 
         const handleCustomAppActions = async (event) => {
@@ -2434,6 +2906,27 @@
           });
 
           dashboardTable.addEventListener('click', (event) => {
+            const deleteButton = event.target.closest('.settings-dashboard-delete');
+            if (deleteButton) {
+              event.preventDefault();
+              event.stopPropagation();
+              if (deleteButton.disabled) return;
+              const key = String(deleteButton.dataset.dashboardElementKey || '').trim();
+              if (!key) return;
+              if (!window.confirm('Remove this dashboard item? You can re-add it below.')) return;
+              const removeForm = document.createElement('form');
+              removeForm.method = 'post';
+              removeForm.action = '/settings/dashboard-elements/remove';
+              removeForm.style.display = 'none';
+              const keyInput = document.createElement('input');
+              keyInput.type = 'hidden';
+              keyInput.name = 'dashboard_element_key';
+              keyInput.value = key;
+              removeForm.appendChild(keyInput);
+              document.body.appendChild(removeForm);
+              removeForm.submit();
+              return;
+            }
             const toggle = event.target.closest('.settings-expand-toggle');
             if (!toggle) return;
             const targetId = toggle.dataset.target;

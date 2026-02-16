@@ -919,7 +919,7 @@
 
     function loadRecent() {
       elTrack.innerHTML = '<div class="plex-empty">Loading…</div>';
-      const type = elType ? elType.value : 'movie';
+      const type = elType ? String(elType.value || 'movie') : 'movie';
       const windowValue = elWindow ? String(elWindow.value || 'month') : 'month';
 
       fetchXml(sectionUrl(type), function (xmlText) {
