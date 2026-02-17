@@ -2,9 +2,20 @@
 
 ## v0.2.8 (2026-02-17)
 
-- [Added]
-- [Changed]
-- [Fixed]
+- Added role-based visibility filters in `Settings -> Custom -> Sidebar` so each app can set access for:
+  - Sidebar
+  - Overview
+  - Launch
+  - App settings
+  - Activity
+- Added role-based visibility filters in `Settings -> Custom -> Dashboard` for per-card access control.
+- Added category visibility roles in `Settings -> Custom -> Categories`, plus default-category remove/re-add flow with icon dropdown selection.
+- Added a sidebar header quick menu with starfield toggle and maximize/minimize-in-browser controls.
+- Changed manager/filter UX to use consistent filter-button popovers across cards and settings tables.
+- Changed maximize behavior to remain in browser viewport and persist cleanly during navigation.
+- Fixed settings-page script regression that blocked manager actions after category updates.
+- Fixed dashboard manager filter dropdown click-through where selecting an option could trigger underlying controls.
+- Fixed combined downloader re-add labeling (`Combined Download Queue`) and missing `NZBGet` icon rendering.
 
 
 ## v0.2.7 (2026-02-16)
@@ -25,7 +36,7 @@
 - Fixed empty-state behavior for active stream modules to align card output across Plex/Jellyfin/Emby and combined views.
 
 
-This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.7`.
+This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.8`.
 
 ## v0.2.5 (2026-02-15)
 
