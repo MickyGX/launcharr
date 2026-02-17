@@ -2,16 +2,19 @@
 
 ## v0.2.10 (2026-02-17)
 
-- [Added]
-- [Changed]
-- [Fixed]
+- Added dedicated Launcharr `Base URL Path` setting in `Settings -> General`.
+- Added config-level `general.basePath` handling with path normalization.
+- Updated Launcharr callback/public URL generation to apply configured base path.
+- Updated app integration URL joins to preserve configured path prefixes (for example `/radarr`, `/prowlarr`).
+- Fixed path-stripping behavior that could break integrations when services were hosted under subpaths.
+- Moved base URL feature documentation from `v0.2.9` to `v0.2.10` to reflect actual release ownership.
 
 
 ## v0.2.9 (2026-02-17)
 
-- [Added]
-- [Changed]
-- [Fixed]
+- Added `v0.2.9` release artifact files and timeline entry.
+- Updated package metadata/version release bookkeeping for `0.2.9`.
+- Clarified that base URL/subpath support changes belong to `v0.2.10`.
 
 
 ## v0.2.8 (2026-02-17)
@@ -50,7 +53,7 @@
 - Fixed empty-state behavior for active stream modules to align card output across Plex/Jellyfin/Emby and combined views.
 
 
-This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.8`.
+This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.10`.
 
 ## v0.2.5 (2026-02-15)
 
