@@ -2,9 +2,13 @@
 
 ## v0.2.11 (2026-02-17)
 
-- [Added]
-- [Changed]
-- [Fixed]
+- Added `v0.2.11` release artifact files:
+  - `docs/release/releases/v0.2.11.md`
+  - `docs/release/releases/v0.2.11-announcement.md`
+- Updated package metadata/version release bookkeeping for `0.2.11`.
+- Updated release timeline metadata from `v0.1.0 -> v0.2.10` to `v0.1.0 -> v0.2.11`.
+- Corrected release documentation attribution so base URL/subpath support changes are tracked under `v0.2.10`, not `v0.2.9`.
+- Finalized `v0.2.11` release-note population for changelog + announcement artifacts.
 
 
 ## v0.2.10 (2026-02-17)
@@ -60,7 +64,7 @@
 - Fixed empty-state behavior for active stream modules to align card output across Plex/Jellyfin/Emby and combined views.
 
 
-This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.10`.
+This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.11`.
 
 ## v0.2.5 (2026-02-15)
 
