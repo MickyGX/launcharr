@@ -17,9 +17,11 @@
         var squareCorners = localStorage.getItem("launcharr-square-corners") === "1";
         var bgMotionStored = localStorage.getItem("launcharr-bg-motion");
         var bgMotion = bgMotionStored === null ? true : bgMotionStored === "1";
+        var maximizedWindow = localStorage.getItem("launcharr-maximized-window") === "1";
         document.documentElement.dataset.sidebarInvert = sidebarInvert ? "1" : "0";
         document.documentElement.dataset.squareCorners = squareCorners ? "1" : "0";
         document.documentElement.dataset.bgMotion = bgMotion ? "1" : "0";
+        document.documentElement.dataset.maximized = maximizedWindow ? "1" : "0";
         var starDensity = 165;
         var starSpeed = 45;
         var starSize = 1.2;
@@ -423,9 +425,9 @@
                     <img class="settings-head-icon" src="/icons/app.svg" alt="" />
                     <span class="settings-head-label">Icon</span>
                   </div>
-                  <div>
-                    <img class="settings-head-icon" src="/icons/sidebar-toggle.svg" alt="" />
-                    <span class="settings-head-label">Sidebar menu</span>
+                  <div class="settings-col-visibility">
+                    <img class="settings-head-icon" src="/icons/view.svg" alt="" />
+                    <span class="settings-head-label">Visibility</span>
                   </div>
                   <div>
                     <img class="settings-head-icon" src="/icons/edit.svg" alt="" />
@@ -439,12 +441,25 @@
                 <div id="categoryRows">
                   <% const categoryManagerEntries = Array.isArray(categoryEntries) && categoryEntries.length
                     ? categoryEntries
-                    : ['Tools'].map((name) => ({ name, sidebarMenu: false, icon: '/icons/category.svg' })); %>
-                  <% const defaultCategoryNames = ['admin', 'media', 'manager', 'arr suite', 'downloaders', 'tools']; %>
+                    : ['Tools'].map((name) => ({ name, sidebarMenu: false, sidebarMinRole: 'disabled', icon: '/icons/category.svg' })); %>
+                  <% const defaultCategoryCatalogList = Array.isArray(defaultCategoryCatalog) ? defaultCategoryCatalog : []; %>
+                  <% const defaultCategoryNameSet = new Set(defaultCategoryCatalogList.map((entry) => String(entry?.name || '').trim().toLowerCase()).filter(Boolean)); %>
+                  <% const existingCategoryNameSet = new Set(categoryManagerEntries.map((entry) => String(entry?.name || '').trim().toLowerCase()).filter(Boolean)); %>
+                  <% const categoryVisibilityRoles = [
+                    { value: 'disabled', label: 'Disabled' },
+                    { value: 'guest', label: 'Guest' },
+                    { value: 'user', label: 'User' },
+                    { value: 'co-admin', label: 'Co-admin' },
+                    { value: 'admin', label: 'Admin' },
+                  ]; %>
+                  <% const missingDefaultCategories = defaultCategoryCatalogList
+                    .filter((entry) => !existingCategoryNameSet.has(String(entry?.name || '').trim().toLowerCase()))
+                    .sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || ''))); %>
                   <% categoryManagerEntries.forEach((entry, index) => { %>
                     <% const iconValue = entry.icon || '/icons/category.svg'; %>
-                    <% const isDefaultCategory = defaultCategoryNames.includes(String(entry.name || '').trim().toLowerCase()); %>
-                    <div class="settings-row settings-row--categories category-row" draggable="true" data-category="<%= entry.name %>" data-sidebar-menu="<%= entry.sidebarMenu ? 'true' : 'false' %>" data-icon="<%= iconValue %>" data-default="<%= isDefaultCategory ? 'true' : 'false' %>">
+                    <% const isDefaultCategory = defaultCategoryNameSet.has(String(entry.name || '').trim().toLowerCase()); %>
+                    <% const entrySidebarMinRole = String(entry?.sidebarMinRole || (entry?.sidebarMenu ? 'user' : 'disabled')).trim().toLowerCase() || 'disabled'; %>
+                    <div class="settings-row settings-row--categories category-row" draggable="true" data-category="<%= entry.name %>" data-sidebar-min-role="<%= entrySidebarMinRole %>" data-icon="<%= iconValue %>" data-default="<%= isDefaultCategory ? 'true' : 'false' %>">
                       <div class="settings-app settings-app--category">
                         <button class="order-button category-drag-handle" type="button" title="Drag to reorder" aria-label="Drag to reorder">&#x2630;</button>
                         <img class="nav-icon category-icon-preview" src="<%= iconValue %>" alt="" onerror="this.src='/icons/category.svg'" />
@@ -456,14 +471,26 @@
                           <span class="category-icon-display-text"><%= String(iconValue || '').replace('/icons/', '') %></span>
                         </div>
                       </div>
-                      <div class="settings-cell">
-                        <input class="category-sidebar-toggle" type="checkbox" title="Group apps under this category in the sidebar" aria-label="Group apps in sidebar" <%= entry.sidebarMenu ? 'checked' : '' %> />
+                      <div class="settings-cell settings-cell--visibility settings-col-visibility">
+                        <div class="settings-visibility-popover" data-category-visibility-popover>
+                          <button class="settings-visibility-trigger" type="button" aria-label="Configure category visibility role" aria-expanded="false" aria-haspopup="true"></button>
+                          <div class="settings-visibility-menu" hidden>
+                            <label class="settings-visibility-group">
+                              <span class="settings-visibility-label">Sidebar</span>
+                              <select class="settings-select settings-visibility-select category-visibility-select" data-category-visibility-role>
+                                <% categoryVisibilityRoles.forEach((option) => { %>
+                                  <option value="<%= option.value %>" <%= option.value === entrySidebarMinRole ? 'selected' : '' %>><%= option.label %></option>
+                                <% }) %>
+                              </select>
+                            </label>
+                          </div>
+                        </div>
                       </div>
                       <div class="settings-cell">
                         <button class="order-button category-edit-button" type="button" title="<%= isDefaultCategory ? 'Default categories cannot be edited.' : 'Edit category' %>" aria-label="Edit category" <%= isDefaultCategory ? 'disabled' : '' %>>Edit</button>
                       </div>
                       <div class="settings-cell">
-                        <button class="order-button category-delete-button" type="button" title="<%= isDefaultCategory ? 'Default categories cannot be deleted.' : 'Delete category' %>" aria-label="Delete category" <%= isDefaultCategory ? 'disabled' : '' %>>&times;</button>
+                        <button class="order-button category-delete-button" type="button" title="Delete category" aria-label="Delete category">&times;</button>
                       </div>
                     </div>
                   <% }) %>
@@ -488,6 +515,40 @@
                 </div>
                 <button class="primary-button" type="button" id="categoryManagerAddBtn">Add category</button>
               </div>
+              <div class="category-manager-add app-manager-add default-category-add-row" id="defaultCategoryForm">
+                <div class="icon-picker default-category-picker" data-default-category-picker>
+                  <button class="settings-select icon-picker-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+                    <span class="icon-picker-preview" aria-hidden="true"></span>
+                    <span class="icon-picker-label">Select default category</span>
+                  </button>
+                  <div class="icon-picker-menu" role="listbox" aria-label="Default category">
+                    <% if (missingDefaultCategories.length) { %>
+                      <% missingDefaultCategories.forEach((entry) => { %>
+                        <% const defaultIcon = String(entry?.icon || '/icons/category.svg').trim() || '/icons/category.svg'; %>
+                        <button
+                          class="icon-picker-option"
+                          type="button"
+                          role="option"
+                          data-default-category-option
+                          data-value="<%= entry.name %>"
+                          data-label="<%= entry.name %>"
+                          data-default-icon="<%= defaultIcon %>"
+                          data-default-min-role="<%= String(entry?.sidebarMinRole || (entry?.sidebarMenu ? 'user' : 'disabled')).trim().toLowerCase() || 'disabled' %>"
+                          data-preview="<%= defaultIcon %>"
+                        >
+                          <img class="icon-picker-icon" src="<%= defaultIcon %>" alt="" onerror="this.src='/icons/category.svg'" />
+                          <span class="icon-picker-option-label"><%= entry.name %></span>
+                        </button>
+                      <% }) %>
+                    <% } else { %>
+                      <div class="icon-picker-empty">No default categories available</div>
+                    <% } %>
+                  </div>
+                  <input type="hidden" id="defaultCategorySelect" value="" />
+                </div>
+                <button class="primary-button default-category-add-btn" type="button" id="defaultCategoryAddBtn" <%= missingDefaultCategories.length ? '' : 'disabled' %>>Add default category</button>
+              </div>
+              <span class="settings-users-note" id="categoryManagerNote">Manage categories, including removing and re-adding defaults.</span>
               <button class="primary-button" type="submit">Save category settings</button>
             </form>
           </div>
@@ -499,15 +560,11 @@
                     <img class="settings-head-icon" src="/icons/app.svg" alt="" />
                     <span class="settings-head-label">Application</span>
                   </div>
-                  <div>
-                    <img class="settings-head-icon" src="/icons/enable.svg" alt="" />
-                    <span class="settings-head-label">Enable</span>
+                  <div class="settings-col-visibility">
+                    <img class="settings-head-icon" src="/icons/view.svg" alt="" />
+                    <span class="settings-head-label">Visibility</span>
                   </div>
-                  <div>
-                    <img class="settings-head-icon" src="/icons/overview.svg" alt="" />
-                    <span class="settings-head-label">Overview</span>
-                  </div>
-                  <div>
+                  <div class="settings-col-launch">
                     <img class="settings-head-icon" src="/icons/launch.svg" alt="" />
                     <span class="settings-head-label">Launch</span>
                   </div>
@@ -556,49 +613,140 @@
                   const short = initials || label.slice(0, 3).toUpperCase();
                   return { value: label, label, short };
                 }); %>
+                <% const visibilityRoles = [
+                  { value: 'disabled', label: 'Disabled' },
+                  { value: 'guest', label: 'Guest' },
+                  { value: 'user', label: 'User' },
+                  { value: 'co-admin', label: 'Co-admin' },
+                  { value: 'admin', label: 'Admin' },
+                ]; %>
+                <% const visibilityRoleRank = { disabled: -1, guest: 0, user: 1, 'co-admin': 2, admin: 3 }; %>
+                <% const parseVisibilityRole = (value) => {
+                  const raw = String(value || '').trim().toLowerCase();
+                  if (!raw) return '';
+                  if (raw === 'coadmin' || raw === 'co_admin') return 'co-admin';
+                  return Object.prototype.hasOwnProperty.call(visibilityRoleRank, raw) ? raw : '';
+                }; %>
+                <% const normalizeVisibilityRole = (value, fallback = 'disabled') => {
+                  const parsed = parseVisibilityRole(value);
+                  if (parsed) return parsed;
+                  const fallbackParsed = parseVisibilityRole(fallback);
+                  return fallbackParsed || 'disabled';
+                }; %>
+                <% const deriveSectionMinRoleFromLegacy = (sectionName, section) => {
+                  const userAllowed = Boolean(section?.user);
+                  const adminAllowed = Boolean(section?.admin);
+                  if (userAllowed) return 'user';
+                  if (adminAllowed) return sectionName === 'settings' ? 'admin' : 'co-admin';
+                  return 'disabled';
+                }; %>
+                <% const resolveSectionMinRole = (sectionName, section, fallback = 'disabled') => {
+                  const explicit = parseVisibilityRole(section?.minRole);
+                  if (explicit) return explicit;
+                  const legacy = deriveSectionMinRoleFromLegacy(sectionName, section);
+                  return normalizeVisibilityRole(legacy, fallback);
+                }; %>
+                <% const deriveSidebarMinRole = (sidebar, sectionRoles) => {
+                  const explicit = parseVisibilityRole(sidebar?.minRole);
+                  if (explicit) return explicit;
+                  const enabled = (Array.isArray(sectionRoles) ? sectionRoles : [])
+                    .map((entry) => normalizeVisibilityRole(entry, 'disabled'))
+                    .filter((entry) => entry !== 'disabled');
+                  if (!enabled.length) return 'disabled';
+                  return enabled.reduce((lowest, nextRole) => {
+                    const lowestRank = Number(visibilityRoleRank[normalizeVisibilityRole(lowest, 'disabled')]);
+                    const nextRank = Number(visibilityRoleRank[normalizeVisibilityRole(nextRole, 'disabled')]);
+                    return nextRank < lowestRank ? nextRole : lowest;
+                  }, enabled[0]);
+                }; %>
                 <% const launchOptions = [
-                  { value: 'disabled', label: 'Disabled', short: 'Off' },
                   { value: 'new-tab', label: 'New Tab', short: 'Tab' },
                   { value: 'iframe', label: 'iFrame', short: 'Frame' },
                 ]; %>
                 <% displayApps.forEach((app, index) => { %>
                   <% const menu = app.menu || {}; %>
+                  <% const sidebarOverview = menu.sidebarOverview || {}; %>
+                  <% const sidebarSettings = menu.sidebarSettings || {}; %>
+                  <% const sidebarActivity = menu.sidebarActivity || {}; %>
                   <% const overview = menu.overview || {}; %>
                   <% const launch = menu.launch || {}; %>
                   <% const settings = menu.settings || {}; %>
-                  <% const roles = Array.isArray(app.roles) ? app.roles.map(r => String(r).toLowerCase()) : (app.role ? [String(app.role).toLowerCase()] : []); %>
-                  <% const defaultUser = !roles.length || roles.includes('user') || roles.includes('both'); %>
-                  <% const defaultAdmin = !roles.length || roles.includes('admin') || roles.includes('both'); %>
-                  <% const overviewUser = overview.user !== undefined ? overview.user : defaultUser; %>
-                  <% const overviewAdmin = overview.admin !== undefined ? overview.admin : defaultAdmin; %>
-                  <% const launchUser = launch.user !== undefined ? launch.user : defaultUser; %>
-                  <% const launchAdmin = launch.admin !== undefined ? launch.admin : defaultAdmin; %>
+                  <% const overviewMinRole = resolveSectionMinRole('overview', overview, 'disabled'); %>
+                  <% const launchMinRole = resolveSectionMinRole('launch', launch, 'disabled'); %>
+                  <% const settingsMinRole = resolveSectionMinRole('settings', settings, 'admin'); %>
+                  <% const overviewSidebarMinRole = normalizeVisibilityRole(parseVisibilityRole(sidebarOverview?.minRole) || overviewMinRole, 'disabled'); %>
+                  <% const appSettingsSidebarMinRole = normalizeVisibilityRole(parseVisibilityRole(sidebarSettings?.minRole) || settingsMinRole, 'disabled'); %>
+                  <% const activitySidebarMinRole = normalizeVisibilityRole(parseVisibilityRole(sidebarActivity?.minRole) || 'admin', 'disabled'); %>
+                  <% const isCustomApp = Boolean(app.custom); %>
+                  <% const overviewVisibilityMinRole = isCustomApp ? 'disabled' : overviewSidebarMinRole; %>
+                  <% const sidebarMinRole = normalizeVisibilityRole(deriveSidebarMinRole(menu.sidebar || {}, [overviewMinRole, launchMinRole, settingsMinRole]), 'disabled'); %>
+                  <% const sidebarEnabled = sidebarMinRole !== 'disabled'; %>
                   <% const appLaunchOptions = launchOptions; %>
                   <% const modeValues = appLaunchOptions.map((option) => option.value); %>
-                  <% const currentLaunchMode = modeValues.includes(app.launchMode) ? app.launchMode : (launchUser || launchAdmin ? 'new-tab' : 'disabled'); %>
-                  <% const settingsAdmin = settings.admin !== undefined ? settings.admin : defaultAdmin; %>
-                  <% const adminEnabled = overviewAdmin || launchAdmin || settingsAdmin; %>
+                  <% const currentLaunchMode = modeValues.includes(app.launchMode) ? app.launchMode : 'new-tab'; %>
                   <% const categoryValues = categoryOptions.map((option) => option.value); %>
                   <% const currentCategory = categoryValues.includes(app.category) ? app.category : categoryOptions[0].value; %>
                   <% const orderValue = Number.isFinite(app.order) ? app.order : index + 1; %>
                   <% const favouriteValue = Boolean(app.favourite || app.favorite); %>
-                  <% const isCustomApp = Boolean(app.custom); %>
                   <% const isDefaultApp = defaultAppIdSet.has(String(app.id || '').trim().toLowerCase()); %>
                   <% const categoryRank = Math.max(0, categoryOptions.findIndex((option) => option.value === currentCategory)); %>
-                  <div class="settings-row settings-row--display settings-row--draggable <%= adminEnabled ? '' : 'is-disabled' %>" data-category="<%= currentCategory %>" data-category-rank="<%= categoryRank %>" draggable="true">
+                  <div class="settings-row settings-row--display settings-row--draggable <%= sidebarEnabled ? '' : 'is-disabled' %>" data-category="<%= currentCategory %>" data-category-rank="<%= categoryRank %>" draggable="true">
                     <div class="settings-app settings-app--draggable">
                       <button class="order-button settings-drag-handle settings-drag-handle--app" type="button" title="Drag to reorder within category" aria-label="Drag to reorder within category">&#x2630;</button>
                       <img class="nav-icon app-icon" src="<%= resolveAppIconPath(app) %>" alt="" onerror="this.src='/icons/app.svg'" />
                       <span class="settings-app-name"><%= app.name %></span>
                     </div>
-                    <div class="settings-cell">
-                      <input type="checkbox" name="display_enable_<%= app.id %>" <%= adminEnabled ? 'checked' : '' %> />
+                    <div class="settings-cell settings-cell--visibility settings-col-visibility">
+                      <div class="settings-visibility-popover" data-visibility-popover>
+                        <button class="settings-visibility-trigger" type="button" aria-label="Configure visibility roles" aria-expanded="false" aria-haspopup="true"></button>
+                        <div class="settings-visibility-menu" hidden>
+                          <label class="settings-visibility-group">
+                            <span class="settings-visibility-label">Sidebar</span>
+                            <select class="settings-select settings-visibility-select" name="display_sidebar_min_role_<%= app.id %>" data-visibility-section="sidebar">
+                              <% visibilityRoles.forEach((option) => { %>
+                                <option value="<%= option.value %>" <%= option.value === sidebarMinRole ? 'selected' : '' %>><%= option.label %></option>
+                              <% }) %>
+                            </select>
+                          </label>
+                          <label class="settings-visibility-group">
+                            <span class="settings-visibility-label">Overview</span>
+                            <select class="settings-select settings-visibility-select" name="display_overview_min_role_<%= app.id %>" data-visibility-section="overview" <%= isCustomApp ? 'disabled title="Overview is disabled for custom apps."' : '' %>>
+                              <% visibilityRoles.forEach((option) => { %>
+                                <option value="<%= option.value %>" <%= option.value === overviewVisibilityMinRole ? 'selected' : '' %>><%= option.label %></option>
+                              <% }) %>
+                            </select>
+                            <% if (isCustomApp) { %>
+                              <input type="hidden" name="display_overview_min_role_<%= app.id %>" value="disabled" />
+                            <% } %>
+                          </label>
+                          <label class="settings-visibility-group">
+                            <span class="settings-visibility-label">Launch</span>
+                            <select class="settings-select settings-visibility-select" name="display_launch_min_role_<%= app.id %>" data-visibility-section="launch">
+                              <% visibilityRoles.forEach((option) => { %>
+                                <option value="<%= option.value %>" <%= option.value === launchMinRole ? 'selected' : '' %>><%= option.label %></option>
+                              <% }) %>
+                            </select>
+                          </label>
+                          <label class="settings-visibility-group">
+                            <span class="settings-visibility-label">App Settings</span>
+                            <select class="settings-select settings-visibility-select" name="display_app_settings_min_role_<%= app.id %>" data-visibility-section="app-settings">
+                              <% visibilityRoles.forEach((option) => { %>
+                                <option value="<%= option.value %>" <%= option.value === appSettingsSidebarMinRole ? 'selected' : '' %>><%= option.label %></option>
+                              <% }) %>
+                            </select>
+                          </label>
+                          <label class="settings-visibility-group">
+                            <span class="settings-visibility-label">Activity</span>
+                            <select class="settings-select settings-visibility-select" name="display_activity_min_role_<%= app.id %>" data-visibility-section="activity">
+                              <% visibilityRoles.forEach((option) => { %>
+                                <option value="<%= option.value %>" <%= option.value === activitySidebarMinRole ? 'selected' : '' %>><%= option.label %></option>
+                              <% }) %>
+                            </select>
+                          </label>
+                        </div>
+                      </div>
                     </div>
-                    <div class="settings-cell">
-                      <input type="checkbox" name="display_overview_user_<%= app.id %>" <%= overviewUser ? 'checked' : '' %> <%= app.custom ? 'disabled title="Overview disabled for custom apps"' : '' %> />
-                    </div>
-                    <div class="settings-cell settings-cell--launch">
-                      <input class="settings-radio" type="checkbox" name="display_launch_user_<%= app.id %>" <%= launchUser ? 'checked' : '' %> />
+                    <div class="settings-cell settings-cell--launch settings-col-launch">
                       <select class="settings-select settings-launch-mode" name="display_launch_mode_<%= app.id %>" title="<%= app.id === 'tautulli' ? 'Tautulli iFrame mode is overridden to New Tab on local/private host access.' : 'Choose how launch opens.' %>">
                         <% appLaunchOptions.forEach((option) => { %>
                           <option value="<%= option.value %>" <%= option.value === currentLaunchMode ? 'selected' : '' %> data-full="<%= option.label %>" data-short="<%= option.short %>" title="<%= option.label %>"><%= option.label %></option>
@@ -724,6 +872,36 @@
           </div>
           <div class="settings-subtab-panel" data-subtab="dashboard">
             <form method="post" action="/settings/dashboard-elements" class="settings-form" id="dashboardElementsForm">
+              <%
+                const dashboardVisibilityRoles = [
+                  { value: 'disabled', label: 'Disabled' },
+                  { value: 'guest', label: 'Guest' },
+                  { value: 'user', label: 'User' },
+                  { value: 'co-admin', label: 'Co-admin' },
+                  { value: 'admin', label: 'Admin' },
+                ];
+                const parseDashboardVisibilityRole = (value) => {
+                  const raw = String(value || '').trim().toLowerCase();
+                  if (!raw) return '';
+                  if (raw === 'coadmin' || raw === 'co_admin') return 'co-admin';
+                  return ['disabled', 'guest', 'user', 'co-admin', 'admin'].includes(raw) ? raw : '';
+                };
+                const normalizeDashboardVisibilityRole = (value, fallback = 'user') => {
+                  const parsed = parseDashboardVisibilityRole(value);
+                  if (parsed) return parsed;
+                  const fallbackParsed = parseDashboardVisibilityRole(fallback);
+                  return fallbackParsed || 'user';
+                };
+                const resolveCombinedDashboardVisibilityRoleView = (settings, fallback = 'user') => {
+                  const source = settings && typeof settings === 'object' ? settings : {};
+                  const explicit = parseDashboardVisibilityRole(source.visibilityRole);
+                  if (explicit) return explicit;
+                  const enabled = source.enable === undefined ? true : Boolean(source.enable);
+                  const dashboard = source.dashboard === undefined ? true : Boolean(source.dashboard);
+                  if (!enabled || !dashboard) return 'disabled';
+                  return normalizeDashboardVisibilityRole(fallback, 'user');
+                };
+              %>
               <% const tautulliItems = Array.isArray(tautulliCards) ? tautulliCards : []; %>
               <% if (tautulliItems.length) { %>
                 <input type="hidden" name="tautulliCardsForm" value="1" />
@@ -735,12 +913,8 @@
                     <span class="settings-head-label">Name</span>
                   </div>
                   <div>
-                    <img class="settings-head-icon" src="/icons/enable.svg" alt="" />
-                    <span class="settings-head-label">Enable</span>
-                  </div>
-                  <div>
-                    <img class="settings-head-icon" src="/icons/dashboard.svg" alt="" />
-                    <span class="settings-head-label">Dashboard</span>
+                    <img class="settings-head-icon" src="/icons/view.svg" alt="" />
+                    <span class="settings-head-label">Visibility</span>
                   </div>
                   <div>
                     <img class="settings-head-icon" src="/icons/expand.svg" alt="" />
@@ -771,24 +945,34 @@
                   <% const isDisabled = Boolean(item.appAccess === false); %>
                   <% const combinedKey = item.combined ? `combined:${item.combinedType || 'mixed'}:${item.combinedSection || element.id || 'unknown'}` : ''; %>
                   <% const combinedSettings = combinedKey && dashboardCombinedSettings ? dashboardCombinedSettings[combinedKey] : null; %>
-                  <% const baseEnable = item.combined && combinedSettings && typeof combinedSettings.enable === 'boolean' ? combinedSettings.enable : element.enable; %>
-                  <% const baseDashboard = item.combined && combinedSettings && typeof combinedSettings.dashboard === 'boolean' ? combinedSettings.dashboard : element.dashboard; %>
-                  <% const effectiveEnable = !isDisabled && baseEnable; %>
-                  <% const effectiveDashboard = !isDisabled && baseDashboard; %>
+                  <% const baseVisibilityRole = item.combined
+                    ? resolveCombinedDashboardVisibilityRoleView(combinedSettings, 'user')
+                    : normalizeDashboardVisibilityRole(
+                      element.dashboardVisibilityRole,
+                      (element.enable === false || element.dashboard === false) ? 'disabled' : 'user'
+                    ); %>
+                  <% const effectiveVisibilityRole = isDisabled ? 'disabled' : baseVisibilityRole; %>
                   <% const combinedPrefix = item.combined ? `dashboard_combined_${item.combinedType || 'mixed'}_${item.combinedSection || element.id}` : `dashboard_${item.appId}_${element.id}`; %>
-                  <% const enableName = `name="${combinedPrefix}_enable"`; %>
-                  <% const dashboardName = `name="${combinedPrefix}_dashboard"`; %>
-                  <div class="settings-row settings-row--elements settings-row--with-expand settings-row--draggable <%= effectiveEnable ? '' : 'is-disabled' %> <%= effectiveDashboard ? '' : 'is-muted' %>" data-app-id="<%= item.appId %>" data-category="<%= item.category || 'Tools' %>" data-category-rank="<%= categoryRank %>" draggable="true">
+                  <div class="settings-row settings-row--elements settings-row--with-expand settings-row--draggable <%= effectiveVisibilityRole === 'disabled' ? 'is-disabled' : '' %>" data-app-id="<%= item.appId %>" data-category="<%= item.category || 'Tools' %>" data-category-rank="<%= categoryRank %>" draggable="true">
                     <div class="settings-element">
                       <button class="order-button settings-drag-handle" type="button" title="Drag to reorder" aria-label="Drag to reorder">&#x2630;</button>
                       <img class="settings-element-icon" src="<%= elementIcon %>" alt="" onerror="this.src='/icons/app.svg'" />
                       <span class="settings-element-name"><%= displayName %></span>
                     </div>
-                    <div class="settings-cell">
-                    <input type="checkbox" <%= isDisabled ? 'disabled' : '' %> <%- enableName %> <%= effectiveEnable ? 'checked' : '' %> />
-                    </div>
-                    <div class="settings-cell">
-                    <input type="checkbox" <%= isDisabled ? 'disabled' : '' %> <%- dashboardName %> <%= effectiveDashboard ? 'checked' : '' %> />
+                    <div class="settings-cell settings-cell--visibility settings-col-visibility">
+                      <div class="settings-visibility-popover" data-dashboard-visibility-popover>
+                        <button class="settings-visibility-trigger" type="button" aria-label="Configure dashboard visibility role" aria-expanded="false" aria-haspopup="true" <%= isDisabled ? 'disabled' : '' %>></button>
+                        <div class="settings-visibility-menu" hidden>
+                          <label class="settings-visibility-group">
+                            <span class="settings-visibility-label">Dashboard</span>
+                            <select class="settings-select settings-visibility-select dashboard-visibility-select" name="<%= combinedPrefix %>_visibility_role" data-dashboard-visibility-role <%= isDisabled ? 'disabled' : '' %>>
+                              <% dashboardVisibilityRoles.forEach((option) => { %>
+                                <option value="<%= option.value %>" <%= option.value === effectiveVisibilityRole ? 'selected' : '' %>><%= option.label %></option>
+                              <% }) %>
+                            </select>
+                          </label>
+                        </div>
+                      </div>
                     </div>
                     <% const orderName = item.combined ? `dashboard_combined_${item.combinedType || 'mixed'}_${item.combinedSection || element.id}_order` : `dashboard_${item.appId}_${element.id}_order`; %>
                     <input type="hidden" class="settings-order-input" name="<%= orderName %>" value="<%= orderValue %>" />
@@ -2707,6 +2891,7 @@
         const settingsTable = document.querySelector('.settings-subtab-panel[data-subtab="apps"] .settings-table--display');
         if (settingsTable) {
           let draggedSettingsRow = null;
+          let openVisibilityPopover = null;
           settingsTable.querySelectorAll('.settings-category option, .settings-launch-mode option').forEach((option) => {
             const full = option.dataset.full || option.textContent;
             option.textContent = full;
@@ -2714,6 +2899,42 @@
 
           const dataRows = () => Array.from(settingsTable.querySelectorAll('.settings-row')).filter((row) => !row.classList.contains('settings-head'));
           const getCategory = (row) => row.querySelector('.settings-category')?.value || 'Tools';
+          const getSidebarVisibilityRole = (row) => {
+            const sidebarSelect = row?.querySelector('select[name^="display_sidebar_min_role_"]');
+            if (sidebarSelect) return String(sidebarSelect.value || '').trim().toLowerCase();
+            const sidebarInput = row?.querySelector('input[type="hidden"][name^="display_sidebar_min_role_"]');
+            return String(sidebarInput?.value || '').trim().toLowerCase();
+          };
+          const updateVisibilityRowState = (row) => {
+            if (!row) return;
+            const sidebarRole = getSidebarVisibilityRole(row);
+            row.classList.toggle('is-disabled', sidebarRole === 'disabled');
+          };
+          const closeVisibilityPopover = (popover) => {
+            if (!popover) return;
+            const trigger = popover.querySelector('.settings-visibility-trigger');
+            const menu = popover.querySelector('.settings-visibility-menu');
+            if (!trigger || !menu) return;
+            trigger.setAttribute('aria-expanded', 'false');
+            menu.hidden = true;
+            const row = popover.closest('.settings-row');
+            if (row) row.classList.remove('has-open-visibility');
+            if (openVisibilityPopover === popover) openVisibilityPopover = null;
+          };
+          const openVisibilityMenu = (popover) => {
+            if (!popover) return;
+            if (openVisibilityPopover && openVisibilityPopover !== popover) {
+              closeVisibilityPopover(openVisibilityPopover);
+            }
+            const trigger = popover.querySelector('.settings-visibility-trigger');
+            const menu = popover.querySelector('.settings-visibility-menu');
+            if (!trigger || !menu) return;
+            trigger.setAttribute('aria-expanded', 'true');
+            menu.hidden = false;
+            const row = popover.closest('.settings-row');
+            if (row) row.classList.add('has-open-visibility');
+            openVisibilityPopover = popover;
+          };
           const updateCategoryOrders = (category) => {
             const rows = dataRows().filter((row) => getCategory(row) === category);
             rows.forEach((row, index) => {
@@ -2726,6 +2947,23 @@
 
           dataRows().forEach((row) => {
             row.dataset.category = getCategory(row);
+            updateVisibilityRowState(row);
+          });
+
+          settingsTable.querySelectorAll('[data-visibility-popover]').forEach((popover) => {
+            const trigger = popover.querySelector('.settings-visibility-trigger');
+            if (!trigger) return;
+            const menu = popover.querySelector('.settings-visibility-menu');
+            if (!menu) return;
+            menu.hidden = true;
+            trigger.setAttribute('aria-expanded', 'false');
+            trigger.addEventListener('click', (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              const isOpen = trigger.getAttribute('aria-expanded') === 'true';
+              if (isOpen) closeVisibilityPopover(popover);
+              else openVisibilityMenu(popover);
+            });
           });
 
           Array.from(new Set(dataRows().map((row) => getCategory(row)))).forEach(updateCategoryOrders);
@@ -2760,6 +2998,12 @@
           dataRows().forEach(attachSettingsRowDragEvents);
 
           settingsTable.addEventListener('change', (event) => {
+            const visibilitySelect = event.target.closest('.settings-visibility-select');
+            if (visibilitySelect) {
+              const row = visibilitySelect.closest('.settings-row');
+              if (row) updateVisibilityRowState(row);
+              return;
+            }
             const select = event.target.closest('.settings-category');
             if (!select) return;
             const row = select.closest('.settings-row');
@@ -2768,6 +3012,15 @@
             row.dataset.category = select.value;
             updateCategoryOrders(previousCategory);
             updateCategoryOrders(select.value);
+          });
+          document.addEventListener('click', (event) => {
+            if (!openVisibilityPopover) return;
+            if (openVisibilityPopover.contains(event.target)) return;
+            closeVisibilityPopover(openVisibilityPopover);
+          });
+          document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') return;
+            closeVisibilityPopover(openVisibilityPopover);
           });
         }
       } catch (err) {
@@ -2778,14 +3031,43 @@
         const dashboardTable = document.querySelector('.settings-subtab-panel[data-subtab="dashboard"] .settings-table--elements');
         if (dashboardTable) {
           let draggedElementRow = null;
+          let openDashboardVisibilityPopover = null;
+          const getDashboardVisibilityRole = (row) => {
+            const select = row?.querySelector('select[data-dashboard-visibility-role]');
+            if (select) return String(select.value || '').trim().toLowerCase();
+            const hidden = row?.querySelector('input[type="hidden"][name$="_visibility_role"]');
+            return String(hidden?.value || '').trim().toLowerCase();
+          };
           const updateRowState = (row) => {
             if (!row) return;
-            const enableToggle = row.querySelector('input[name$="_enable"]');
-            const dashboardToggle = row.querySelector('input[name$="_dashboard"]');
-            const isEnabled = enableToggle ? enableToggle.checked : true;
-            const isOnDashboard = dashboardToggle ? dashboardToggle.checked : true;
-            row.classList.toggle('is-disabled', !isEnabled);
-            row.classList.toggle('is-muted', isEnabled && !isOnDashboard);
+            const visibilityRole = getDashboardVisibilityRole(row);
+            row.classList.toggle('is-disabled', visibilityRole === 'disabled');
+            row.classList.remove('is-muted');
+          };
+          const closeDashboardVisibilityPopover = (popover) => {
+            if (!popover) return;
+            const trigger = popover.querySelector('.settings-visibility-trigger');
+            const menu = popover.querySelector('.settings-visibility-menu');
+            if (!trigger || !menu) return;
+            trigger.setAttribute('aria-expanded', 'false');
+            menu.hidden = true;
+            const row = popover.closest('.settings-row');
+            if (row) row.classList.remove('has-open-visibility');
+            if (openDashboardVisibilityPopover === popover) openDashboardVisibilityPopover = null;
+          };
+          const openDashboardVisibilityMenu = (popover) => {
+            if (!popover) return;
+            if (openDashboardVisibilityPopover && openDashboardVisibilityPopover !== popover) {
+              closeDashboardVisibilityPopover(openDashboardVisibilityPopover);
+            }
+            const trigger = popover.querySelector('.settings-visibility-trigger');
+            const menu = popover.querySelector('.settings-visibility-menu');
+            if (!trigger || !menu) return;
+            trigger.setAttribute('aria-expanded', 'true');
+            menu.hidden = false;
+            const row = popover.closest('.settings-row');
+            if (row) row.classList.add('has-open-visibility');
+            openDashboardVisibilityPopover = popover;
           };
           const initDragOrderTable = (table) => {
             if (!table) return;
@@ -2892,15 +3174,30 @@
             });
           });
 
+          dashboardTable.querySelectorAll('[data-dashboard-visibility-popover]').forEach((popover) => {
+            const trigger = popover.querySelector('.settings-visibility-trigger');
+            const menu = popover.querySelector('.settings-visibility-menu');
+            if (!trigger || !menu) return;
+            menu.hidden = true;
+            trigger.setAttribute('aria-expanded', 'false');
+            trigger.addEventListener('click', (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              const isOpen = trigger.getAttribute('aria-expanded') === 'true';
+              if (isOpen) closeDashboardVisibilityPopover(popover);
+              else openDashboardVisibilityMenu(popover);
+            });
+          });
+
           dashboardTable.querySelectorAll('.settings-table--tautulli-cards').forEach((table) => {
             initDragOrderTable(table);
           });
 
           dashboardTable.addEventListener('change', (event) => {
-            const target = event.target;
-            if (!(target instanceof HTMLInputElement)) return;
-            if (target.type !== 'checkbox') return;
-            const row = target.closest('.settings-row--draggable');
+            if (!(event.target instanceof Element)) return;
+            const visibilitySelect = event.target.closest('select[data-dashboard-visibility-role]');
+            if (!visibilitySelect) return;
+            const row = visibilitySelect.closest('.settings-row--draggable');
             if (!row) return;
             updateRowState(row);
           });
@@ -2935,6 +3232,15 @@
             if (!panel) return;
             const isCollapsed = panel.classList.toggle('is-collapsed');
             toggle.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+          });
+          document.addEventListener('click', (event) => {
+            if (!openDashboardVisibilityPopover) return;
+            if (openDashboardVisibilityPopover.contains(event.target)) return;
+            closeDashboardVisibilityPopover(openDashboardVisibilityPopover);
+          });
+          document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') return;
+            closeDashboardVisibilityPopover(openDashboardVisibilityPopover);
           });
         }
       } catch (err) {
@@ -3008,6 +3314,10 @@
           const categoryAddBtn = document.getElementById('categoryManagerAddBtn');
           const categoryIconSelect = document.getElementById('categoryManagerIconSelect');
           const iconPicker = categoryManagerForm.querySelector('[data-icon-picker]');
+          const defaultCategoryForm = document.getElementById('defaultCategoryForm');
+          const defaultCategoryPicker = defaultCategoryForm?.querySelector('[data-default-category-picker]');
+          const defaultCategorySelect = document.getElementById('defaultCategorySelect');
+          const defaultCategoryAddBtn = document.getElementById('defaultCategoryAddBtn');
           const categoryJsonInput = document.getElementById('categoryManagerJson');
           const categoryNote = document.getElementById('categoryManagerNote');
           let draggedCategoryRow = null;
@@ -3020,6 +3330,7 @@
       };
 
       const getCategoryRows = () => Array.from(categoryRows?.querySelectorAll('.category-row') || []);
+      const getDefaultCategoryOptions = () => Array.from(defaultCategoryPicker?.querySelectorAll('.icon-picker-option[data-default-category-option]') || []);
       const escapeHtml = (value) => String(value || '')
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
@@ -3027,18 +3338,108 @@
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
       const normalizeCategory = (value) => String(value || '').trim().toLowerCase();
+      const parseCategoryVisibilityRole = (value) => {
+        const raw = String(value || '').trim().toLowerCase();
+        if (!raw) return '';
+        if (raw === 'coadmin' || raw === 'co_admin') return 'co-admin';
+        return ['disabled', 'guest', 'user', 'co-admin', 'admin'].includes(raw) ? raw : '';
+      };
+      const normalizeCategoryVisibilityRole = (value, fallback = 'disabled') => {
+        const parsed = parseCategoryVisibilityRole(value);
+        if (parsed) return parsed;
+        const fallbackParsed = parseCategoryVisibilityRole(fallback);
+        return fallbackParsed || 'disabled';
+      };
+      const categoryVisibilityRoleOptions = [
+        { value: 'disabled', label: 'Disabled' },
+        { value: 'guest', label: 'Guest' },
+        { value: 'user', label: 'User' },
+        { value: 'co-admin', label: 'Co-admin' },
+        { value: 'admin', label: 'Admin' },
+      ];
+      const buildCategoryVisibilityOptions = (selectedRole) => {
+        const selected = normalizeCategoryVisibilityRole(selectedRole, 'disabled');
+        return categoryVisibilityRoleOptions
+          .map((option) => (
+            '<option value="' + escapeHtml(option.value) + '"' + (option.value === selected ? ' selected' : '') + '>'
+            + escapeHtml(option.label)
+            + '</option>'
+          ))
+          .join('');
+      };
       let categoryFormSubmitting = false;
+      let openCategoryVisibilityPopover = null;
 
       const syncCategoryPayload = () => {
         if (!categoryJsonInput) return;
         const categories = getCategoryRows()
           .map((row) => ({
             name: String(row.dataset.category || '').trim(),
-            sidebarMenu: row.dataset.sidebarMenu === 'true',
+            sidebarMinRole: normalizeCategoryVisibilityRole(row.dataset.sidebarMinRole, 'disabled'),
+            sidebarMenu: normalizeCategoryVisibilityRole(row.dataset.sidebarMinRole, 'disabled') !== 'disabled',
             icon: String(row.dataset.icon || '').trim(),
           }))
           .filter((entry) => entry.name);
         categoryJsonInput.value = JSON.stringify(categories);
+      };
+
+      const categoryPicker = initIconPicker(iconPicker, categoryIconSelect);
+      const setIconSelection = categoryPicker.setSelection;
+      const defaultCategoryPickerApi = initIconPicker(defaultCategoryPicker, defaultCategorySelect);
+
+      const buildDefaultCategoryOption = ({ name, icon, sidebarMinRole = 'disabled' }) => {
+        const value = String(name || '').trim();
+        if (!value) return null;
+        const option = document.createElement('button');
+        option.className = 'icon-picker-option';
+        option.type = 'button';
+        option.setAttribute('role', 'option');
+        option.dataset.defaultCategoryOption = '';
+        option.dataset.value = value;
+        option.dataset.label = value;
+        option.dataset.defaultIcon = String(icon || '/icons/category.svg').trim() || '/icons/category.svg';
+        option.dataset.defaultMinRole = normalizeCategoryVisibilityRole(sidebarMinRole, 'disabled');
+        option.dataset.preview = option.dataset.defaultIcon;
+        option.innerHTML =
+          '<img class="icon-picker-icon" src="' + escapeHtml(option.dataset.defaultIcon) + '" alt="" onerror="this.src=\'/icons/category.svg\'" />' +
+          '<span class="icon-picker-option-label">' + escapeHtml(value) + '</span>';
+        return option;
+      };
+
+      const ensureDefaultCategoryOption = ({ name, icon, sidebarMinRole = 'disabled' }) => {
+        const optionName = String(name || '').trim();
+        if (!optionName) return null;
+        const existing = getDefaultCategoryOptions().find((entry) => normalizeCategory(entry.dataset.value) === normalizeCategory(optionName));
+        if (existing) return existing;
+        const menu = defaultCategoryPicker?.querySelector('.icon-picker-menu');
+        if (!menu) return null;
+        const empty = menu.querySelector('.icon-picker-empty');
+        if (empty) empty.remove();
+        const option = buildDefaultCategoryOption({ name: optionName, icon, sidebarMinRole });
+        if (!option) return null;
+        const options = getDefaultCategoryOptions();
+        const insertBefore = options.find((entry) => String(entry.dataset.label || '').localeCompare(optionName, undefined, { sensitivity: 'base' }) > 0);
+        if (insertBefore) menu.insertBefore(option, insertBefore);
+        else menu.appendChild(option);
+        return option;
+      };
+
+      const syncDefaultCategoryPicker = () => {
+        const options = getDefaultCategoryOptions();
+        const hasOptions = options.length > 0;
+        if (defaultCategoryAddBtn) defaultCategoryAddBtn.disabled = !hasOptions;
+        if (!hasOptions) {
+          defaultCategoryPickerApi.setSelection('', 'No default categories available');
+          return;
+        }
+        const currentValue = String(defaultCategorySelect?.value || '').trim();
+        const currentOption = options.find((entry) => String(entry.dataset.value || '').trim() === currentValue);
+        const nextOption = currentOption || options[0];
+        defaultCategoryPickerApi.setSelection(
+          String(nextOption.dataset.value || '').trim(),
+          String(nextOption.dataset.label || nextOption.textContent || '').trim(),
+          nextOption
+        );
       };
 
       const refreshCategoryRows = () => {
@@ -3047,6 +3448,7 @@
         rows.forEach((row) => {
           const deleteButton = row.querySelector('.category-delete-button');
           if (deleteButton) deleteButton.disabled = disableDelete;
+          row.classList.toggle('is-disabled', normalizeCategoryVisibilityRole(row.dataset.sidebarMinRole, 'disabled') === 'disabled');
         });
         syncCategoryPayload();
       };
@@ -3058,15 +3460,62 @@
         categoryManagerForm.requestSubmit();
       };
 
-      const categoryPicker = initIconPicker(iconPicker, categoryIconSelect);
-      const setIconSelection = categoryPicker.setSelection;
+      const createCategoryRow = ({ label, icon, sidebarMinRole = 'disabled', isDefault = false }) => {
+        const nameValue = String(label || '').trim();
+        if (!nameValue) return null;
+        const iconValue = String(icon || '/icons/category.svg').trim() || '/icons/category.svg';
+        const resolvedSidebarMinRole = normalizeCategoryVisibilityRole(sidebarMinRole, 'disabled');
+        const row = document.createElement('div');
+        row.className = 'settings-row settings-row--categories category-row';
+        row.draggable = true;
+        row.dataset.category = nameValue;
+        row.dataset.sidebarMinRole = resolvedSidebarMinRole;
+        row.dataset.icon = iconValue;
+        row.dataset.default = isDefault ? 'true' : 'false';
+        row.innerHTML =
+          '<div class="settings-app settings-app--category">' +
+            '<button class="order-button category-drag-handle" type="button" title="Drag to reorder" aria-label="Drag to reorder">&#x2630;</button>' +
+            '<img class="nav-icon category-icon-preview" src="' + escapeHtml(iconValue) + '" alt="" onerror="this.src=\'/icons/category.svg\'" />' +
+            '<span class="settings-app-name settings-app-name--category">' + escapeHtml(nameValue) + '</span>' +
+          '</div>' +
+          '<div class="settings-cell">' +
+            '<div class="category-icon-display" aria-label="Category icon in use">' +
+              '<img class="category-icon-display-img" src="' + escapeHtml(iconValue) + '" alt="" onerror="this.src=\'/icons/category.svg\'" />' +
+              '<span class="category-icon-display-text">' + escapeHtml(formatIconLabel(iconValue)) + '</span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="settings-cell settings-cell--visibility settings-col-visibility">' +
+            '<div class="settings-visibility-popover" data-category-visibility-popover>' +
+              '<button class="settings-visibility-trigger" type="button" aria-label="Configure category visibility role" aria-expanded="false" aria-haspopup="true"></button>' +
+              '<div class="settings-visibility-menu" hidden>' +
+                '<label class="settings-visibility-group">' +
+                  '<span class="settings-visibility-label">Sidebar</span>' +
+                  '<select class="settings-select settings-visibility-select category-visibility-select" data-category-visibility-role>' +
+                    buildCategoryVisibilityOptions(resolvedSidebarMinRole) +
+                  '</select>' +
+                '</label>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="settings-cell">' +
+            '<button class="order-button category-edit-button" type="button" title="' + (isDefault ? 'Default categories cannot be edited.' : 'Edit category') + '" aria-label="Edit category" ' + (isDefault ? 'disabled' : '') + '>Edit</button>' +
+          '</div>' +
+          '<div class="settings-cell">' +
+            '<button class="order-button category-delete-button" type="button" title="Delete category" aria-label="Delete category">&times;</button>' +
+          '</div>';
+        return row;
+      };
 
       const attachCategoryRowEvents = (row) => {
-        const iconPreview = row.querySelector('.category-icon-preview');
-        const sidebarToggle = row.querySelector('.category-sidebar-toggle');
-        if (sidebarToggle) {
-          sidebarToggle.addEventListener('change', () => {
-            row.dataset.sidebarMenu = sidebarToggle.checked ? 'true' : 'false';
+        const visibilitySelect = row.querySelector('select[data-category-visibility-role]');
+        if (visibilitySelect) {
+          const currentRole = normalizeCategoryVisibilityRole(row.dataset.sidebarMinRole, visibilitySelect.value || 'disabled');
+          visibilitySelect.value = currentRole;
+          row.dataset.sidebarMinRole = currentRole;
+          row.classList.toggle('is-disabled', currentRole === 'disabled');
+          visibilitySelect.addEventListener('change', () => {
+            row.dataset.sidebarMinRole = normalizeCategoryVisibilityRole(visibilitySelect.value, 'disabled');
+            row.classList.toggle('is-disabled', normalizeCategoryVisibilityRole(row.dataset.sidebarMinRole, 'disabled') === 'disabled');
             syncCategoryPayload();
           });
         }
@@ -3093,6 +3542,58 @@
       };
 
       getCategoryRows().forEach(attachCategoryRowEvents);
+      syncDefaultCategoryPicker();
+
+      const closeCategoryVisibilityPopover = (popover) => {
+        if (!popover) return;
+        const trigger = popover.querySelector('.settings-visibility-trigger');
+        const menu = popover.querySelector('.settings-visibility-menu');
+        if (!trigger || !menu) return;
+        trigger.setAttribute('aria-expanded', 'false');
+        menu.hidden = true;
+        const row = popover.closest('.settings-row');
+        if (row) row.classList.remove('has-open-visibility');
+        if (openCategoryVisibilityPopover === popover) openCategoryVisibilityPopover = null;
+      };
+      const openCategoryVisibilityMenu = (popover) => {
+        if (!popover) return;
+        if (openCategoryVisibilityPopover && openCategoryVisibilityPopover !== popover) {
+          closeCategoryVisibilityPopover(openCategoryVisibilityPopover);
+        }
+        const trigger = popover.querySelector('.settings-visibility-trigger');
+        const menu = popover.querySelector('.settings-visibility-menu');
+        if (!trigger || !menu) return;
+        trigger.setAttribute('aria-expanded', 'true');
+        menu.hidden = false;
+        const row = popover.closest('.settings-row');
+        if (row) row.classList.add('has-open-visibility');
+        openCategoryVisibilityPopover = popover;
+      };
+      const bindCategoryVisibilityPopover = (popover) => {
+        if (!popover) return;
+        const trigger = popover.querySelector('.settings-visibility-trigger');
+        const menu = popover.querySelector('.settings-visibility-menu');
+        if (!trigger || !menu) return;
+        menu.hidden = true;
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const isOpen = trigger.getAttribute('aria-expanded') === 'true';
+          if (isOpen) closeCategoryVisibilityPopover(popover);
+          else openCategoryVisibilityMenu(popover);
+        });
+      };
+      categoryRows?.querySelectorAll('[data-category-visibility-popover]').forEach(bindCategoryVisibilityPopover);
+      document.addEventListener('click', (event) => {
+        if (!openCategoryVisibilityPopover) return;
+        if (openCategoryVisibilityPopover.contains(event.target)) return;
+        closeCategoryVisibilityPopover(openCategoryVisibilityPopover);
+      });
+      document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        closeCategoryVisibilityPopover(openCategoryVisibilityPopover);
+      });
 
       categoryRows?.addEventListener('click', (event) => {
         const editButton = event.target.closest('.category-edit-button');
@@ -3114,15 +3615,19 @@
         const row = deleteButton.closest('.category-row');
         if (!row) return;
         if (deleteButton.disabled) return;
-        const isDefault = row.dataset.default === 'true';
-        if (isDefault) {
-          setCategoryNote('Default categories cannot be deleted.', true);
-          return;
-        }
         const label = String(row.dataset.category || '').trim() || 'this category';
         if (!window.confirm('Delete "' + label + '"?')) return;
+        const isDefault = row.dataset.default === 'true';
+        if (isDefault) {
+          ensureDefaultCategoryOption({
+            name: label,
+            icon: String(row.dataset.icon || '/icons/category.svg').trim() || '/icons/category.svg',
+            sidebarMinRole: normalizeCategoryVisibilityRole(row.dataset.sidebarMinRole, 'disabled'),
+          });
+          syncDefaultCategoryPicker();
+        }
         row.remove();
-        setCategoryNote('Category removed. Applying changes...');
+        setCategoryNote((isDefault ? 'Default category removed. You can re-add it from the dropdown. ' : 'Category removed. ') + 'Applying changes...');
         refreshCategoryRows();
         submitCategoryChanges();
       });
@@ -3165,38 +3670,57 @@
         }
 
         if (!window.confirm('Add "' + label + '" as a new category?')) return;
-        const row = document.createElement('div');
-        row.className = 'settings-row settings-row--categories category-row';
-        row.draggable = true;
-        row.dataset.category = label;
-        row.dataset.sidebarMenu = 'false';
-        row.dataset.icon = selectedIcon;
-        row.innerHTML =
-          '<div class="settings-app settings-app--category">' +
-            '<button class="order-button category-drag-handle" type="button" title="Drag to reorder" aria-label="Drag to reorder">&#x2630;</button>' +
-            '<img class="nav-icon category-icon-preview" src="' + escapeHtml(selectedIcon) + '" alt="" />' +
-            '<span class="settings-app-name settings-app-name--category">' + escapeHtml(label) + '</span>' +
-          '</div>' +
-          '<div class="settings-cell">' +
-            '<div class="category-icon-display" aria-label="Category icon in use">' +
-              '<img class="category-icon-display-img" src="' + escapeHtml(selectedIcon) + '" alt="" />' +
-              '<span class="category-icon-display-text">' + escapeHtml(formatIconLabel(selectedIcon)) + '</span>' +
-            '</div>' +
-          '</div>' +
-          '<div class="settings-cell">' +
-            '<input class="category-sidebar-toggle" type="checkbox" title="Group apps under this category in the sidebar" aria-label="Group apps in sidebar" />' +
-          '</div>' +
-          '<div class="settings-cell">' +
-            '<button class="order-button category-edit-button" type="button" title="Edit category" aria-label="Edit category">Edit</button>' +
-          '</div>' +
-          '<div class="settings-cell">' +
-            '<button class="order-button category-delete-button" type="button" title="Delete category" aria-label="Delete category">&times;</button>' +
-          '</div>';
+        const row = createCategoryRow({
+          label,
+          icon: selectedIcon,
+          sidebarMinRole: 'disabled',
+          isDefault: false,
+        });
+        if (!row) return;
         categoryRows?.appendChild(row);
         attachCategoryRowEvents(row);
+        bindCategoryVisibilityPopover(row.querySelector('[data-category-visibility-popover]'));
         if (categoryInput) categoryInput.value = '';
         setIconSelection('', '');
         setCategoryNote('Category added. Applying changes...');
+        refreshCategoryRows();
+        submitCategoryChanges();
+      });
+
+      defaultCategoryAddBtn?.addEventListener('click', () => {
+        const selectedName = String(defaultCategorySelect?.value || '').trim();
+        if (!selectedName) {
+          setCategoryNote('Select a default category to add.', true);
+          return;
+        }
+        const selectedOption = getDefaultCategoryOptions().find((entry) => String(entry.dataset.value || '').trim() === selectedName);
+        if (!selectedOption) {
+          setCategoryNote('Select a default category to add.', true);
+          return;
+        }
+        const isDuplicate = getCategoryRows().some((row) => normalizeCategory(row.dataset.category) === normalizeCategory(selectedName));
+        if (isDuplicate) {
+          selectedOption.remove();
+          syncDefaultCategoryPicker();
+          setCategoryNote('That category already exists.', true);
+          return;
+        }
+        const defaultIcon = String(selectedOption.dataset.defaultIcon || '/icons/category.svg').trim() || '/icons/category.svg';
+        const defaultMinRole = normalizeCategoryVisibilityRole(selectedOption.dataset.defaultMinRole, 'disabled');
+        const row = createCategoryRow({
+          label: selectedName,
+          icon: defaultIcon,
+          sidebarMinRole: defaultMinRole,
+          isDefault: true,
+        });
+        if (!row) return;
+        if (!window.confirm('Re-add default category "' + selectedName + '"?')) return;
+        categoryRows?.appendChild(row);
+        attachCategoryRowEvents(row);
+        bindCategoryVisibilityPopover(row.querySelector('[data-category-visibility-popover]'));
+        selectedOption.remove();
+        syncDefaultCategoryPicker();
+        setCategoryNote('Default category re-added. Applying changes...');
         refreshCategoryRows();
         submitCategoryChanges();
       });
@@ -3392,6 +3916,7 @@
     }
   </script>
   <script src="/version-badge.js"></script>
+  <script src="/brand-menu.js?v=<%= assetVersion %>"></script>
   <script src="/starfield-3d.js"></script>
   <script src="/pwa.js"></script>
 </body>

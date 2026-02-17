@@ -189,6 +189,14 @@ const APP_BASE_NAME_MAP = {
   sonarr: 'Sonarr',
   bazarr: 'Bazarr',
 };
+const VISIBILITY_ROLE_ORDER = ['disabled', 'guest', 'user', 'co-admin', 'admin'];
+const VISIBILITY_ROLE_RANK = {
+  disabled: -1,
+  guest: 0,
+  user: 1,
+  'co-admin': 2,
+  admin: 3,
+};
 
 function resolveGeneralSettings(config) {
   const raw = config && typeof config.general === 'object' ? config.general : {};
@@ -979,35 +987,34 @@ app.get('/dashboard', requireUser, (req, res) => {
   const role = getEffectiveRole(req);
   const actualRole = getActualRole(req);
   const navApps = getNavApps(apps, role, req, categoryOrder);
-  const navCategories = buildNavCategories(navApps, categoryEntries);
+  const navCategories = buildNavCategories(navApps, categoryEntries, role);
   const rankCategory = buildCategoryRank(categoryOrder);
 
-  const accessibleApps = apps.filter((appItem) => canAccess(appItem, role, 'overview'));
-  const arrDashboardCombinedCards = resolveArrDashboardCombinedCards(config, accessibleApps);
-  const arrDashboardAppIds = accessibleApps
+  const dashboardAccessibleApps = apps.filter((appItem) => canAccessDashboardApp(config, appItem, role));
+  const arrDashboardCombinedCards = resolveArrDashboardCombinedCards(config, dashboardAccessibleApps);
+  const arrDashboardAppIds = dashboardAccessibleApps
     .filter((appItem) => isAppInSet(appItem.id, ARR_APP_IDS))
     .map((appItem) => appItem.id);
   const arrDashboardAppLookup = new Map(
-    accessibleApps
+    dashboardAccessibleApps
       .filter((appItem) => isAppInSet(appItem.id, ARR_APP_IDS))
       .map((appItem) => [normalizeAppId(appItem.id), appItem])
   );
-  const downloaderDashboardAppIds = accessibleApps
+  const downloaderDashboardAppIds = dashboardAccessibleApps
     .filter((appItem) => isAppInSet(appItem.id, DOWNLOADER_APP_IDS))
     .map((appItem) => appItem.id);
-  const mediaDashboardAppIds = accessibleApps
+  const mediaDashboardAppIds = dashboardAccessibleApps
     .filter((appItem) => isAppInSet(appItem.id, MEDIA_APP_IDS))
     .map((appItem) => appItem.id);
-  const appById = new Map(accessibleApps.map((appItem) => [appItem.id, appItem]));
+  const appById = new Map(dashboardAccessibleApps.map((appItem) => [appItem.id, appItem]));
   const elementsByAppId = new Map(
-    accessibleApps.map((appItem) => [appItem.id, mergeOverviewElementSettings(appItem)])
+    dashboardAccessibleApps.map((appItem) => [appItem.id, mergeOverviewElementSettings(appItem)])
   );
-  const dashboardModules = accessibleApps
+  const dashboardModules = dashboardAccessibleApps
     .map((appItem) => ({
       app: appItem,
       elements: (elementsByAppId.get(appItem.id) || []).filter((item) => (
-        item.enable
-        && item.dashboard
+        canAccessDashboardElement(appItem, item, role)
         && !dashboardRemovedElements[`app:${appItem.id}:${item.id}`]
       )),
     }))
@@ -1050,7 +1057,7 @@ app.get('/dashboard', requireUser, (req, res) => {
     const combinedKey = `combined:arr:${section.key}`;
     if (dashboardRemovedElements[combinedKey]) return;
     const combinedSettings = dashboardCombinedSettings[combinedKey];
-    if (combinedSettings && (!combinedSettings.enable || !combinedSettings.dashboard)) return;
+    if (!canAccessCombinedDashboardVisibility(combinedSettings, role, 'user')) return;
     const sectionModules = buildSectionModules(arrDashboardAppIds, section.elementId);
     const combinedModules = sectionModules.filter((item) =>
       Boolean(arrDashboardCombine?.[section.key]?.[item.app.id])
@@ -1089,7 +1096,7 @@ app.get('/dashboard', requireUser, (req, res) => {
     const combinedKey = `combined:arrcustom:${customToken}`;
     if (dashboardRemovedElements[combinedKey]) return;
     const combinedSettings = dashboardCombinedSettings[combinedKey];
-    if (combinedSettings && (!combinedSettings.enable || !combinedSettings.dashboard)) return;
+    if (!canAccessCombinedDashboardVisibility(combinedSettings, role, 'user')) return;
     const sectionModules = buildSectionModules(card.appIds, section.elementId);
     if (!sectionModules.length) return;
     const leader = sectionModules[0];
@@ -1119,7 +1126,7 @@ app.get('/dashboard', requireUser, (req, res) => {
     const combinedKey = `combined:downloader:${section.key}`;
     if (dashboardRemovedElements[combinedKey]) return;
     const combinedSettings = dashboardCombinedSettings[combinedKey];
-    if (combinedSettings && (!combinedSettings.enable || !combinedSettings.dashboard)) return;
+    if (!canAccessCombinedDashboardVisibility(combinedSettings, role, 'user')) return;
     const sectionModules = buildSectionModules(downloaderDashboardAppIds, section.elementId);
     const combinedModules = sectionModules.filter((item) =>
       Boolean(downloaderDashboardCombine?.[section.key]?.[item.app.id])
@@ -1149,7 +1156,7 @@ app.get('/dashboard', requireUser, (req, res) => {
     const combinedKey = `combined:media:${section.key}`;
     if (dashboardRemovedElements[combinedKey]) return;
     const combinedSettings = dashboardCombinedSettings[combinedKey];
-    if (combinedSettings && (!combinedSettings.enable || !combinedSettings.dashboard)) return;
+    if (!canAccessCombinedDashboardVisibility(combinedSettings, role, 'user')) return;
     const sectionModules = buildSectionModules(mediaDashboardAppIds, section.elementId);
     const combinedModules = sectionModules.filter((item) =>
       Boolean(mediaDashboardCombine?.[section.key]?.[item.app.id])
@@ -1225,7 +1232,7 @@ app.get('/apps/:id', requireUser, (req, res) => {
   const role = getEffectiveRole(req);
   const actualRole = getActualRole(req);
   const navApps = getNavApps(apps, role, req, categoryOrder);
-  const navCategories = buildNavCategories(navApps, categoryEntries);
+  const navCategories = buildNavCategories(navApps, categoryEntries, role);
   const appItem = apps.find((item) => item.id === req.params.id);
 
   if (!appItem) return res.status(404).send('App not found.');
@@ -1256,7 +1263,7 @@ app.get('/apps/:id/activity', requireAdmin, (req, res) => {
   const role = getEffectiveRole(req);
   const actualRole = getActualRole(req);
   const navApps = getNavApps(apps, role, req, categoryOrder);
-  const navCategories = buildNavCategories(navApps, categoryEntries);
+  const navCategories = buildNavCategories(navApps, categoryEntries, role);
   const appItem = apps.find((item) => item.id === req.params.id);
 
   if (!appItem) return res.status(404).send('App not found.');
@@ -1308,7 +1315,7 @@ app.get('/apps/:id/launch', requireUser, async (req, res) => {
   const launchMode = resolveEffectiveLaunchMode(appWithIcon, req, normalizeMenu(appWithIcon));
   if (launchMode === 'iframe') {
     const navApps = getNavApps(apps, role, req, categoryOrder);
-    const navCategories = buildNavCategories(navApps, categoryEntries);
+    const navCategories = buildNavCategories(navApps, categoryEntries, role);
     return res.render('app-launch', {
       user: req.session.user,
       role,
@@ -1332,7 +1339,7 @@ app.get('/apps/:id/settings', requireAdmin, (req, res) => {
   const role = getEffectiveRole(req);
   const actualRole = getActualRole(req);
   const navApps = getNavApps(apps, role, req, categoryOrder);
-  const navCategories = buildNavCategories(navApps, categoryEntries);
+  const navCategories = buildNavCategories(navApps, categoryEntries, role);
   const appItem = apps.find((item) => item.id === req.params.id);
 
   if (!appItem) return res.status(404).send('App not found.');
@@ -1441,8 +1448,6 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     return acc;
   }, {});
   const baseDashboardElements = settingsApps.flatMap((appItem) => {
-    const hasOverviewAccess = canAccess(appItem, role, 'overview');
-    if (!hasOverviewAccess && !isAppInSet(appItem.id, DOWNLOADER_APP_IDS)) return [];
     const elements = mergeOverviewElementSettings(appItem);
     const baseId = getAppBaseId(appItem?.id);
     const isMultiInstanceGroup = MULTI_INSTANCE_APP_IDS.includes(baseId) && Number(multiInstanceCountsByBase[baseId] || 0) > 1;
@@ -1456,7 +1461,7 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
       element,
       displayName: isMultiInstanceGroup ? `${appTitle} ${element.name || ''}`.trim() : (element.name || ''),
       iconPath: itemIconPath,
-      appAccess: hasOverviewAccess,
+      appAccess: true,
     }));
   });
 
@@ -1701,7 +1706,7 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     dashboardCombinedAddOptions.push({
       key,
       group: 'Re-add Downloader Combined',
-      name: 'Combined Activity Queue',
+      name: 'Combined Download Queue',
       icon: '/icons/download.svg',
     });
   });
@@ -1732,7 +1737,7 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     return String(a.element.name || '').localeCompare(String(b.element.name || ''));
   });
   const navApps = getNavApps(apps, role, req, categoryOrder);
-  const navCategories = buildNavCategories(navApps, categoryEntries);
+  const navCategories = buildNavCategories(navApps, categoryEntries, role);
   const defaultAppCatalog = loadDefaultApps()
     .map((appItem) => {
       const id = normalizeAppId(appItem?.id);
@@ -1745,6 +1750,26 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
       };
     })
     .filter(Boolean);
+  const defaultCategoryCatalog = loadDefaultCategories()
+    .map((entry) => {
+      const name = normalizeCategoryName(entry?.name);
+      if (!name) return null;
+      const iconValue = String(entry?.icon || '').trim();
+      const sidebarMinRole = normalizeVisibilityRole(
+        entry?.sidebarMinRole,
+        entry?.sidebarMenu ? 'user' : 'disabled'
+      );
+      return {
+        name,
+        sidebarMenu: sidebarMinRole !== 'disabled',
+        sidebarMinRole,
+        icon: iconValue || resolveDefaultCategoryIcon(name),
+      };
+    })
+    .filter(Boolean)
+    .filter((entry, index, list) => (
+      list.findIndex((candidate) => String(candidate?.name || '').toLowerCase() === String(entry?.name || '').toLowerCase()) === index
+    ));
   const systemIconDefaults = getDefaultSystemIconOptions();
   const systemIconCustom = getCustomSystemIconOptions();
   const appIconDefaults = getDefaultAppIconOptions(apps);
@@ -1789,6 +1814,7 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     dashboardElementError: String(req.query?.dashboardElementError || '').trim(),
     dashboardRemovedAddOptions,
     defaultAppCatalog,
+    defaultCategoryCatalog,
     defaultAppResult,
     defaultAppError,
     selectedSettingsAppId,
@@ -1830,35 +1856,56 @@ app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
   const dashboardCombinedSettings = {};
   ARR_COMBINE_SECTIONS.forEach((section) => {
     const mapKey = `combined:arr:${section.key}`;
+    const existing = existingDashboardCombinedSettings[mapKey] || {};
     if (dashboardRemovedElements[mapKey] && existingDashboardCombinedSettings[mapKey]) {
       dashboardCombinedSettings[mapKey] = existingDashboardCombinedSettings[mapKey];
       return;
     }
+    const visibilityRole = normalizeVisibilityRole(
+      req.body[`dashboard_combined_arr_${section.key}_visibility_role`],
+      resolveCombinedDashboardVisibilityRole(existing, 'user')
+    );
     dashboardCombinedSettings[mapKey] = {
-      enable: Boolean(req.body[`dashboard_combined_arr_${section.key}_enable`]),
-      dashboard: Boolean(req.body[`dashboard_combined_arr_${section.key}_dashboard`]),
+      ...existing,
+      visibilityRole,
+      enable: visibilityRole !== 'disabled',
+      dashboard: visibilityRole !== 'disabled',
     };
   });
   DOWNLOADER_COMBINE_SECTIONS.forEach((section) => {
     const mapKey = `combined:downloader:${section.key}`;
+    const existing = existingDashboardCombinedSettings[mapKey] || {};
     if (dashboardRemovedElements[mapKey] && existingDashboardCombinedSettings[mapKey]) {
       dashboardCombinedSettings[mapKey] = existingDashboardCombinedSettings[mapKey];
       return;
     }
+    const visibilityRole = normalizeVisibilityRole(
+      req.body[`dashboard_combined_downloader_${section.key}_visibility_role`],
+      resolveCombinedDashboardVisibilityRole(existing, 'user')
+    );
     dashboardCombinedSettings[mapKey] = {
-      enable: Boolean(req.body[`dashboard_combined_downloader_${section.key}_enable`]),
-      dashboard: Boolean(req.body[`dashboard_combined_downloader_${section.key}_dashboard`]),
+      ...existing,
+      visibilityRole,
+      enable: visibilityRole !== 'disabled',
+      dashboard: visibilityRole !== 'disabled',
     };
   });
   MEDIA_COMBINE_SECTIONS.forEach((section) => {
     const mapKey = `combined:media:${section.key}`;
+    const existing = existingDashboardCombinedSettings[mapKey] || {};
     if (dashboardRemovedElements[mapKey] && existingDashboardCombinedSettings[mapKey]) {
       dashboardCombinedSettings[mapKey] = existingDashboardCombinedSettings[mapKey];
       return;
     }
+    const visibilityRole = normalizeVisibilityRole(
+      req.body[`dashboard_combined_media_${section.key}_visibility_role`],
+      resolveCombinedDashboardVisibilityRole(existing, 'user')
+    );
     dashboardCombinedSettings[mapKey] = {
-      enable: Boolean(req.body[`dashboard_combined_media_${section.key}_enable`]),
-      dashboard: Boolean(req.body[`dashboard_combined_media_${section.key}_dashboard`]),
+      ...existing,
+      visibilityRole,
+      enable: visibilityRole !== 'disabled',
+      dashboard: visibilityRole !== 'disabled',
     };
   });
   Object.keys(req.body || {}).forEach((key) => {
@@ -1867,9 +1914,16 @@ app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
     const customToken = normalizeCombinedCardToken(match[1] || '');
     if (!customToken) return;
     const mapKey = `combined:arrcustom:${customToken}`;
+    const existing = existingDashboardCombinedSettings[mapKey] || {};
+    const visibilityRole = normalizeVisibilityRole(
+      req.body[`dashboard_combined_arrcustom_${customToken}_visibility_role`],
+      resolveCombinedDashboardVisibilityRole(existing, 'user')
+    );
     dashboardCombinedSettings[mapKey] = {
-      enable: Boolean(req.body[`dashboard_combined_arrcustom_${customToken}_enable`]),
-      dashboard: Boolean(req.body[`dashboard_combined_arrcustom_${customToken}_dashboard`]),
+      ...existing,
+      visibilityRole,
+      enable: visibilityRole !== 'disabled',
+      dashboard: visibilityRole !== 'disabled',
     };
   });
   Object.entries(existingDashboardCombinedSettings).forEach(([mapKey, value]) => {
@@ -2043,7 +2097,7 @@ app.post('/settings/dashboard-combined/add', requireSettingsAdmin, (req, res) =>
     const existingCombinedSettings = (config && typeof config.dashboardCombinedSettings === 'object' && config.dashboardCombinedSettings)
       ? { ...config.dashboardCombinedSettings }
       : {};
-    existingCombinedSettings[combinedKey] = { enable: true, dashboard: true };
+    existingCombinedSettings[combinedKey] = { enable: true, dashboard: true, visibilityRole: 'user' };
     const existingCombinedOrder = (config && typeof config.dashboardCombinedOrder === 'object' && config.dashboardCombinedOrder)
       ? { ...config.dashboardCombinedOrder }
       : {};
@@ -2190,7 +2244,7 @@ app.get('/user-settings', requireUser, (req, res) => {
   const role = getEffectiveRole(req);
   const actualRole = getActualRole(req);
   const navApps = getNavApps(apps, role, req, categoryOrder);
-  const navCategories = buildNavCategories(navApps, categoryEntries);
+  const navCategories = buildNavCategories(navApps, categoryEntries, role);
   const generalSettings = resolveGeneralSettings(config);
   const profileResult = String(req.query?.profileResult || '').trim();
   const profileError = String(req.query?.profileError || '').trim();
@@ -2420,32 +2474,51 @@ app.post('/settings/apps', requireSettingsAdmin, (req, res) => {
     || 'Tools';
   const apps = (config.apps || []).map((appItem) => {
     const id = appItem.id;
-    const enableAdmin = Boolean(req.body[`display_enable_${id}`]);
-    const overviewUserValue = req.body[`display_overview_user_${id}`];
     const launchModeInput = req.body[`display_launch_mode_${id}`];
-    const launchUserValue = req.body[`display_launch_user_${id}`];
     const favouriteValue = Boolean(req.body[`display_favourite_${id}`]);
     const categoryValue = req.body[`display_category_${id}`];
     const orderValue = req.body[`display_order_${id}`];
     const parsedOrder = Number(orderValue);
-    const currentLaunchMode = resolveAppLaunchMode(appItem, normalizeMenu(appItem));
-    const launchMode = normalizeLaunchMode(launchModeInput, currentLaunchMode);
-    const launchEnabled = launchMode !== 'disabled';
+    const currentMenu = normalizeMenu(appItem);
+    const currentLaunchMode = resolveAppLaunchMode(appItem, currentMenu);
+    const launchMode = normalizeLaunchMode(
+      launchModeInput,
+      currentLaunchMode === 'disabled' ? 'new-tab' : currentLaunchMode
+    );
     const isCustom = Boolean(appItem.custom);
-    const menu = {
-      overview: {
-        user: isCustom ? false : Boolean(overviewUserValue),
-        admin: isCustom ? false : enableAdmin,
-      },
-      launch: {
-        user: Boolean(launchUserValue) && launchEnabled,
-        admin: enableAdmin && launchEnabled,
-      },
-      settings: {
-        user: false,
-        admin: enableAdmin,
-      },
-    };
+    const sidebarMinRole = normalizeVisibilityRole(
+      req.body[`display_sidebar_min_role_${id}`],
+      currentMenu.sidebar?.minRole || 'disabled'
+    );
+    const overviewSidebarMinRole = isCustom
+      ? 'disabled'
+      : normalizeVisibilityRole(
+        req.body[`display_overview_min_role_${id}`] || req.body[`display_dashboard_min_role_${id}`],
+        currentMenu.sidebarOverview?.minRole || currentMenu.overview?.minRole || 'disabled'
+      );
+    const appSettingsSidebarMinRole = normalizeVisibilityRole(
+      req.body[`display_app_settings_min_role_${id}`],
+      currentMenu.sidebarSettings?.minRole || currentMenu.settings?.minRole || 'admin'
+    );
+    const activitySidebarMinRole = normalizeVisibilityRole(
+      req.body[`display_activity_min_role_${id}`],
+      currentMenu.sidebarActivity?.minRole || 'admin'
+    );
+    const launchMinRoleInput = normalizeVisibilityRole(
+      req.body[`display_launch_min_role_${id}`],
+      currentMenu.launch?.minRole || 'disabled'
+    );
+    const launchMinRole = launchMode === 'disabled' ? 'disabled' : launchMinRoleInput;
+    const settingsMinRole = normalizeVisibilityRole(currentMenu.settings?.minRole || 'admin', 'admin');
+    const menu = buildMenuAccessConfig({
+      sidebar: sidebarMinRole,
+      sidebarOverview: overviewSidebarMinRole,
+      sidebarSettings: appSettingsSidebarMinRole,
+      sidebarActivity: activitySidebarMinRole,
+      overview: isCustom ? 'disabled' : overviewSidebarMinRole,
+      launch: launchMinRole,
+      settings: settingsMinRole,
+    });
 
     return {
       ...appItem,
@@ -2675,7 +2748,7 @@ app.post('/settings/default-apps/add', requireSettingsAdmin, (req, res) => {
     custom: false,
     removed: false,
     favourite: false,
-    launchMode: 'disabled',
+    launchMode: 'new-tab',
     menu: buildDisabledMenuAccess(),
     overviewElements: buildDisabledOverviewElements(nextAppSeed),
   };
@@ -2734,7 +2807,7 @@ app.post('/settings/default-apps/remove', requireSettingsAdmin, (req, res) => {
     ...current,
     removed: true,
     favourite: false,
-    launchMode: 'disabled',
+    launchMode: 'new-tab',
     menu: buildDisabledMenuAccess(),
     overviewElements: buildDisabledOverviewElements(current),
   };
@@ -2885,11 +2958,12 @@ app.post('/settings/custom-apps', requireSettingsAdmin, (req, res) => {
     localUrl: '',
     remoteUrl: '',
     apiKey: '',
-    menu: {
-      overview: { user: false, admin: false },
-      launch: { user: true, admin: true },
-      settings: { user: false, admin: true },
-    },
+    menu: buildMenuAccessConfig({
+      sidebar: 'user',
+      overview: 'disabled',
+      launch: 'user',
+      settings: 'admin',
+    }),
     launchMode: 'new-tab',
   };
 
@@ -3341,8 +3415,8 @@ app.get('/api/plex/discovery/watchlisted', requireUser, async (req, res) => {
   const apps = config.apps || [];
   const plexApp = apps.find((appItem) => appItem.id === 'plex');
   if (!plexApp) return res.status(404).json({ error: 'Plex app is not configured.' });
-  if (!canAccess(plexApp, getEffectiveRole(req), 'overview')) {
-    return res.status(403).json({ error: 'Plex overview access denied.' });
+  if (!canAccessDashboardApp(config, plexApp, getEffectiveRole(req))) {
+    return res.status(403).json({ error: 'Plex dashboard access denied.' });
   }
 
   try {
@@ -3378,8 +3452,8 @@ app.get('/api/plex/discovery/details', requireUser, async (req, res) => {
   const apps = config.apps || [];
   const plexApp = apps.find((appItem) => appItem.id === 'plex');
   if (!plexApp) return res.status(404).json({ error: 'Plex app is not configured.' });
-  if (!canAccess(plexApp, getEffectiveRole(req), 'overview')) {
-    return res.status(403).json({ error: 'Plex overview access denied.' });
+  if (!canAccessDashboardApp(config, plexApp, getEffectiveRole(req))) {
+    return res.status(403).json({ error: 'Plex dashboard access denied.' });
   }
 
   const token = String(req.session?.authToken || plexApp.plexToken || '').trim();
@@ -3676,8 +3750,8 @@ app.get('/api/jellyfin/active', requireUser, async (req, res) => {
   const apps = config.apps || [];
   const jellyfinApp = apps.find((appItem) => appItem.id === 'jellyfin');
   if (!jellyfinApp) return res.status(404).json({ error: 'Jellyfin app is not configured.' });
-  if (!canAccess(jellyfinApp, getEffectiveRole(req), 'overview')) {
-    return res.status(403).json({ error: 'Jellyfin overview access denied.' });
+  if (!canAccessDashboardApp(config, jellyfinApp, getEffectiveRole(req))) {
+    return res.status(403).json({ error: 'Jellyfin dashboard access denied.' });
   }
 
   const apiKey = String(jellyfinApp.apiKey || '').trim();
@@ -3772,8 +3846,8 @@ app.get('/api/jellyfin/recent', requireUser, async (req, res) => {
   const apps = config.apps || [];
   const jellyfinApp = apps.find((appItem) => appItem.id === 'jellyfin');
   if (!jellyfinApp) return res.status(404).json({ error: 'Jellyfin app is not configured.' });
-  if (!canAccess(jellyfinApp, getEffectiveRole(req), 'overview')) {
-    return res.status(403).json({ error: 'Jellyfin overview access denied.' });
+  if (!canAccessDashboardApp(config, jellyfinApp, getEffectiveRole(req))) {
+    return res.status(403).json({ error: 'Jellyfin dashboard access denied.' });
   }
 
   const apiKey = String(jellyfinApp.apiKey || '').trim();
@@ -3866,8 +3940,8 @@ app.get('/api/emby/active', requireUser, async (req, res) => {
   const apps = config.apps || [];
   const embyApp = apps.find((appItem) => appItem.id === 'emby');
   if (!embyApp) return res.status(404).json({ error: 'Emby app is not configured.' });
-  if (!canAccess(embyApp, getEffectiveRole(req), 'overview')) {
-    return res.status(403).json({ error: 'Emby overview access denied.' });
+  if (!canAccessDashboardApp(config, embyApp, getEffectiveRole(req))) {
+    return res.status(403).json({ error: 'Emby dashboard access denied.' });
   }
 
   const apiKey = String(embyApp.apiKey || '').trim();
@@ -3962,8 +4036,8 @@ app.get('/api/emby/recent', requireUser, async (req, res) => {
   const apps = config.apps || [];
   const embyApp = apps.find((appItem) => appItem.id === 'emby');
   if (!embyApp) return res.status(404).json({ error: 'Emby app is not configured.' });
-  if (!canAccess(embyApp, getEffectiveRole(req), 'overview')) {
-    return res.status(403).json({ error: 'Emby overview access denied.' });
+  if (!canAccessDashboardApp(config, embyApp, getEffectiveRole(req))) {
+    return res.status(403).json({ error: 'Emby dashboard access denied.' });
   }
 
   const apiKey = String(embyApp.apiKey || '').trim();
@@ -4117,8 +4191,8 @@ app.get('/api/pulsarr/stats/:kind', requireUser, async (req, res) => {
   const apps = config.apps || [];
   const pulsarrApp = apps.find((appItem) => appItem.id === 'pulsarr');
   if (!pulsarrApp) return res.status(404).json({ error: 'Pulsarr app is not configured.' });
-  if (!canAccess(pulsarrApp, getEffectiveRole(req), 'overview')) {
-    return res.status(403).json({ error: 'Pulsarr overview access denied.' });
+  if (!canAccessDashboardApp(config, pulsarrApp, getEffectiveRole(req))) {
+    return res.status(403).json({ error: 'Pulsarr dashboard access denied.' });
   }
 
   const apiKey = String(pulsarrApp.apiKey || '').trim();
@@ -4187,8 +4261,8 @@ app.get('/api/seerr/stats/:kind', requireUser, async (req, res) => {
   const apps = config.apps || [];
   const seerrApp = apps.find((appItem) => appItem.id === 'seerr');
   if (!seerrApp) return res.status(404).json({ error: 'Seerr app is not configured.' });
-  if (!canAccess(seerrApp, getEffectiveRole(req), 'overview')) {
-    return res.status(403).json({ error: 'Seerr overview access denied.' });
+  if (!canAccessDashboardApp(config, seerrApp, getEffectiveRole(req))) {
+    return res.status(403).json({ error: 'Seerr dashboard access denied.' });
   }
 
   const apiKey = String(seerrApp.apiKey || '').trim();
@@ -4340,8 +4414,8 @@ app.get('/api/pulsarr/tmdb/:kind/:id', requireUser, async (req, res) => {
   const apps = config.apps || [];
   const pulsarrApp = apps.find((appItem) => appItem.id === 'pulsarr');
   if (!pulsarrApp) return res.status(404).json({ error: 'Pulsarr app is not configured.' });
-  if (!canAccess(pulsarrApp, getEffectiveRole(req), 'overview')) {
-    return res.status(403).json({ error: 'Pulsarr overview access denied.' });
+  if (!canAccessDashboardApp(config, pulsarrApp, getEffectiveRole(req))) {
+    return res.status(403).json({ error: 'Pulsarr dashboard access denied.' });
   }
 
   const apiKey = String(pulsarrApp.apiKey || '').trim();
@@ -4413,8 +4487,8 @@ app.get('/api/seerr/tmdb/:kind/:id', requireUser, async (req, res) => {
   const apps = config.apps || [];
   const seerrApp = apps.find((appItem) => appItem.id === 'seerr');
   if (!seerrApp) return res.status(404).json({ error: 'Seerr app is not configured.' });
-  if (!canAccess(seerrApp, getEffectiveRole(req), 'overview')) {
-    return res.status(403).json({ error: 'Seerr overview access denied.' });
+  if (!canAccessDashboardApp(config, seerrApp, getEffectiveRole(req))) {
+    return res.status(403).json({ error: 'Seerr dashboard access denied.' });
   }
 
   const apiKey = String(seerrApp.apiKey || '').trim();
@@ -4465,8 +4539,8 @@ app.get('/api/prowlarr/search', requireUser, async (req, res) => {
   const apps = config.apps || [];
   const prowlarrApp = apps.find((appItem) => appItem.id === 'prowlarr');
   if (!prowlarrApp) return res.status(404).json({ error: 'Prowlarr app is not configured.' });
-  if (!canAccess(prowlarrApp, getEffectiveRole(req), 'overview')) {
-    return res.status(403).json({ error: 'Prowlarr overview access denied.' });
+  if (!canAccessDashboardApp(config, prowlarrApp, getEffectiveRole(req))) {
+    return res.status(403).json({ error: 'Prowlarr dashboard access denied.' });
   }
 
   const apiKey = String(prowlarrApp.apiKey || '').trim();
@@ -4596,8 +4670,8 @@ app.post('/api/prowlarr/download', requireUser, async (req, res) => {
   const apps = config.apps || [];
   const prowlarrApp = apps.find((appItem) => appItem.id === 'prowlarr');
   if (!prowlarrApp) return res.status(404).json({ error: 'Prowlarr app is not configured.' });
-  if (!canAccess(prowlarrApp, getEffectiveRole(req), 'overview')) {
-    return res.status(403).json({ error: 'Prowlarr overview access denied.' });
+  if (!canAccessDashboardApp(config, prowlarrApp, getEffectiveRole(req))) {
+    return res.status(403).json({ error: 'Prowlarr dashboard access denied.' });
   }
 
   const apiKey = String(prowlarrApp.apiKey || '').trim();
@@ -4949,8 +5023,8 @@ app.get('/api/downloaders/:appId/queue', requireUser, async (req, res) => {
   const apps = config.apps || [];
   const appItem = apps.find((item) => item.id === appId);
   if (!appItem) return res.status(404).json({ error: `${appId} is not configured.` });
-  if (!canAccess(appItem, getEffectiveRole(req), 'overview')) {
-    return res.status(403).json({ error: `${appItem.name || appId} overview access denied.` });
+  if (!canAccessDashboardApp(config, appItem, getEffectiveRole(req))) {
+    return res.status(403).json({ error: `${appItem.name || appId} dashboard access denied.` });
   }
 
   const candidates = uniqueList([
@@ -5033,8 +5107,8 @@ app.get('/api/arr/:appId/:version/*', requireUser, async (req, res) => {
   if (!arrApp) {
     return reject(404, `${appId} is not configured.`, { appId, version, path: pathSuffix });
   }
-  if (!canAccess(arrApp, getEffectiveRole(req), 'overview')) {
-    return reject(403, `${arrApp.name || appId} overview access denied.`, {
+  if (!canAccessDashboardApp(config, arrApp, getEffectiveRole(req))) {
+    return reject(403, `${arrApp.name || appId} dashboard access denied.`, {
       appId,
       version,
       path: pathSuffix,
@@ -5155,7 +5229,7 @@ app.post('/api/logs/client', requireUser, (req, res) => {
   const apps = config.apps || [];
   const appItem = apps.find((item) => String(item.id || '').toLowerCase() === appId);
   if (!appItem) return res.status(404).json({ error: 'Unknown app.' });
-  if (!canAccess(appItem, getEffectiveRole(req), 'overview')) {
+  if (!canAccessDashboardApp(config, appItem, getEffectiveRole(req))) {
     return res.status(403).json({ error: 'Access denied.' });
   }
 
@@ -5307,10 +5381,14 @@ function getNavApps(apps, role, req, categoryOrder = DEFAULT_CATEGORY_ORDER, gen
         : (String(appItem?.name || '').trim() || getBaseAppTitle(baseId));
       const resolvedIcon = resolvePersistedAppIconPath(appItem);
       const access = getMenuAccess(appItem, role);
+      const sidebarOverviewAccess = canAccessSidebarOverview(appItem, role);
+      const sidebarSettingsAccess = canAccessSidebarSettings(appItem, role);
+      const sidebarActivityAccess = canAccessSidebarActivity(appItem, role);
       const menuAccess = {
         ...access,
-        settings: access.settings && !generalSettings.hideSidebarAppSettingsLink,
-        activity: access.overview && role === 'admin' && !generalSettings.hideSidebarActivityLink,
+        overview: sidebarOverviewAccess,
+        settings: sidebarSettingsAccess && access.settings && !generalSettings.hideSidebarAppSettingsLink,
+        activity: sidebarActivityAccess && sidebarOverviewAccess && role === 'admin' && !generalSettings.hideSidebarActivityLink,
       };
       return {
         ...appItem,
@@ -5321,7 +5399,7 @@ function getNavApps(apps, role, req, categoryOrder = DEFAULT_CATEGORY_ORDER, gen
         menuAccess,
       };
     })
-    .filter((appItem) => hasAnyMenuAccess(appItem.menuAccess))
+    .filter((appItem) => appItem.menuAccess.sidebar && hasAnyMenuAccess(appItem.menuAccess))
     .sort((a, b) => {
       const favouriteDelta = (isFavourite(b) ? 1 : 0) - (isFavourite(a) ? 1 : 0);
       if (favouriteDelta !== 0) return favouriteDelta;
@@ -5333,7 +5411,7 @@ function getNavApps(apps, role, req, categoryOrder = DEFAULT_CATEGORY_ORDER, gen
     });
 }
 
-function buildNavCategories(navApps, categoryEntries) {
+function buildNavCategories(navApps, categoryEntries, role = 'user') {
   const defaultIcon = DEFAULT_CATEGORY_ICON;
   const entries = Array.isArray(categoryEntries) ? categoryEntries : [];
   const isFavourite = (appItem) => Boolean(appItem?.favourite || appItem?.favorite);
@@ -5357,11 +5435,17 @@ function buildNavCategories(navApps, categoryEntries) {
     const apps = grouped.get(entry.name) || [];
     seen.add(entry.name.toLowerCase());
     if (!apps.length) return;
-    const filteredApps = entry.sidebarMenu ? apps : apps.filter((appItem) => !isFavourite(appItem));
+    const sidebarMinRole = normalizeVisibilityRole(
+      entry?.sidebarMinRole,
+      entry?.sidebarMenu ? 'user' : 'disabled'
+    );
+    const shouldGroup = roleMeetsMinRole(role, sidebarMinRole);
+    const filteredApps = shouldGroup ? apps : apps.filter((appItem) => !isFavourite(appItem));
     if (!filteredApps.length) return;
     result.push({
       name: entry.name,
-      sidebarMenu: Boolean(entry.sidebarMenu),
+      sidebarMenu: shouldGroup,
+      sidebarMinRole,
       icon: entry.icon || defaultIcon,
       apps: filteredApps,
     });
@@ -5369,7 +5453,7 @@ function buildNavCategories(navApps, categoryEntries) {
   grouped.forEach((apps, name) => {
     if (!apps.length) return;
     if (seen.has(name.toLowerCase())) return;
-    result.push({ name, sidebarMenu: false, icon: defaultIcon, apps });
+    result.push({ name, sidebarMenu: false, sidebarMinRole: 'disabled', icon: defaultIcon, apps });
   });
   const favourites = (Array.isArray(navApps) ? navApps : [])
     .filter(isFavourite)
@@ -5378,6 +5462,7 @@ function buildNavCategories(navApps, categoryEntries) {
     result.unshift({
       name: 'Favourites',
       sidebarMenu: false,
+      sidebarMinRole: 'disabled',
       icon: '/icons/favourite.svg',
       apps: favourites,
     });
@@ -5390,54 +5475,215 @@ function hasAnyMenuAccess(access) {
   return Boolean(access.overview || access.launch || access.settings || access.activity);
 }
 
+function parseVisibilityRole(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return '';
+  if (raw === 'coadmin' || raw === 'co_admin') return 'co-admin';
+  return VISIBILITY_ROLE_ORDER.includes(raw) ? raw : '';
+}
+
+function normalizeVisibilityRole(value, fallback = 'disabled') {
+  const parsed = parseVisibilityRole(value);
+  if (parsed) return parsed;
+  const fallbackParsed = parseVisibilityRole(fallback);
+  return fallbackParsed || 'disabled';
+}
+
+function roleMeetsMinRole(role, minRole) {
+  const roleKey = parseVisibilityRole(role);
+  const minRoleKey = normalizeVisibilityRole(minRole, 'disabled');
+  if (!roleKey || minRoleKey === 'disabled') return false;
+  const roleRank = VISIBILITY_ROLE_RANK[roleKey];
+  const minRoleRank = VISIBILITY_ROLE_RANK[minRoleKey];
+  if (!Number.isFinite(roleRank) || !Number.isFinite(minRoleRank) || minRoleRank < 0) return false;
+  return roleRank >= minRoleRank;
+}
+
+function deriveSectionMinRoleFromLegacy(sectionName, section) {
+  const userAllowed = Boolean(section?.user);
+  const adminAllowed = Boolean(section?.admin);
+  if (userAllowed) return 'user';
+  if (adminAllowed) return sectionName === 'settings' ? 'admin' : 'co-admin';
+  return 'disabled';
+}
+
+function normalizeMenuSection(sectionName, rawSection, fallbackRole = 'disabled') {
+  const hasSectionObject = Boolean(rawSection && typeof rawSection === 'object');
+  const source = hasSectionObject ? rawSection : {};
+  const explicitMinRole = parseVisibilityRole(source.minRole);
+  const legacyMinRole = hasSectionObject ? deriveSectionMinRoleFromLegacy(sectionName, source) : '';
+  const resolvedMinRole = explicitMinRole || legacyMinRole || normalizeVisibilityRole(fallbackRole, 'disabled');
+  const minRole = normalizeVisibilityRole(resolvedMinRole, fallbackRole);
+  return {
+    ...source,
+    minRole,
+    user: roleMeetsMinRole('user', minRole),
+    admin: roleMeetsMinRole('admin', minRole),
+  };
+}
+
+function deriveSidebarMinRole(rawSidebar, sectionRoles) {
+  const source = rawSidebar && typeof rawSidebar === 'object' ? rawSidebar : {};
+  const explicit = parseVisibilityRole(source.minRole);
+  if (explicit) return explicit;
+  const enabledRoles = (Array.isArray(sectionRoles) ? sectionRoles : [])
+    .map((value) => normalizeVisibilityRole(value, 'disabled'))
+    .filter((value) => value !== 'disabled');
+  if (!enabledRoles.length) return 'disabled';
+  return enabledRoles.reduce((lowest, nextRole) => {
+    const lowestRank = VISIBILITY_ROLE_RANK[normalizeVisibilityRole(lowest, 'disabled')];
+    const nextRank = VISIBILITY_ROLE_RANK[normalizeVisibilityRole(nextRole, 'disabled')];
+    return nextRank < lowestRank ? nextRole : lowest;
+  }, enabledRoles[0]);
+}
+
+function buildMenuAccessConfig({
+  sidebar = 'disabled',
+  sidebarOverview = 'disabled',
+  sidebarSettings = '',
+  sidebarActivity = '',
+  overview = 'disabled',
+  launch = 'disabled',
+  settings = 'disabled',
+} = {}) {
+  const overviewRole = normalizeVisibilityRole(overview, 'disabled');
+  const launchRole = normalizeVisibilityRole(launch, 'disabled');
+  const settingsRole = normalizeVisibilityRole(settings, 'disabled');
+  const sidebarOverviewRole = normalizeVisibilityRole(sidebarOverview, overviewRole);
+  const sidebarSettingsRole = normalizeVisibilityRole(sidebarSettings || settingsRole, settingsRole);
+  const sidebarActivityRole = normalizeVisibilityRole(sidebarActivity || 'admin', 'admin');
+  const sidebarRole = normalizeVisibilityRole(sidebar, deriveSidebarMinRole({}, [overviewRole, launchRole, settingsRole]));
+  return {
+    sidebar: { minRole: sidebarRole },
+    sidebarOverview: { minRole: sidebarOverviewRole },
+    sidebarSettings: { minRole: sidebarSettingsRole },
+    sidebarActivity: { minRole: sidebarActivityRole },
+    overview: {
+      minRole: overviewRole,
+      user: roleMeetsMinRole('user', overviewRole),
+      admin: roleMeetsMinRole('admin', overviewRole),
+    },
+    launch: {
+      minRole: launchRole,
+      user: roleMeetsMinRole('user', launchRole),
+      admin: roleMeetsMinRole('admin', launchRole),
+    },
+    settings: {
+      minRole: settingsRole,
+      user: roleMeetsMinRole('user', settingsRole),
+      admin: roleMeetsMinRole('admin', settingsRole),
+    },
+  };
+}
+
 function canAccess(appItem, role, key) {
   const access = getMenuAccess(appItem, role);
   return Boolean(access && access[key]);
+}
+
+function canAccessSidebarOverview(appItem, role) {
+  const roleKey = parseVisibilityRole(role);
+  if (!roleKey) return false;
+  const menu = normalizeMenu(appItem);
+  return roleMeetsMinRole(roleKey, menu.sidebarOverview?.minRole);
+}
+
+function canAccessSidebarSettings(appItem, role) {
+  const roleKey = parseVisibilityRole(role);
+  if (!roleKey) return false;
+  const menu = normalizeMenu(appItem);
+  return roleMeetsMinRole(roleKey, menu.sidebarSettings?.minRole);
+}
+
+function canAccessSidebarActivity(appItem, role) {
+  const roleKey = parseVisibilityRole(role);
+  if (!roleKey) return false;
+  const menu = normalizeMenu(appItem);
+  return roleMeetsMinRole(roleKey, menu.sidebarActivity?.minRole);
 }
 
 function getMenuAccess(appItem, role) {
   const menu = normalizeMenu(appItem);
   const launchMode = resolveAppLaunchMode(appItem, menu);
   const launchEnabled = launchMode !== 'disabled';
-  if (role === 'admin') {
+  const roleKey = parseVisibilityRole(role);
+  if (!roleKey) {
     return {
-      overview: Boolean(menu.overview.admin),
-      launch: Boolean(menu.launch.admin) && launchEnabled,
-      settings: Boolean(menu.settings.admin),
-    };
-  }
-  if (role === 'co-admin') {
-    return {
-      overview: Boolean(menu.overview.admin),
-      launch: Boolean(menu.launch.admin) && launchEnabled,
+      sidebar: false,
+      overview: false,
+      launch: false,
       settings: false,
     };
   }
   return {
-    overview: Boolean(menu.overview.user),
-    launch: Boolean(menu.launch.user) && launchEnabled,
-    settings: Boolean(menu.settings.user),
+    sidebar: roleMeetsMinRole(roleKey, menu.sidebar?.minRole),
+    overview: roleMeetsMinRole(roleKey, menu.overview?.minRole),
+    launch: roleMeetsMinRole(roleKey, menu.launch?.minRole) && launchEnabled,
+    settings: roleMeetsMinRole(roleKey, menu.settings?.minRole),
   };
 }
 
 function normalizeMenu(appItem) {
   if (appItem && appItem.menu) {
-    return {
-      overview: { user: false, admin: false, ...appItem.menu.overview },
-      launch: { user: false, admin: false, ...appItem.menu.launch },
-      settings: { user: false, admin: false, ...appItem.menu.settings },
+    const source = appItem.menu && typeof appItem.menu === 'object' ? appItem.menu : {};
+    const overview = normalizeMenuSection('overview', source.overview, 'disabled');
+    const launch = normalizeMenuSection('launch', source.launch, 'disabled');
+    const settings = normalizeMenuSection('settings', source.settings, 'admin');
+    const sidebarSource = source.sidebar && typeof source.sidebar === 'object' ? source.sidebar : {};
+    const sidebarOverviewSource = source.sidebarOverview && typeof source.sidebarOverview === 'object'
+      ? source.sidebarOverview
+      : {};
+    const sidebarSettingsSource = source.sidebarSettings && typeof source.sidebarSettings === 'object'
+      ? source.sidebarSettings
+      : {};
+    const sidebarActivitySource = source.sidebarActivity && typeof source.sidebarActivity === 'object'
+      ? source.sidebarActivity
+      : {};
+    const sidebar = {
+      ...sidebarSource,
+      minRole: normalizeVisibilityRole(
+        sidebarSource.minRole,
+        deriveSidebarMinRole(sidebarSource, [overview.minRole, launch.minRole, settings.minRole])
+      ),
     };
+    const sidebarOverview = {
+      ...sidebarOverviewSource,
+      minRole: normalizeVisibilityRole(sidebarOverviewSource.minRole, overview.minRole),
+    };
+    const sidebarSettings = {
+      ...sidebarSettingsSource,
+      minRole: normalizeVisibilityRole(sidebarSettingsSource.minRole, settings.minRole),
+    };
+    const sidebarActivity = {
+      ...sidebarActivitySource,
+      minRole: normalizeVisibilityRole(sidebarActivitySource.minRole, 'admin'),
+    };
+    if (!Boolean(appItem?.custom)) {
+      const overviewRank = VISIBILITY_ROLE_RANK[normalizeVisibilityRole(overview.minRole, 'disabled')];
+      const sidebarOverviewRank = VISIBILITY_ROLE_RANK[normalizeVisibilityRole(sidebarOverview.minRole, 'disabled')];
+      if (sidebarOverviewRank >= 0 && (overviewRank < 0 || sidebarOverviewRank < overviewRank)) {
+        overview.minRole = sidebarOverview.minRole;
+        overview.user = roleMeetsMinRole('user', overview.minRole);
+        overview.admin = roleMeetsMinRole('admin', overview.minRole);
+      }
+    }
+    return { overview, launch, settings, sidebar, sidebarOverview, sidebarSettings, sidebarActivity };
   }
-
   const roles = normalizeRoles(appItem);
   const allowUser = !roles.length || roles.includes('user') || roles.includes('both');
   const allowAdmin = !roles.length || roles.includes('admin') || roles.includes('both');
-
-  return {
-    overview: { user: allowUser, admin: allowAdmin },
-    launch: { user: allowUser, admin: allowAdmin },
-    settings: { user: false, admin: allowAdmin },
-  };
+  const overviewRole = allowUser ? 'user' : (allowAdmin ? 'co-admin' : 'disabled');
+  const launchRole = allowUser ? 'user' : (allowAdmin ? 'co-admin' : 'disabled');
+  const settingsRole = allowAdmin ? 'admin' : 'disabled';
+  return buildMenuAccessConfig({
+    sidebar: deriveSidebarMinRole({}, [overviewRole, launchRole, settingsRole]),
+    sidebarOverview: overviewRole,
+    sidebarSettings: settingsRole,
+    sidebarActivity: 'admin',
+    overview: overviewRole,
+    launch: launchRole,
+    settings: settingsRole,
+  });
 }
 
 function getOverviewElements(appItem) {
@@ -5446,11 +5692,15 @@ function getOverviewElements(appItem) {
 }
 
 function buildDisabledMenuAccess() {
-  return {
-    overview: { user: false, admin: false },
-    launch: { user: false, admin: false },
-    settings: { user: false, admin: false },
-  };
+  return buildMenuAccessConfig({
+    sidebar: 'disabled',
+    sidebarOverview: 'disabled',
+    sidebarSettings: 'disabled',
+    sidebarActivity: 'disabled',
+    overview: 'disabled',
+    launch: 'disabled',
+    settings: 'disabled',
+  });
 }
 
 function buildDisabledOverviewElements(appItem) {
@@ -5479,6 +5729,7 @@ function normalizeCategoryEntries(items) {
   items.forEach((value) => {
     let label = '';
     let sidebarMenu = false;
+    let sidebarMinRole = '';
     let icon = '';
     if (typeof value === 'string') {
       label = value;
@@ -5491,13 +5742,25 @@ function normalizeCategoryEntries(items) {
         || value.sidebarSubmenu
         || value.grouped
       );
+      sidebarMinRole = value.sidebarMinRole
+        || value.sidebar_min_role
+        || value.categorySidebarMinRole
+        || value.visibilityRole
+        || value.minRole
+        || '';
       icon = value.icon || value.iconPath || value.iconUrl || value.icon_url || '';
     }
     const name = normalizeCategoryName(label);
     const key = name.toLowerCase();
     if (!name || seen.has(key)) return;
     seen.add(key);
-    entries.push({ name, sidebarMenu, icon: String(icon || '').trim() });
+    const normalizedSidebarMinRole = normalizeVisibilityRole(sidebarMinRole, sidebarMenu ? 'user' : 'disabled');
+    entries.push({
+      name,
+      sidebarMenu: normalizedSidebarMinRole !== 'disabled',
+      sidebarMinRole: normalizedSidebarMinRole,
+      icon: String(icon || '').trim(),
+    });
   });
   return entries;
 }
@@ -5523,7 +5786,7 @@ function resolveCategoryEntries(config, apps = [], options = {}) {
   const configured = normalizeCategoryEntries(config?.categories);
   const entries = configured.length
     ? [...configured]
-    : DEFAULT_CATEGORY_ORDER.map((name) => ({ name, sidebarMenu: false, icon: DEFAULT_CATEGORY_ICON }));
+    : DEFAULT_CATEGORY_ORDER.map((name) => ({ name, sidebarMenu: false, sidebarMinRole: 'disabled', icon: DEFAULT_CATEGORY_ICON }));
   if (!includeAppCategories) return entries;
 
   const seen = new Set(entries.map((entry) => entry.name.toLowerCase()));
@@ -5532,7 +5795,7 @@ function resolveCategoryEntries(config, apps = [], options = {}) {
     const key = category.toLowerCase();
     if (!category || seen.has(key)) return;
     seen.add(key);
-    entries.push({ name: category, sidebarMenu: false, icon: DEFAULT_CATEGORY_ICON });
+    entries.push({ name: category, sidebarMenu: false, sidebarMinRole: 'disabled', icon: DEFAULT_CATEGORY_ICON });
   });
   return entries.map((entry) => {
     const iconValue = String(entry.icon || '').trim();
@@ -5693,6 +5956,136 @@ function buildCategoryRank(categoryOrder) {
   };
 }
 
+function resolveDashboardElementVisibilityRole(appItem, elementSettings = {}, fallback = 'user') {
+  const source = elementSettings && typeof elementSettings === 'object' ? elementSettings : {};
+  const explicit = parseVisibilityRole(source.dashboardVisibilityRole);
+  if (explicit) return explicit;
+  const isEnabled = source.enable === undefined ? true : Boolean(source.enable);
+  const isOnDashboard = source.dashboard === undefined ? true : Boolean(source.dashboard);
+  if (!isEnabled || !isOnDashboard) return 'disabled';
+  const menu = normalizeMenu(appItem);
+  return normalizeVisibilityRole(menu?.overview?.minRole || fallback, fallback);
+}
+
+function canAccessDashboardElement(appItem, elementSettings, role) {
+  const roleKey = parseVisibilityRole(role);
+  if (!roleKey) return false;
+  const minRole = resolveDashboardElementVisibilityRole(appItem, elementSettings, 'user');
+  return roleMeetsMinRole(roleKey, minRole);
+}
+
+function canAccessAnyDashboardElement(appItem, role) {
+  return mergeOverviewElementSettings(appItem).some((element) =>
+    canAccessDashboardElement(appItem, element, role)
+  );
+}
+
+function resolveCombinedDashboardVisibilityRole(settings, fallback = 'user') {
+  const source = settings && typeof settings === 'object' ? settings : {};
+  const explicit = parseVisibilityRole(source.visibilityRole);
+  if (explicit) return explicit;
+  const isEnabled = source.enable === undefined ? true : Boolean(source.enable);
+  const isOnDashboard = source.dashboard === undefined ? true : Boolean(source.dashboard);
+  if (!isEnabled || !isOnDashboard) return 'disabled';
+  return normalizeVisibilityRole(fallback, 'user');
+}
+
+function canAccessCombinedDashboardVisibility(settings, role, fallback = 'user') {
+  const roleKey = parseVisibilityRole(role);
+  if (!roleKey) return false;
+  const minRole = resolveCombinedDashboardVisibilityRole(settings, fallback);
+  return roleMeetsMinRole(roleKey, minRole);
+}
+
+function resolveCombinedSourceSelectionIds(appIds = [], sectionMap = {}) {
+  const normalizedIds = [...new Set(
+    (Array.isArray(appIds) ? appIds : [])
+      .map((id) => normalizeAppId(id))
+      .filter(Boolean)
+  )];
+  if (!normalizedIds.length) return [];
+  const source = sectionMap && typeof sectionMap === 'object' ? sectionMap : {};
+  const selectedIds = normalizedIds.filter((id) => Boolean(source[id]));
+  return selectedIds.length ? selectedIds : normalizedIds;
+}
+
+function canAccessDashboardAppViaCombined(config, appItem, role) {
+  const appId = normalizeAppId(appItem?.id);
+  if (!appId) return false;
+  const apps = Array.isArray(config?.apps) ? config.apps : [];
+  const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
+    ? config.dashboardRemovedElements
+    : {};
+  const dashboardCombinedSettings = (config && typeof config.dashboardCombinedSettings === 'object' && config.dashboardCombinedSettings)
+    ? config.dashboardCombinedSettings
+    : {};
+
+  if (isAppInSet(appId, ARR_APP_IDS)) {
+    const arrApps = apps.filter((entry) => !entry?.removed && isAppInSet(entry?.id, ARR_APP_IDS));
+    const arrAppIds = arrApps.map((entry) => normalizeAppId(entry.id)).filter(Boolean);
+    const arrCombineMap = resolveArrDashboardCombineSettings(config, apps);
+    for (let index = 0; index < ARR_COMBINE_SECTIONS.length; index += 1) {
+      const section = ARR_COMBINE_SECTIONS[index];
+      const combinedKey = `combined:arr:${section.key}`;
+      if (dashboardRemovedElements[combinedKey]) continue;
+      if (!canAccessCombinedDashboardVisibility(dashboardCombinedSettings[combinedKey], role, 'user')) continue;
+      const selectedIds = resolveCombinedSourceSelectionIds(arrAppIds, arrCombineMap?.[section.key]);
+      if (selectedIds.includes(appId)) return true;
+    }
+    const arrCustomCards = resolveArrDashboardCombinedCards(config, apps);
+    for (let index = 0; index < arrCustomCards.length; index += 1) {
+      const card = arrCustomCards[index];
+      const customToken = normalizeCombinedCardToken(card?.id || '') || `card-${index + 1}`;
+      const combinedKey = `combined:arrcustom:${customToken}`;
+      if (dashboardRemovedElements[combinedKey]) continue;
+      if (!canAccessCombinedDashboardVisibility(dashboardCombinedSettings[combinedKey], role, 'user')) continue;
+      const selectedIds = [...new Set(
+        (Array.isArray(card?.appIds) ? card.appIds : [])
+          .map((id) => normalizeAppId(id))
+          .filter(Boolean)
+      )];
+      if (selectedIds.includes(appId)) return true;
+    }
+  }
+
+  if (isAppInSet(appId, DOWNLOADER_APP_IDS)) {
+    const downloaderApps = apps.filter((entry) => !entry?.removed && isAppInSet(entry?.id, DOWNLOADER_APP_IDS));
+    const downloaderAppIds = downloaderApps.map((entry) => normalizeAppId(entry.id)).filter(Boolean);
+    const downloaderCombineMap = resolveDownloaderDashboardCombineSettings(config, apps);
+    for (let index = 0; index < DOWNLOADER_COMBINE_SECTIONS.length; index += 1) {
+      const section = DOWNLOADER_COMBINE_SECTIONS[index];
+      const combinedKey = `combined:downloader:${section.key}`;
+      if (dashboardRemovedElements[combinedKey]) continue;
+      if (!canAccessCombinedDashboardVisibility(dashboardCombinedSettings[combinedKey], role, 'user')) continue;
+      const selectedIds = resolveCombinedSourceSelectionIds(downloaderAppIds, downloaderCombineMap?.[section.key]);
+      if (selectedIds.includes(appId)) return true;
+    }
+  }
+
+  if (isAppInSet(appId, MEDIA_APP_IDS)) {
+    const mediaApps = apps.filter((entry) => !entry?.removed && isAppInSet(entry?.id, MEDIA_APP_IDS));
+    const mediaAppIds = mediaApps.map((entry) => normalizeAppId(entry.id)).filter(Boolean);
+    const mediaCombineMap = resolveMediaDashboardCombineSettings(config, apps);
+    for (let index = 0; index < MEDIA_COMBINE_SECTIONS.length; index += 1) {
+      const section = MEDIA_COMBINE_SECTIONS[index];
+      const combinedKey = `combined:media:${section.key}`;
+      if (dashboardRemovedElements[combinedKey]) continue;
+      if (!canAccessCombinedDashboardVisibility(dashboardCombinedSettings[combinedKey], role, 'user')) continue;
+      const selectedIds = resolveCombinedSourceSelectionIds(mediaAppIds, mediaCombineMap?.[section.key]);
+      if (selectedIds.includes(appId)) return true;
+    }
+  }
+
+  return false;
+}
+
+function canAccessDashboardApp(config, appItem, role) {
+  if (!appItem) return false;
+  if (canAccess(appItem, role, 'overview')) return true;
+  if (canAccessAnyDashboardElement(appItem, role)) return true;
+  return canAccessDashboardAppViaCombined(config, appItem, role);
+}
+
 function mergeOverviewElementSettings(appItem) {
   const elements = getOverviewElements(appItem);
   if (!elements.length) return [];
@@ -5702,6 +6095,8 @@ function mergeOverviewElementSettings(appItem) {
     const savedItem = savedMap.get(element.id) || {};
     const orderValue = Number(savedItem.order);
     const resolveBoolean = (value, fallback) => (value === undefined ? fallback : Boolean(value));
+    const dashboardVisibilityRole = resolveDashboardElementVisibilityRole(appItem, savedItem, 'user');
+    const dashboardVisible = dashboardVisibilityRole !== 'disabled';
     const rawQueueRows = Number(savedItem.queueVisibleRows);
     const queueVisibleRows = Number.isFinite(rawQueueRows)
       ? Math.max(5, Math.min(50, rawQueueRows))
@@ -5710,8 +6105,9 @@ function mergeOverviewElementSettings(appItem) {
     return {
       id: element.id,
       name: element.name,
-      enable: resolveBoolean(savedItem.enable, true),
-      dashboard: resolveBoolean(savedItem.dashboard, true),
+      enable: resolveBoolean(savedItem.enable, dashboardVisible),
+      dashboard: resolveBoolean(savedItem.dashboard, dashboardVisible),
+      dashboardVisibilityRole,
       favourite: resolveBoolean(savedItem.favourite, false),
       showSubtitle: resolveBoolean(savedItem.showSubtitle, true),
       showMeta: resolveBoolean(savedItem.showMeta, true),
@@ -5786,10 +6182,12 @@ function buildDashboardElementsFromRequest(appItem, body) {
     if (!isPresent) {
       const fallback = existingSettings.get(element.id);
       if (fallback) {
+        const fallbackVisibilityRole = resolveDashboardElementVisibilityRole(appItem, fallback, 'user');
         return {
           id: element.id,
           enable: Boolean(fallback.enable),
           dashboard: Boolean(fallback.dashboard),
+          dashboardVisibilityRole: fallbackVisibilityRole,
           favourite: Boolean(fallback.favourite),
           showSubtitle: Boolean(fallback.showSubtitle),
           showMeta: Boolean(fallback.showMeta),
@@ -5811,14 +6209,20 @@ function buildDashboardElementsFromRequest(appItem, body) {
     const orderValue = body[`${prefix}order`];
     const parsedOrder = Number(orderValue);
     const isQueue = element.id === 'activity-queue';
+    const visibilityRole = normalizeVisibilityRole(
+      body[`${prefix}visibility_role`],
+      resolveDashboardElementVisibilityRole(appItem, existingSettings.get(element.id) || {}, 'user')
+    );
+    const dashboardVisible = visibilityRole !== 'disabled';
     const queueRowsValue = Number(body[`${prefix}queue_visible_rows`]);
     const queueVisibleRows = Number.isFinite(queueRowsValue)
       ? Math.max(5, Math.min(50, queueRowsValue))
       : undefined;
     return {
       id: element.id,
-      enable: Boolean(body[`${prefix}enable`]),
-      dashboard: Boolean(body[`${prefix}dashboard`]),
+      enable: dashboardVisible,
+      dashboard: dashboardVisible,
+      dashboardVisibilityRole: visibilityRole,
       favourite: Boolean(body[`${prefix}favourite`]),
       showSubtitle: Boolean(body[`${prefix}showSubtitle`]),
       showMeta: Boolean(body[`${prefix}showMeta`]),
@@ -6629,6 +7033,7 @@ function mergeAppDefaults(defaultApps, overrideApps) {
 function mergeCategoryDefaults(defaultCategories, overrideCategories) {
   const defaults = normalizeCategoryEntries(defaultCategories);
   const overrides = normalizeCategoryEntries(overrideCategories);
+  if (!overrides.length) return defaults;
   const defaultMap = new Map(
     defaults
       .filter((entry) => entry?.name)
@@ -6650,12 +7055,7 @@ function mergeCategoryDefaults(defaultCategories, overrideCategories) {
       return mergedEntry;
     });
 
-  const missingDefaults = defaults.filter((entry) => {
-    const key = String(entry.name || '').toLowerCase();
-    return key && !seen.has(key);
-  });
-
-  return [...ordered, ...missingDefaults];
+  return ordered;
 }
 
 function buildCategoryOverrides(defaultCategories, mergedCategories) {

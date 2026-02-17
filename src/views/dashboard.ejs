@@ -17,9 +17,11 @@
         var squareCorners = localStorage.getItem("launcharr-square-corners") === "1";
         var bgMotionStored = localStorage.getItem("launcharr-bg-motion");
         var bgMotion = bgMotionStored === null ? true : bgMotionStored === "1";
+        var maximizedWindow = localStorage.getItem("launcharr-maximized-window") === "1";
         document.documentElement.dataset.sidebarInvert = sidebarInvert ? "1" : "0";
         document.documentElement.dataset.squareCorners = squareCorners ? "1" : "0";
         document.documentElement.dataset.bgMotion = bgMotion ? "1" : "0";
+        document.documentElement.dataset.maximized = maximizedWindow ? "1" : "0";
         var starDensity = 165;
         var starSpeed = 45;
         var starSize = 1.2;
@@ -102,7 +104,7 @@
       const customIcon = String(appItem?.icon || '').trim();
       if (customIcon) return customIcon;
       const baseId = resolveAppBaseId(appItem?.id);
-      if (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'nzbget', 'qbittorrent', 'sabnzbd', 'jellyfin', 'emby', 'bazarr'].includes(baseId)) {
+      if (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'qbittorrent', 'sabnzbd', 'jellyfin', 'emby', 'bazarr'].includes(baseId)) {
         return `/icons/${baseId}.png`;
       }
       return `/icons/${baseId || 'app'}.svg`;
@@ -2223,6 +2225,7 @@
     <% } %>
   <% } %>
   <script src="/version-badge.js?v=<%= assetVersion %>"></script>
+  <script src="/brand-menu.js?v=<%= assetVersion %>"></script>
   <script src="/starfield-3d.js"></script>
   <script src="/pwa.js?v=<%= assetVersion %>"></script>
 </body>
