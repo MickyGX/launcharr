@@ -1,4 +1,15 @@
-# Release Notes (v0.1.0 -> v0.2.11)
+# Release Notes (v0.1.0 -> v0.2.12)
+
+## v0.2.12 (2026-02-17)
+
+- Added `Base URL Path` runtime handling across request routing, redirects, and rendered HTML output.
+- Added base-path-aware client patching for fetch/XHR and URL-bearing DOM attributes to improve reverse-proxy subpath compatibility.
+- Updated PWA path handling (`manifest`, `pwa.js`, `sw.js`) to work correctly when Launcharr is served from a subpath.
+- Added app-overview filter popover behavior to align individual app cards with dashboard filter UX.
+- Added `/api/jellyfin/image` proxy endpoint and stronger Jellyfin artwork fallback mapping for recent/active payloads.
+- Fixed Jellyfin Recently Added card/modal artwork fallback (poster and background).
+- Reduced Plex watchlisted card background hydration requests to improve responsiveness.
+- Updated admin-view detection logic in version badge handling for switch-view links.
 
 ## v0.2.11 (2026-02-17)
 
@@ -64,7 +75,7 @@
 - Fixed empty-state behavior for active stream modules to align card output across Plex/Jellyfin/Emby and combined views.
 
 
-This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.11`.
+This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.12`.
 
 ## v0.2.5 (2026-02-15)
 
