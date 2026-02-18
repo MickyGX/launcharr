@@ -947,4 +947,75 @@
     "remoteUrl": "",
     "plexToken": ""
   }
+,
+  {
+    "id": "jackett",
+    "name": "Jackett",
+    "icon": "/icons/jackett.png",
+    "url": "http://localhost:9117",
+    "description": "Indexer manager",
+    "category": "Arr Suite",
+    "roles": [
+      "admin",
+      "user"
+    ],
+    "apiKey": "",
+    "username": "",
+    "password": "",
+    "menu": {
+      "overview": {
+        "user": false,
+        "admin": true
+      },
+      "launch": {
+        "user": false,
+        "admin": true
+      },
+      "settings": {
+        "user": false,
+        "admin": true
+      }
+    },
+    "order": 10,
+    "favourite": false,
+    "launchMode": "iframe",
+    "localUrl": "http://localhost:9117",
+    "remoteUrl": "",
+    "plexToken": ""
+  },
+  {
+    "id": "autobrr",
+    "name": "Autobrr",
+    "icon": "/icons/autobrr.png",
+    "url": "http://localhost:7474",
+    "description": "Automation and release matching",
+    "category": "Arr Suite",
+    "roles": [
+      "admin",
+      "user"
+    ],
+    "apiKey": "",
+    "username": "",
+    "password": "",
+    "menu": {
+      "overview": {
+        "user": false,
+        "admin": true
+      },
+      "launch": {
+        "user": false,
+        "admin": true
+      },
+      "settings": {
+        "user": false,
+        "admin": true
+      }
+    },
+    "order": 3,
+    "favourite": false,
+    "launchMode": "iframe",
+    "localUrl": "http://localhost:7474",
+    "remoteUrl": "",
+    "plexToken": ""
+  }
 ]
