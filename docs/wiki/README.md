@@ -15,9 +15,10 @@ Recommended publish order:
 3. `Configuration.md`
 4. `Authentication-and-Roles.md`
 5. `Integrations.md`
-6. `Troubleshooting.md`
-7. `FAQ.md`
-8. `Release-Checklist.md`
+6. `Supported-Apps.md`
+7. `Troubleshooting.md`
+8. `FAQ.md`
+9. `Release-Checklist.md`
 
 ## Publish To GitHub Wiki
 

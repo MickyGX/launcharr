@@ -38,9 +38,10 @@ Use this wiki as the operational source of truth for setup, roles, and rollout.
 2. [Configuration](Configuration)
 3. [Authentication and Roles](Authentication-and-Roles)
 4. [Integrations](Integrations)
-5. [Troubleshooting](Troubleshooting)
-6. [FAQ](FAQ)
-7. [Release Checklist](Release-Checklist)
+5. [Supported Apps](Supported-Apps)
+6. [Troubleshooting](Troubleshooting)
+7. [FAQ](FAQ)
+8. [Release Checklist](Release-Checklist)
 
 ## What Launcharr Solves
 

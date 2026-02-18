@@ -8,6 +8,8 @@
 
 [Integrations](Integrations)
 
+[Supported Apps](Supported-Apps)
+
 [Troubleshooting](Troubleshooting)
 
 [FAQ](FAQ)
