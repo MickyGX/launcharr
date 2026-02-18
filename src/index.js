@@ -5732,6 +5732,12 @@ function normalizeMenu(appItem) {
         overview.user = roleMeetsMinRole('user', overview.minRole);
         overview.admin = roleMeetsMinRole('admin', overview.minRole);
       }
+      // App settings route is admin-only; keep section access aligned for built-in apps.
+      if (settings.minRole !== 'admin') {
+        settings.minRole = 'admin';
+        settings.user = false;
+        settings.admin = true;
+      }
     }
     return { overview, launch, settings, sidebar, sidebarOverview, sidebarSettings, sidebarActivity };
   }
