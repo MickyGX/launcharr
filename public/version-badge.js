@@ -50,20 +50,36 @@
       const latest = String(data?.latest || '').trim();
       if (!current) return;
       const compactLabel = Boolean(window.matchMedia && window.matchMedia('(max-width: 980px)').matches);
+      const releaseBase = 'https://github.com/MickyGX/launcharr/releases/tag/';
+      const buildReleaseUrl = (versionTag) => releaseBase + encodeURIComponent(String(versionTag || '').trim());
+      const buildVersionPill = ({ text, className, versionTag, ariaPrefix }) => {
+        const link = document.createElement('a');
+        link.className = className;
+        link.href = buildReleaseUrl(versionTag);
+        link.target = '_blank';
+        link.rel = 'noreferrer noopener';
+        link.textContent = text;
+        link.setAttribute('aria-label', `${ariaPrefix} ${versionTag} release notes`);
+        return link;
+      };
 
       const wrap = document.createElement('div');
       wrap.className = 'version-badge';
 
-      const currentSpan = document.createElement('span');
-      currentSpan.className = 'version-pill';
-      currentSpan.textContent = compactLabel ? current : `Current ${current}`;
-      wrap.appendChild(currentSpan);
+      wrap.appendChild(buildVersionPill({
+        text: compactLabel ? current : `Current ${current}`,
+        className: 'version-pill',
+        versionTag: current,
+        ariaPrefix: 'Current version',
+      }));
 
       if (latest && latest !== current) {
-        const latestSpan = document.createElement('span');
-        latestSpan.className = 'version-pill version-pill--latest';
-        latestSpan.textContent = compactLabel ? latest : `Latest ${latest}`;
-        wrap.appendChild(latestSpan);
+        wrap.appendChild(buildVersionPill({
+          text: compactLabel ? latest : `Latest ${latest}`,
+          className: 'version-pill version-pill--latest',
+          versionTag: latest,
+          ariaPrefix: 'Latest version',
+        }));
       }
 
       status.prepend(wrap);
