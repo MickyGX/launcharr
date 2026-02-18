@@ -1,38 +1,44 @@
-# Release Notes (v0.1.0 -> v0.2.21)
+# Release Notes (v0.1.0 -> v0.2.22)
+
+## v0.2.22 (2026-02-18)
+
+- Added dynamic Plex library section-key discovery for Recently Added, replacing hardcoded section IDs.
+- Added ARR activity-queue per-page options (`5`, `10`, `25`, `50`) in app overview and dashboard.
+- Updated indexer filter popover rendering/layering to prevent clipping over table regions.
+- Fixed Plex Recently Added behavior on servers with non-default section keys.
 
 ## v0.2.21 (2026-02-18)
 
-- [Added]
-- [Changed]
-- [Fixed]
-
+- Added shared queue-table pagination support and table-card overrides across queue modules.
+- Added dedicated indexer table sorting and richer indexer search interactions.
+- Expanded dashboard/app-overview module wiring for queue/indexer cards.
+- Updated default-app bootstrap/startup handling for stronger first-run reliability.
+- Fixed queue/indexer card behavior inconsistencies between dashboard and app overview.
 
 ## v0.2.20 (2026-02-18)
 
-- [Added]
-- [Changed]
-- [Fixed]
-
+- Built-in app Settings access normalized to admin-only to align menu visibility with route permissions.
+- Sidebar menu access checks now require both sidebar visibility and underlying section access.
+- Fixed removed-app recovery so re-added built-in apps restore submenu role settings correctly.
 
 ## v0.2.19 (2026-02-18)
 
-- [Added]
-- [Changed]
-- [Fixed]
+- Removed built-in apps now retain backup menu/overview/launch/favorite state for restoration.
+- Re-adding a built-in app restores preserved configuration instead of forcing defaults.
+- Fixed legacy removed-app recovery paths for older backup data.
 
+## v0.2.18 (2026-02-18)
+
+- Updated built-in app remove/re-add validation to use built-in eligibility rather than catalog membership.
+- Fixed Settings fallback recovery so removed built-in apps missing from the catalog can be re-added.
 
 ## v0.2.17 (2026-02-18)
 
-- [Added]
-- [Changed]
-- [Fixed]
-
+- Release bookkeeping update for `v0.2.17`.
 
 ## v0.2.16 (2026-02-18)
 
-- [Added]
-- [Changed]
-- [Fixed]
+- Release bookkeeping update for `v0.2.16`.
 
 
 ## v0.2.14 (2026-02-18)
@@ -50,9 +56,7 @@
 
 ## v0.2.13 (2026-02-17)
 
-- [Added]
-- [Changed]
-- [Fixed]
+- Release bookkeeping update for `v0.2.13`.
 
 
 ## v0.2.12 (2026-02-17)
@@ -130,7 +134,7 @@
 - Fixed empty-state behavior for active stream modules to align card output across Plex/Jellyfin/Emby and combined views.
 
 
-This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.14`.
+This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.22`.
 
 ## v0.2.5 (2026-02-15)
 
