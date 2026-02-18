@@ -2746,15 +2746,48 @@ app.post('/settings/default-apps/add', requireSettingsAdmin, (req, res) => {
   };
   const current = existingIndex >= 0 ? apps[existingIndex] : null;
   const nextAppSeed = current ? { ...baseTemplate, ...current, id: defaultAppId } : baseTemplate;
+  const removedStateBackup = (current?.removed && current.removedStateBackup && typeof current.removedStateBackup === 'object')
+    ? current.removedStateBackup
+    : null;
+  const shouldRecoverLegacyRemovedState = Boolean(
+    current?.removed
+    && !removedStateBackup
+    && deepEqual(nextAppSeed?.menu, buildDisabledMenuAccess())
+    && deepEqual(nextAppSeed?.overviewElements, buildDisabledOverviewElements(nextAppSeed))
+  );
+  const recoveredMenu = removedStateBackup?.menu
+    || (shouldRecoverLegacyRemovedState ? defaultTemplate?.menu : null)
+    || nextAppSeed.menu
+    || buildDisabledMenuAccess();
+  const recoveredOverviewElements = removedStateBackup?.overviewElements
+    || (shouldRecoverLegacyRemovedState ? defaultTemplate?.overviewElements : null)
+    || nextAppSeed.overviewElements;
+  const recoveredLaunchMode = String(
+    removedStateBackup?.launchMode
+    || (shouldRecoverLegacyRemovedState ? defaultTemplate?.launchMode : '')
+    || nextAppSeed.launchMode
+    || 'new-tab'
+  ).trim() || 'new-tab';
+  const recoveredFavourite = removedStateBackup
+    ? Boolean(removedStateBackup.favourite)
+    : Boolean(
+      (shouldRecoverLegacyRemovedState ? (defaultTemplate?.favourite || defaultTemplate?.favorite) : false)
+      || nextAppSeed.favourite
+      || nextAppSeed.favorite
+    );
   const nextApp = {
     ...nextAppSeed,
     custom: false,
     removed: false,
-    favourite: false,
-    launchMode: 'new-tab',
-    menu: buildDisabledMenuAccess(),
-    overviewElements: buildDisabledOverviewElements(nextAppSeed),
+    favourite: recoveredFavourite,
+    launchMode: recoveredLaunchMode,
+    menu: recoveredMenu,
+    overviewElements: Array.isArray(recoveredOverviewElements) && recoveredOverviewElements.length
+      ? recoveredOverviewElements
+      : buildDisabledOverviewElements(nextAppSeed),
   };
+  delete nextApp.favorite;
+  delete nextApp.removedStateBackup;
 
   if (existingIndex >= 0) {
     const nextApps = [...apps];
@@ -2803,14 +2836,18 @@ app.post('/settings/default-apps/remove', requireSettingsAdmin, (req, res) => {
     return replyError('Only built-in primary apps can be removed here.');
   }
 
+  const removalBackup = {
+    menu: current?.menu,
+    overviewElements: current?.overviewElements,
+    launchMode: String(current?.launchMode || '').trim() || 'new-tab',
+    favourite: Boolean(current?.favourite || current?.favorite),
+  };
   const nextApps = [...apps];
   nextApps[appIndex] = {
     ...current,
     removed: true,
     favourite: false,
-    launchMode: 'new-tab',
-    menu: buildDisabledMenuAccess(),
-    overviewElements: buildDisabledOverviewElements(current),
+    removedStateBackup: removalBackup,
   };
   saveConfig({ ...config, apps: nextApps });
   if (wantsJson) return res.json({ ok: true });
