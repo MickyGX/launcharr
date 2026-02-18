@@ -1425,6 +1425,7 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
   const settingsAppsWithIcons = settingsApps.map((appItem) => ({
     ...appItem,
     icon: resolvePersistedAppIconPath(appItem),
+    canRemoveDefaultApp: canManageWithDefaultAppManager(appItem),
   }));
   const arrDashboardCombinedCards = resolveArrDashboardCombinedCards(config, settingsAppsWithIcons);
   const arrSettingsAppIds = settingsApps
@@ -2718,7 +2719,9 @@ app.post('/settings/default-apps/add', requireSettingsAdmin, (req, res) => {
     return redirectWithError('Select a default app to add.');
   }
 
-  const defaultTemplate = loadDefaultApps().find((appItem) => normalizeAppId(appItem?.id) === defaultAppId);
+  const existingApp = apps.find((appItem) => normalizeAppId(appItem?.id) === defaultAppId);
+  const defaultTemplate = loadDefaultApps().find((appItem) => normalizeAppId(appItem?.id) === defaultAppId)
+    || (canManageWithDefaultAppManager(existingApp) ? existingApp : null);
   if (!defaultTemplate) {
     return redirectWithError('Default app not found.');
   }
@@ -2787,11 +2790,6 @@ app.post('/settings/default-apps/remove', requireSettingsAdmin, (req, res) => {
     return replyError('Missing default app id.');
   }
 
-  const defaultExists = loadDefaultApps().some((appItem) => normalizeAppId(appItem?.id) === defaultAppId);
-  if (!defaultExists) {
-    return replyError('Only default apps can be removed here.');
-  }
-
   const appIndex = apps.findIndex((appItem) => normalizeAppId(appItem?.id) === defaultAppId);
   if (appIndex === -1) {
     return replyError('Default app not found.', 404);
@@ -2800,6 +2798,9 @@ app.post('/settings/default-apps/remove', requireSettingsAdmin, (req, res) => {
   const current = apps[appIndex];
   if (current?.custom) {
     return replyError('Custom apps must be removed with the custom app delete action.');
+  }
+  if (!canManageWithDefaultAppManager(current)) {
+    return replyError('Only built-in primary apps can be removed here.');
   }
 
   const nextApps = [...apps];
@@ -6855,6 +6856,15 @@ function getInstanceSuffix(appId, baseId = '') {
   const match = normalized.match(new RegExp(`^${resolvedBase}-(\\d+)$`));
   if (!match) return normalized === resolvedBase ? 1 : NaN;
   return Number(match[1]);
+}
+
+function canManageWithDefaultAppManager(appItem) {
+  if (!appItem) return false;
+  if (Boolean(appItem?.custom)) return false;
+  const id = normalizeAppId(appItem?.id);
+  if (!id) return false;
+  const baseId = getAppBaseId(id);
+  return getInstanceSuffix(id, baseId) === 1;
 }
 
 function getBaseAppTitle(baseId) {

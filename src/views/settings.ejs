@@ -589,6 +589,19 @@
                 <% const defaultCatalog = Array.isArray(defaultAppCatalog) ? defaultAppCatalog : []; %>
                 <% const defaultAppIdSet = new Set(defaultCatalog.map((entry) => String(entry?.id || '').trim().toLowerCase()).filter(Boolean)); %>
                 <% const displayApps = (Array.isArray(apps) ? apps : []).filter((appItem) => !appItem?.removed); %>
+                <% const fallbackMissingDefaultApps = (Array.isArray(apps) ? apps : [])
+                  .filter((appItem) => {
+                    if (!Boolean(appItem?.removed)) return false;
+                    if (!Boolean(appItem?.canRemoveDefaultApp)) return false;
+                    const targetId = String(appItem?.id || '').trim().toLowerCase();
+                    return Boolean(targetId) && !defaultAppIdSet.has(targetId);
+                  })
+                  .map((appItem) => ({
+                    id: String(appItem?.id || '').trim().toLowerCase(),
+                    name: String(appItem?.name || '').trim() || 'App',
+                    icon: resolveAppIconPath(appItem),
+                    category: String(appItem?.category || 'Tools').trim() || 'Tools',
+                  })); %>
                 <% const missingDefaultApps = defaultCatalog
                   .filter((entry) => {
                     const targetId = String(entry?.id || '').trim().toLowerCase();
@@ -596,6 +609,7 @@
                     const existing = (Array.isArray(apps) ? apps : []).find((appItem) => String(appItem?.id || '').trim().toLowerCase() === targetId);
                     return !existing || Boolean(existing?.removed);
                   })
+                  .concat(fallbackMissingDefaultApps)
                   .sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || ''))); %>
                 <% const missingDefaultAppGroups = missingDefaultApps.reduce((acc, entry) => {
                   const group = String(entry?.category || 'Tools').trim() || 'Tools';
@@ -689,6 +703,7 @@
                   <% const orderValue = Number.isFinite(app.order) ? app.order : index + 1; %>
                   <% const favouriteValue = Boolean(app.favourite || app.favorite); %>
                   <% const isDefaultApp = defaultAppIdSet.has(String(app.id || '').trim().toLowerCase()); %>
+                  <% const canRemoveDefaultApp = Boolean(app.canRemoveDefaultApp || isDefaultApp); %>
                   <% const categoryRank = Math.max(0, categoryOptions.findIndex((option) => option.value === currentCategory)); %>
                   <div class="settings-row settings-row--display settings-row--draggable <%= sidebarEnabled ? '' : 'is-disabled' %>" data-category="<%= currentCategory %>" data-category-rank="<%= categoryRank %>" draggable="true">
                     <div class="settings-app settings-app--draggable">
@@ -772,7 +787,7 @@
                     <div class="settings-cell">
                       <% if (isCustomApp) { %>
                         <button class="order-button custom-app-delete" type="button" title="Delete custom app" aria-label="Delete app" data-app-id="<%= app.id %>">&times;</button>
-                      <% } else if (isDefaultApp) { %>
+                      <% } else if (canRemoveDefaultApp) { %>
                         <button
                           class="order-button default-app-delete"
                           type="submit"
@@ -780,12 +795,12 @@
                           value="<%= app.id %>"
                           formaction="/settings/default-apps/remove"
                           formmethod="post"
-                          title="Remove default app"
-                          aria-label="Remove default app"
-                          onclick="return window.confirm('Remove this default app? You can re-add it later.');"
+                          title="Remove built-in app"
+                          aria-label="Remove built-in app"
+                          onclick="return window.confirm('Remove this built-in app? You can re-add it later.');"
                         >&times;</button>
                       <% } else { %>
-                        <button class="order-button default-app-delete" type="button" title="Only custom/default apps can be deleted here" aria-label="Delete app" disabled>&times;</button>
+                        <button class="order-button default-app-delete" type="button" title="Only custom/built-in primary apps can be deleted here" aria-label="Delete app" disabled>&times;</button>
                       <% } %>
                     </div>
                     <input type="hidden" class="settings-order-input" name="display_order_<%= app.id %>" value="<%= orderValue %>" />
