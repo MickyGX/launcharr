@@ -853,6 +853,14 @@
                         <% } %>
                       </select>
                     </div>
+                    <div class="plex-select plex-xsmall" title="Per page">
+                      <select id="<%= appPrefix %>QueueLimitFilter" aria-label="Items per page">
+                        <option value="5">5</option>
+                        <option value="10" selected>10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                      </select>
+                    </div>
 
                     <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="<%= appPrefix %>-activity-queue" data-collapse-global="true">
                       <div class="plex-doublechev">
@@ -864,7 +872,7 @@
                 </div>
 
                 <div class="plex-panel queue-panel">
-                  <div class="queue-table <%= queueClasses %>" style="--queue-visible-rows:<%= queueVisibleRows %>">
+                  <div class="queue-table <%= queueClasses %>" data-page-size-select-id="<%= appPrefix %>QueueLimitFilter" style="--queue-visible-rows:<%= queueVisibleRows %>">
                     <div class="queue-row header">
                       <div class="queue-col-title">Title</div>
                       <div class="queue-col-detail"><%= arrBaseId === 'lidarr' ? 'Album' : (arrBaseId === 'readarr' ? 'Author' : (arrBaseId === 'radarr' ? 'Year' : 'Episode')) %></div>
@@ -1506,6 +1514,16 @@
 
     </section>
   </div>
+  <style>
+    .arr-filter-menu {
+      z-index: 400 !important;
+    }
+    .arr-filter-options {
+      max-height: none !important;
+      overflow: visible !important;
+      padding-right: 0 !important;
+    }
+  </style>
   <script>
     const dashFrame = document.querySelector('.dash-frame');
     const toggle = document.querySelector('.sidebar-toggle');
@@ -1712,6 +1730,12 @@
           if (!trigger || !menu) return;
           trigger.setAttribute('aria-expanded', 'false');
           menu.classList.add('plex-hidden');
+          menu.style.position = '';
+          menu.style.left = '';
+          menu.style.top = '';
+          menu.style.right = '';
+          menu.style.bottom = '';
+          menu.style.maxHeight = '';
         });
       };
 
@@ -1815,6 +1839,14 @@
         const wrappers = controls
           ? Array.from(controls.children).filter((child) => child.classList?.contains('plex-select'))
           : [];
+        const isIndexerSearchPopover = wrappers.some((wrap) => {
+          const select = wrap.querySelector('select');
+          const selectId = String(select?.id || '');
+          return selectId.includes('SearchIndexerFilter');
+        });
+        if (isIndexerSearchPopover) {
+          menu.classList.add('arr-filter-menu--full-list');
+        }
         wrappers.forEach((wrap, index) => {
           const select = wrap.querySelector('select');
           if (!select) return;
@@ -1837,6 +1869,28 @@
         if (!sections.length) return;
 
         let needsSync = true;
+        const positionMenu = () => {
+          const viewportHeight = Math.max(Number(window.innerHeight) || 0, Number(document.documentElement?.clientHeight) || 0);
+          const viewportWidth = Math.max(Number(window.innerWidth) || 0, Number(document.documentElement?.clientWidth) || 0);
+          if (!viewportHeight || !viewportWidth) return;
+          const triggerRect = trigger.getBoundingClientRect();
+          const menuRect = menu.getBoundingClientRect();
+          const menuWidth = Math.max(220, Math.ceil(menuRect.width || 0));
+          const menuHeight = Math.max(Math.ceil(menu.scrollHeight || 0), Math.ceil(menuRect.height || 0));
+          const edgePad = 12;
+          const gap = 8;
+          let left = triggerRect.right - menuWidth;
+          left = Math.max(edgePad, Math.min(left, viewportWidth - menuWidth - edgePad));
+          let top = triggerRect.bottom + gap;
+          const maxTop = viewportHeight - menuHeight - edgePad;
+          if (top > maxTop) top = Math.max(edgePad, maxTop);
+          menu.style.position = 'fixed';
+          menu.style.left = `${Math.round(left)}px`;
+          menu.style.top = `${Math.round(top)}px`;
+          menu.style.right = 'auto';
+          menu.style.bottom = 'auto';
+          menu.style.maxHeight = '';
+        };
         const sync = ({ force = false } = {}) => {
           if (!force && menu.classList.contains('plex-hidden')) {
             needsSync = true;
@@ -1845,6 +1899,7 @@
           sections.forEach((entry) => {
             renderOptionButtons(entry.select, entry.container, entry.kind);
           });
+          if (!menu.classList.contains('plex-hidden')) positionMenu();
           needsSync = false;
         };
 
@@ -1856,12 +1911,20 @@
           trigger.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
           menu.classList.toggle('plex-hidden', isOpen);
           if (!isOpen && needsSync) sync({ force: true });
+          if (!isOpen) positionMenu();
         });
 
         sections.forEach((entry) => {
           entry.select?.addEventListener('change', sync);
           entry.select?.addEventListener('arr:options-updated', sync);
         });
+        const repositionIfOpen = () => {
+          if (menu.classList.contains('plex-hidden')) return;
+          if (trigger.getAttribute('aria-expanded') !== 'true') return;
+          positionMenu();
+        };
+        window.addEventListener('resize', repositionIfOpen);
+        document.addEventListener('scroll', repositionIfOpen, true);
         sync();
       });
 

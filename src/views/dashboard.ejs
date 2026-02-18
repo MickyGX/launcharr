@@ -1112,6 +1112,14 @@
                         </select>
                       </div>
                     <% } %>
+                    <div class="plex-select plex-xsmall" title="Per page">
+                      <select id="<%= controlPrefix %>LimitFilter" aria-label="Items per page">
+                        <option value="5">5</option>
+                        <option value="10" selected>10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                      </select>
+                    </div>
                     <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="<%= moduleId %>" data-collapse-global="true">
                       <div class="plex-doublechev">
                         <div class="plex-chev plex-up"></div>
@@ -1122,7 +1130,7 @@
                 </div>
 
                 <div class="plex-panel queue-panel">
-                  <div class="queue-table <%= queueClasses %>" style="--queue-visible-rows:<%= queueVisibleRows %>">
+                  <div class="queue-table <%= queueClasses %>" data-page-size-select-id="<%= controlPrefix %>LimitFilter" style="--queue-visible-rows:<%= queueVisibleRows %>">
                     <div class="queue-row header">
                       <div class="queue-col-title">Title</div>
                       <div class="queue-col-detail"><%= isCombined ? 'Detail' : (resolveAppBaseId(item.app.id) === 'lidarr' ? 'Album' : (resolveAppBaseId(item.app.id) === 'readarr' ? 'Author' : (resolveAppBaseId(item.app.id) === 'radarr' ? 'Year' : 'Episode'))) %></div>
@@ -2036,6 +2044,14 @@
         const wrappers = controls
           ? Array.from(controls.children).filter((child) => child.classList?.contains('plex-select'))
           : [];
+        const isIndexerSearchPopover = wrappers.some((wrap) => {
+          const select = wrap.querySelector('select');
+          const selectId = String(select?.id || '');
+          return selectId.includes('SearchIndexerFilter');
+        });
+        if (isIndexerSearchPopover) {
+          menu.classList.add('arr-filter-menu--full-list');
+        }
         wrappers.forEach((wrap, index) => {
           const select = wrap.querySelector('select');
           if (!select) return;
@@ -2058,6 +2074,11 @@
         if (!sections.length) return;
 
         let needsSync = true;
+        const positionMenu = () => {
+          menu.style.top = 'calc(100% + 8px)';
+          menu.style.bottom = 'auto';
+          menu.style.maxHeight = '';
+        };
         const sync = ({ force = false } = {}) => {
           if (!force && menu.classList.contains('plex-hidden')) {
             needsSync = true;
@@ -2066,6 +2087,7 @@
           sections.forEach((entry) => {
             renderOptionButtons(entry.select, entry.container, entry.kind);
           });
+          if (!menu.classList.contains('plex-hidden')) positionMenu();
           needsSync = false;
         };
 
@@ -2077,6 +2099,7 @@
           trigger.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
           menu.classList.toggle('plex-hidden', isOpen);
           if (!isOpen && needsSync) sync({ force: true });
+          if (!isOpen) positionMenu();
         });
 
         sections.forEach((entry) => {

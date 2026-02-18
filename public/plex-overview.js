@@ -776,7 +776,11 @@
 
   // Plex Recently Added
   (function () {
-    const SECTION_IDS = { movie: '1', show: '2' };
+    const SECTION_IDS_FALLBACK = { movie: '1', show: '2' };
+    let sectionIds = { ...SECTION_IDS_FALLBACK };
+    let sectionsResolved = false;
+    let sectionsResolving = false;
+    let sectionResolveQueue = [];
 
     const elType = document.getElementById('plexRecentTypeFilter');
     const elWindow = document.getElementById('plexRecentWindowFilter');
@@ -809,6 +813,91 @@
       emptyTitle: 'Nothing added yet',
       emptySubtitle: 'Check back soon'
     });
+
+    function scoreLibrarySection(section, mediaType) {
+      if (!section) return -9999;
+      const title = String(section.title || '').trim().toLowerCase();
+      let score = section.hidden ? 0 : 100;
+      if (mediaType === 'movie') {
+        if (title === 'movies' || title === 'movie') score += 60;
+        else if (title.includes('movie')) score += 30;
+      } else {
+        if (title === 'tv shows' || title === 'shows' || title === 'series') score += 60;
+        else if (title.includes('tv') || title.includes('show') || title.includes('series')) score += 30;
+        if (title.includes('kids') || title.includes('recorded')) score -= 10;
+      }
+      return score;
+    }
+
+    function chooseLibrarySectionKey(list, mediaType) {
+      if (!Array.isArray(list) || !list.length) return '';
+      let best = list[0];
+      let bestScore = scoreLibrarySection(best, mediaType);
+      for (let i = 1; i < list.length; i += 1) {
+        const current = list[i];
+        const score = scoreLibrarySection(current, mediaType);
+        if (score > bestScore) {
+          best = current;
+          bestScore = score;
+        }
+      }
+      return String(best?.key || '').trim();
+    }
+
+    function resolveLibrarySectionIds(done) {
+      const onDone = typeof done === 'function' ? done : function () {};
+      if (sectionsResolved) {
+        onDone();
+        return;
+      }
+      sectionResolveQueue.push(onDone);
+      if (sectionsResolving) return;
+      sectionsResolving = true;
+
+      const complete = () => {
+        sectionsResolved = true;
+        sectionsResolving = false;
+        const queue = sectionResolveQueue.slice();
+        sectionResolveQueue = [];
+        queue.forEach((fn) => {
+          try { fn(); } catch (err) {}
+        });
+      };
+
+      const url = baseUrl + '/library/sections?X-Plex-Token=' + encodeURIComponent(token);
+      fetchXml(url, function (xmlText) {
+        try {
+          const parser = new DOMParser();
+          const xml = parser.parseFromString(xmlText, 'application/xml');
+          const directories = Array.from(xml.getElementsByTagName('Directory'));
+          const movies = [];
+          const shows = [];
+
+          directories.forEach((node) => {
+            const key = String(node.getAttribute('key') || '').trim();
+            const type = String(node.getAttribute('type') || '').trim().toLowerCase();
+            if (!key) return;
+            const entry = {
+              key,
+              title: String(node.getAttribute('title') || '').trim(),
+              hidden: String(node.getAttribute('hidden') || '0') === '1',
+            };
+            if (type === 'movie') movies.push(entry);
+            if (type === 'show') shows.push(entry);
+          });
+
+          const movieKey = chooseLibrarySectionKey(movies, 'movie');
+          const showKey = chooseLibrarySectionKey(shows, 'show');
+          sectionIds.movie = movieKey || sectionIds.movie || SECTION_IDS_FALLBACK.movie;
+          sectionIds.show = showKey || sectionIds.show || SECTION_IDS_FALLBACK.show;
+        } catch (err) {
+          // Keep fallbacks if parsing fails.
+        }
+        complete();
+      }, function () {
+        complete();
+      });
+    }
 
     function showDetailsModal(it) {
       if (!modalBackdrop) return;
@@ -901,7 +990,7 @@
 
     function sectionUrl(type) {
       const key = type === 'show' ? 'show' : 'movie';
-      const sectionId = SECTION_IDS[key] || SECTION_IDS.movie;
+      const sectionId = sectionIds[key] || sectionIds.movie || SECTION_IDS_FALLBACK[key] || SECTION_IDS_FALLBACK.movie;
       const size = 100;
       return baseUrl + '/library/sections/' + sectionId + '/recentlyAdded?X-Plex-Token=' + encodeURIComponent(token) + '&X-Plex-Container-Size=' + encodeURIComponent(String(size)) + '&includeGuids=1';
     }
@@ -921,13 +1010,14 @@
       elTrack.innerHTML = '<div class="plex-empty">Loading…</div>';
       const type = elType ? String(elType.value || 'movie') : 'movie';
       const windowValue = elWindow ? String(elWindow.value || 'month') : 'month';
-
-      fetchXml(sectionUrl(type), function (xmlText) {
-        const items = parseRecentlyAdded(xmlText)
-          .filter((it) => withinWindowEpochSeconds(it.addedAt, windowValue));
-        carousel.setItems(items, renderCard, showDetailsModal);
-      }, function (status) {
-        elTrack.innerHTML = '<div class="plex-empty">Failed to load (Status ' + status + ')</div>';
+      resolveLibrarySectionIds(() => {
+        fetchXml(sectionUrl(type), function (xmlText) {
+          const items = parseRecentlyAdded(xmlText)
+            .filter((it) => withinWindowEpochSeconds(it.addedAt, windowValue));
+          carousel.setItems(items, renderCard, showDetailsModal);
+        }, function (status) {
+          elTrack.innerHTML = '<div class="plex-empty">Failed to load (Status ' + status + ')</div>';
+        });
       });
     }
 
