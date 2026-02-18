@@ -1,4 +1,17 @@
-# Release Notes (v0.1.0 -> v0.2.13)
+# Release Notes (v0.1.0 -> v0.2.14)
+
+## v0.2.14 (2026-02-18)
+
+- Added queue-table pagination controls across ARR queue cards and downloader queue cards (including combined cards).
+- Added sortable header direction indicators (`up/down`) across queue-based table cards.
+- Added `Visible items in queue` configuration to all table-card settings dropdowns.
+- Added `Jackett` and `Autobrr` as major default integrations, including dashboard/app-overview card support and icon coverage.
+- Updated table-card styling to use consistent header/body treatment across ARR + downloader + combined queue modules.
+- Updated Prowlarr/Jackett indexer search UX with numeric pagination controls and removed top-bar prev/next arrow paging.
+- Improved Prowlarr filter behavior to support indexer/category selection workflows and persistent multi-select interaction.
+- Fixed recurring mobile layout regressions in queue/table modules, app settings instance controls, and card formatting.
+- Fixed app settings visibility regression where app submenu settings entries could disappear after remove/re-add flows.
+- Fixed runtime startup regression from malformed `src/index.js` expression handling.
 
 ## v0.2.13 (2026-02-17)
 
@@ -82,7 +95,7 @@
 - Fixed empty-state behavior for active stream modules to align card output across Plex/Jellyfin/Emby and combined views.
 
 
-This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.12`.
+This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.14`.
 
 ## v0.2.5 (2026-02-15)
 

@@ -4,7 +4,7 @@ Use these files for each Launcharr release:
 
 - Announcement draft: `docs/release/announcement-template.md`
 - Changelog draft: `docs/release/changelog-template.md`
-- Historical notes (v0.1.0 -> v0.2.5): `docs/release/RELEASE_NOTES.md`
+- Historical notes (v0.1.0 -> current): `docs/release/RELEASE_NOTES.md`
 
 Suggested workflow:
 
