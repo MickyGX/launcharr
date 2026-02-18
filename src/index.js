@@ -2720,7 +2720,8 @@ app.post('/settings/default-apps/add', requireSettingsAdmin, (req, res) => {
   }
 
   const existingApp = apps.find((appItem) => normalizeAppId(appItem?.id) === defaultAppId);
-  const defaultTemplate = loadDefaultApps().find((appItem) => normalizeAppId(appItem?.id) === defaultAppId)
+  const catalogTemplate = loadDefaultApps().find((appItem) => normalizeAppId(appItem?.id) === defaultAppId);
+  const defaultTemplate = catalogTemplate
     || (canManageWithDefaultAppManager(existingApp) ? existingApp : null);
   if (!defaultTemplate) {
     return redirectWithError('Default app not found.');
@@ -2749,29 +2750,56 @@ app.post('/settings/default-apps/add', requireSettingsAdmin, (req, res) => {
   const removedStateBackup = (current?.removed && current.removedStateBackup && typeof current.removedStateBackup === 'object')
     ? current.removedStateBackup
     : null;
-  const shouldRecoverLegacyRemovedState = Boolean(
+  const normalizedSeedMenu = normalizeMenu(nextAppSeed);
+  const shouldRecoverLegacyRemovedMenu = Boolean(
     current?.removed
     && !removedStateBackup
-    && deepEqual(nextAppSeed?.menu, buildDisabledMenuAccess())
+    && normalizedSeedMenu.sidebar?.minRole === 'disabled'
+    && normalizedSeedMenu.sidebarOverview?.minRole === 'disabled'
+    && normalizedSeedMenu.sidebarSettings?.minRole === 'disabled'
+    && normalizedSeedMenu.overview?.minRole === 'disabled'
+    && normalizedSeedMenu.launch?.minRole === 'disabled'
+    && normalizedSeedMenu.settings?.minRole === 'disabled'
+  );
+  const shouldRecoverLegacyRemovedOverview = Boolean(
+    current?.removed
+    && !removedStateBackup
     && deepEqual(nextAppSeed?.overviewElements, buildDisabledOverviewElements(nextAppSeed))
   );
+  const recoveryTemplate = catalogTemplate || defaultTemplate || {};
+  const legacyRecoveredMenu = shouldRecoverLegacyRemovedMenu
+    ? normalizeMenu({
+      ...nextAppSeed,
+      custom: false,
+      menu: recoveryTemplate?.menu,
+    })
+    : null;
+  const legacyRecoveredOverviewElements = shouldRecoverLegacyRemovedOverview
+    ? recoveryTemplate?.overviewElements
+    : null;
+  const legacyRecoveredLaunchMode = shouldRecoverLegacyRemovedMenu
+    ? String(recoveryTemplate?.launchMode || '').trim()
+    : '';
+  const legacyRecoveredFavourite = shouldRecoverLegacyRemovedMenu
+    ? Boolean(recoveryTemplate?.favourite || recoveryTemplate?.favorite)
+    : null;
   const recoveredMenu = removedStateBackup?.menu
-    || (shouldRecoverLegacyRemovedState ? defaultTemplate?.menu : null)
+    || legacyRecoveredMenu
     || nextAppSeed.menu
     || buildDisabledMenuAccess();
   const recoveredOverviewElements = removedStateBackup?.overviewElements
-    || (shouldRecoverLegacyRemovedState ? defaultTemplate?.overviewElements : null)
+    || legacyRecoveredOverviewElements
     || nextAppSeed.overviewElements;
   const recoveredLaunchMode = String(
     removedStateBackup?.launchMode
-    || (shouldRecoverLegacyRemovedState ? defaultTemplate?.launchMode : '')
+    || legacyRecoveredLaunchMode
     || nextAppSeed.launchMode
     || 'new-tab'
   ).trim() || 'new-tab';
   const recoveredFavourite = removedStateBackup
     ? Boolean(removedStateBackup.favourite)
     : Boolean(
-      (shouldRecoverLegacyRemovedState ? (defaultTemplate?.favourite || defaultTemplate?.favorite) : false)
+      legacyRecoveredFavourite
       || nextAppSeed.favourite
       || nextAppSeed.favorite
     );
