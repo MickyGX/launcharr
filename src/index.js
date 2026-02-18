@@ -26,6 +26,10 @@ const CONFIG_PATH = process.env.CONFIG_PATH || path.join(__dirname, '..', 'confi
 const APP_VERSION = process.env.APP_VERSION || loadPackageVersion();
 const DEFAULT_APPS_PATH = process.env.DEFAULT_APPS_PATH || path.join(__dirname, '..', 'default-apps.json');
 const DEFAULT_CATEGORIES_PATH = process.env.DEFAULT_CATEGORIES_PATH || path.join(__dirname, '..', 'config', 'default-categories.json');
+const BUNDLED_DEFAULT_APPS_PATH = path.join(__dirname, '..', 'default-apps.json');
+const SOURCE_DEFAULT_APPS_PATH = path.join(__dirname, '..', 'config', 'default-apps.json');
+const BUNDLED_DEFAULT_CATEGORIES_PATH = path.join(__dirname, '..', 'default-categories.json');
+const SOURCE_DEFAULT_CATEGORIES_PATH = path.join(__dirname, '..', 'config', 'default-categories.json');
 const CONFIG_EXAMPLE_PATH = process.env.CONFIG_EXAMPLE_PATH || path.join(__dirname, '..', 'config', 'config.example.json');
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -110,6 +114,16 @@ const APP_OVERVIEW_ELEMENTS = {
   ],
   prowlarr: [
     { id: 'search', name: 'Indexer Search' },
+  ],
+  jackett: [
+    { id: 'search', name: 'Indexer Search' },
+  ],
+  bazarr: [
+    { id: 'subtitle-queue', name: 'Subtitle Queue' },
+  ],
+  autobrr: [
+    { id: 'recent-matches', name: 'Recent Matches' },
+    { id: 'delivery-queue', name: 'Delivery Queue' },
   ],
   transmission: [
     { id: 'activity-queue', name: 'Download Queue' },
@@ -4597,6 +4611,106 @@ app.get('/api/seerr/tmdb/:kind/:id', requireUser, async (req, res) => {
   }
 });
 
+app.get('/api/prowlarr/search/filters', requireUser, async (req, res) => {
+  const config = loadConfig();
+  const apps = config.apps || [];
+  const prowlarrApp = apps.find((appItem) => appItem.id === 'prowlarr');
+  if (!prowlarrApp) return res.status(404).json({ error: 'Prowlarr app is not configured.' });
+  if (!canAccessDashboardApp(config, prowlarrApp, getEffectiveRole(req))) {
+    return res.status(403).json({ error: 'Prowlarr dashboard access denied.' });
+  }
+
+  const apiKey = String(prowlarrApp.apiKey || '').trim();
+  if (!apiKey) return res.status(400).json({ error: 'Missing Prowlarr API key.' });
+
+  const candidates = resolveAppApiCandidates(prowlarrApp, req);
+  if (!candidates.length) return res.status(400).json({ error: 'Missing Prowlarr URL.' });
+
+  let lastError = '';
+  for (let index = 0; index < candidates.length; index += 1) {
+    const baseUrl = candidates[index];
+    if (!baseUrl) continue;
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      let indexerPayload = [];
+      let categoriesPayload = null;
+      try {
+        const indexerUrl = buildAppApiUrl(baseUrl, 'api/v1/indexer');
+        const indexerRes = await fetch(indexerUrl.toString(), {
+          headers: {
+            Accept: 'application/json',
+            'X-Api-Key': apiKey,
+          },
+          signal: controller.signal,
+        });
+        const indexerText = await indexerRes.text();
+        if (!indexerRes.ok) {
+          lastError = `Prowlarr indexer metadata failed (${indexerRes.status}) via ${baseUrl}.`;
+          continue;
+        }
+        indexerPayload = indexerText ? JSON.parse(indexerText) : [];
+
+        const categoriesUrl = buildAppApiUrl(baseUrl, 'api/v1/indexercategory');
+        const categoriesRes = await fetch(categoriesUrl.toString(), {
+          headers: {
+            Accept: 'application/json',
+            'X-Api-Key': apiKey,
+          },
+          signal: controller.signal,
+        });
+        if (categoriesRes.ok) {
+          const categoriesText = await categoriesRes.text();
+          categoriesPayload = categoriesText ? JSON.parse(categoriesText) : [];
+        }
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      const rawIndexers = Array.isArray(indexerPayload) ? indexerPayload : [];
+      const categoryProtocols = new Map();
+      const indexers = rawIndexers
+        .map((entry) => {
+          const enabled = entry?.enable !== false && entry?.enabled !== false;
+          if (!enabled) return null;
+          const id = String(entry?.id || entry?.indexerId || '').trim();
+          const name = String(entry?.name || entry?.title || '').trim();
+          if (!id || !name) return null;
+          const protocol = normalizeIndexerProtocol(entry?.protocol || entry?.implementation || entry?.implementationName) || 'torrent';
+          const categoryIds = extractTopLevelCategoryIds(entry?.capabilities?.categories || entry?.categories || entry?.caps?.categories);
+          categoryIds.forEach((categoryId) => {
+            if (!categoryProtocols.has(categoryId)) categoryProtocols.set(categoryId, new Set());
+            categoryProtocols.get(categoryId).add(protocol);
+          });
+          return { id, name, protocol };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      const categorySource = categoriesPayload !== null
+        ? categoriesPayload
+        : rawIndexers.map((entry) => entry?.capabilities?.categories || entry?.categories || entry?.caps?.categories);
+      const categories = toTopLevelCategoryOptions(categorySource).map((entry) => {
+        const numericId = Number(entry.id);
+        const protocols = categoryProtocols.has(numericId)
+          ? Array.from(categoryProtocols.get(numericId))
+          : [];
+        return {
+          id: entry.id,
+          name: entry.name,
+          protocols,
+        };
+      });
+
+      return res.json({ indexers, categories });
+    } catch (err) {
+      lastError = safeMessage(err) || `Failed to reach Prowlarr via ${baseUrl}.`;
+    }
+  }
+
+  return res.status(502).json({ error: lastError || 'Failed to fetch Prowlarr search filters.' });
+});
+
 app.get('/api/prowlarr/search', requireUser, async (req, res) => {
   const query = String(req.query?.query || req.query?.q || '').trim();
   if (!query) return res.status(400).json({ error: 'Missing search query.' });
@@ -4628,6 +4742,21 @@ app.get('/api/prowlarr/search', requireUser, async (req, res) => {
     Object.entries(req.query || {}).forEach(([key, value]) => {
       if (value === undefined || value === null || value === '') return;
       if (key === 'q' || key === 'query') return;
+      if (Array.isArray(value)) {
+        const entries = value.map((entry) => String(entry || '').trim()).filter(Boolean);
+        if (entries.length) queryParams[key] = entries;
+        return;
+      }
+      if (['indexerids', 'categories'].includes(String(key || '').trim().toLowerCase())) {
+        const entries = String(value)
+          .split(',')
+          .map((entry) => entry.trim())
+          .filter(Boolean);
+        if (entries.length > 1) {
+          queryParams[key] = entries;
+          return;
+        }
+      }
       queryParams[key] = String(value);
     });
 
@@ -4638,7 +4767,13 @@ app.get('/api/prowlarr/search', requireUser, async (req, res) => {
         if (method === 'GET') {
           const upstreamUrl = new URL('/api/v1/search', baseUrl);
           upstreamUrl.searchParams.set('query', query);
-          Object.entries(queryParams).forEach(([key, value]) => upstreamUrl.searchParams.set(key, value));
+          Object.entries(queryParams).forEach(([key, value]) => {
+            if (Array.isArray(value)) {
+              value.forEach((entry) => upstreamUrl.searchParams.append(key, String(entry)));
+              return;
+            }
+            upstreamUrl.searchParams.set(key, String(value));
+          });
           return fetch(upstreamUrl.toString(), {
             headers: {
               Accept: 'application/json',
@@ -4863,6 +4998,648 @@ app.post('/api/prowlarr/download', requireUser, async (req, res) => {
   }
 
   return res.status(502).json({ error: lastError || 'Failed to send to download client.' });
+});
+
+function resolveAppApiCandidates(appItem, req) {
+  return uniqueList([
+    normalizeBaseUrl(appItem?.remoteUrl || ''),
+    normalizeBaseUrl(resolveLaunchUrl(appItem, req)),
+    normalizeBaseUrl(appItem?.localUrl || ''),
+    normalizeBaseUrl(appItem?.url || ''),
+  ]);
+}
+
+function parseFiniteNumber(value, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function formatBytesLabel(value) {
+  const size = parseFiniteNumber(value, 0);
+  if (!size || size <= 0) return '';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let amount = size;
+  let index = 0;
+  while (amount >= 1024 && index < units.length - 1) {
+    amount /= 1024;
+    index += 1;
+  }
+  const decimals = amount >= 10 || index === 0 ? 0 : 1;
+  return `${amount.toFixed(decimals)} ${units[index]}`;
+}
+
+const TORZNAB_TOP_LEVEL_CATEGORY_LABELS = {
+  1000: 'Console',
+  2000: 'Movies',
+  3000: 'Audio',
+  4000: 'PC',
+  5000: 'TV',
+  6000: 'XXX',
+  7000: 'Books',
+  8000: 'Other',
+};
+
+function normalizeIndexerProtocol(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return '';
+  if (raw.includes('usenet') || raw.includes('newznab') || raw === '1') return 'usenet';
+  if (raw.includes('torrent') || raw.includes('torznab') || raw === '2') return 'torrent';
+  return '';
+}
+
+function toTopLevelCategoryId(value) {
+  const numeric = Number(String(value || '').trim());
+  if (!Number.isFinite(numeric) || numeric <= 0) return 0;
+  return Math.floor(numeric / 1000) * 1000;
+}
+
+function collectTopLevelCategoryIds(value, bucket = new Set()) {
+  if (value === null || value === undefined) return bucket;
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectTopLevelCategoryIds(entry, bucket));
+    return bucket;
+  }
+  if (typeof value === 'object') {
+    const idCandidates = [
+      value.id,
+      value.Id,
+      value.ID,
+      value.categoryId,
+      value.categoryID,
+      value.category,
+      value.Category,
+      value.cat,
+    ];
+    idCandidates.forEach((entry) => {
+      const topLevel = toTopLevelCategoryId(entry);
+      if (topLevel) bucket.add(topLevel);
+    });
+    Object.values(value).forEach((entry) => collectTopLevelCategoryIds(entry, bucket));
+    return bucket;
+  }
+  if (typeof value === 'string' && /[,;|\s]/.test(value)) {
+    value
+      .split(/[,;|\s]+/)
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .forEach((entry) => collectTopLevelCategoryIds(entry, bucket));
+    return bucket;
+  }
+  const topLevel = toTopLevelCategoryId(value);
+  if (topLevel) bucket.add(topLevel);
+  return bucket;
+}
+
+function extractTopLevelCategoryIds(value) {
+  return Array.from(collectTopLevelCategoryIds(value, new Set())).sort((a, b) => a - b);
+}
+
+function toTopLevelCategoryOptions(value) {
+  const labels = new Map();
+  const walk = (entry) => {
+    if (entry === null || entry === undefined) return;
+    if (Array.isArray(entry)) {
+      entry.forEach((item) => walk(item));
+      return;
+    }
+    if (typeof entry === 'object') {
+      const id = toTopLevelCategoryId(entry.id ?? entry.Id ?? entry.ID ?? entry.categoryId ?? entry.category ?? entry.Category);
+      const rawName = String(entry.name || entry.Name || entry.label || entry.Label || '').trim();
+      if (id) {
+        const fallback = TORZNAB_TOP_LEVEL_CATEGORY_LABELS[id] || `Category ${id}`;
+        const label = rawName
+          ? rawName.split(/[\\/]/)[0].trim() || fallback
+          : fallback;
+        if (!labels.has(id) || labels.get(id) === fallback) labels.set(id, label);
+      }
+      Object.values(entry).forEach((item) => walk(item));
+      return;
+    }
+    const id = toTopLevelCategoryId(entry);
+    if (id && !labels.has(id)) labels.set(id, TORZNAB_TOP_LEVEL_CATEGORY_LABELS[id] || `Category ${id}`);
+  };
+
+  walk(value);
+  if (!labels.size) {
+    Object.entries(TORZNAB_TOP_LEVEL_CATEGORY_LABELS).forEach(([id, label]) => labels.set(Number(id), label));
+  }
+  return Array.from(labels.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([id, name]) => ({ id: String(id), name }));
+}
+
+function escapeRegexLiteral(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function parseJackettTorznabItems(xmlText) {
+  const text = String(xmlText || '');
+  const itemMatches = text.match(/<item\b[\s\S]*?<\/item>/gi) || [];
+  return itemMatches.map((rawItem) => {
+    const readTag = (tagName) => {
+      const match = rawItem.match(new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)<\\/${tagName}>`, 'i'));
+      return decodeXmlEntities(match?.[1] || '').trim();
+    };
+    const readAttr = (name) => {
+      const match = rawItem.match(new RegExp(`<(?:torznab:)?attr[^>]*name=["']${escapeRegexLiteral(name)}["'][^>]*value=["']([^"']*)["'][^>]*\\/?>`, 'i'));
+      return decodeXmlEntities(match?.[1] || '').trim();
+    };
+    const title = readTag('title');
+    const guid = readTag('guid');
+    const infoUrl = readTag('comments') || readTag('link');
+    const downloadUrl = readTag('link') || readTag('enclosure');
+    const size = parseFiniteNumber(readTag('size') || readAttr('size'));
+    const seeders = parseFiniteNumber(readAttr('seeders'));
+    const leechers = parseFiniteNumber(readAttr('peers') || readAttr('leechers'));
+    const indexer = readAttr('indexer') || readTag('author');
+    const indexerId = readAttr('indexerid') || readAttr('indexerId');
+    const protocolRaw = readAttr('downloadvolumefactor') === '0'
+      ? 'usenet'
+      : (readAttr('protocol') || '');
+    const protocol = normalizeIndexerProtocol(protocolRaw) || 'torrent';
+    const categoryMatches = [...rawItem.matchAll(/<(?:torznab:)?attr[^>]*name=["']category["'][^>]*value=["']([^"']+)["'][^>]*\/?>/gi)];
+    const categoryIds = extractTopLevelCategoryIds(categoryMatches.map((match) => decodeXmlEntities(match?.[1] || '').trim()));
+    return {
+      id: guid || infoUrl || downloadUrl || title,
+      guid,
+      title: title || 'Untitled',
+      indexer: indexer || '',
+      indexerId: String(indexerId || '').trim(),
+      protocol,
+      categoryIds,
+      size,
+      seeders,
+      leechers,
+      publishDate: readTag('pubDate'),
+      infoUrl,
+      downloadUrl,
+    };
+  }).filter((entry) => Boolean(entry.title));
+}
+
+function parseJackettJsonItems(payload) {
+  const list = Array.isArray(payload?.Results)
+    ? payload.Results
+    : (Array.isArray(payload?.results)
+      ? payload.results
+      : (Array.isArray(payload) ? payload : []));
+  return list.map((item) => {
+    const protocolRaw = item?.Protocol || item?.protocol || item?.Type || item?.type || '';
+    return {
+      id: String(item?.Guid || item?.guid || item?.InfoHash || item?.link || item?.Title || item?.title || '').trim(),
+      guid: String(item?.Guid || item?.guid || '').trim(),
+      title: String(item?.Title || item?.title || 'Untitled').trim() || 'Untitled',
+      indexer: String(item?.Tracker || item?.tracker || item?.Indexer || item?.indexer || item?.JackettIndexer || '').trim(),
+      indexerId: String(item?.TrackerId || item?.trackerId || item?.IndexerId || item?.indexerId || item?.JackettIndexer || '').trim(),
+      protocol: normalizeIndexerProtocol(protocolRaw) || 'torrent',
+      categoryIds: extractTopLevelCategoryIds(item?.Category || item?.Categories || item?.category || item?.categories || item?.Cat || item?.cat),
+      size: parseFiniteNumber(item?.Size || item?.size || item?.Length || item?.length || 0),
+      seeders: parseFiniteNumber(item?.Seeders || item?.seeders || 0),
+      leechers: parseFiniteNumber(item?.Peers || item?.peers || item?.Leechers || item?.leechers || 0),
+      publishDate: String(item?.PublishDate || item?.publishDate || item?.Published || '').trim(),
+      infoUrl: String(item?.Details || item?.details || item?.Comments || item?.comments || '').trim(),
+      downloadUrl: String(item?.Link || item?.link || item?.MagnetUri || item?.magnetUri || '').trim(),
+    };
+  }).filter((entry) => Boolean(entry.title));
+}
+
+function mapBazarrStatusKey(value) {
+  const status = String(value || '').trim().toLowerCase();
+  if (!status) return 'queued';
+  if (status.includes('error') || status.includes('fail')) return 'error';
+  if (status.includes('done') || status.includes('complete') || status.includes('downloaded')) return 'completed';
+  if (status.includes('active') || status.includes('downloading') || status.includes('processing')) return 'active';
+  if (status.includes('pause')) return 'paused';
+  return 'queued';
+}
+
+function mapAutobrrStatusKey(value) {
+  const status = String(value || '').trim().toLowerCase();
+  if (!status) return 'queued';
+  if (status.includes('error') || status.includes('fail') || status.includes('reject')) return 'error';
+  if (status.includes('push') || status.includes('deliver') || status.includes('accept') || status.includes('complete')) return 'completed';
+  if (status.includes('active') || status.includes('match') || status.includes('run')) return 'active';
+  if (status.includes('pause')) return 'paused';
+  return 'queued';
+}
+
+function pickFirstNonEmpty(values = []) {
+  for (let index = 0; index < values.length; index += 1) {
+    const value = values[index];
+    const text = String(value || '').trim();
+    if (text) return text;
+  }
+  return '';
+}
+
+function mapBazarrQueueItem(entry) {
+  const mediaType = String(entry?.type || entry?.mediaType || (entry?.movieTitle ? 'movie' : 'tv')).trim().toLowerCase();
+  const seriesTitle = pickFirstNonEmpty([entry?.seriesTitle, entry?.showTitle, entry?.series, entry?.title]);
+  const movieTitle = pickFirstNonEmpty([entry?.movieTitle, entry?.movie, entry?.title]);
+  const season = parseFiniteNumber(entry?.season, NaN);
+  const episode = parseFiniteNumber(entry?.episode, NaN);
+  const episodeLabel = Number.isFinite(season) && Number.isFinite(episode)
+    ? `S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`
+    : '';
+  const subtitleLanguages = Array.isArray(entry?.missing_subtitles)
+    ? entry.missing_subtitles
+    : (Array.isArray(entry?.missingSubtitles) ? entry.missingSubtitles : []);
+  const languageLabel = subtitleLanguages
+    .map((language) => String(language?.name || language?.code2 || language || '').trim())
+    .filter(Boolean)
+    .slice(0, 3)
+    .join(', ');
+  const statusText = pickFirstNonEmpty([entry?.status, entry?.state, entry?.subtitlesStatus, entry?.subtitleStatus, 'Wanted']);
+  const statusKey = mapBazarrStatusKey(statusText);
+  const detail = mediaType === 'movie'
+    ? (pickFirstNonEmpty([entry?.year, entry?.releaseYear]) || 'Movie')
+    : (episodeLabel || 'Episode');
+  const subDetail = pickFirstNonEmpty([
+    languageLabel,
+    entry?.episodeTitle,
+    entry?.title,
+    statusText,
+    '-',
+  ]);
+  return {
+    kind: mediaType === 'movie' ? 'movie' : 'tv',
+    title: pickFirstNonEmpty([movieTitle, seriesTitle, 'Unknown']),
+    episode: detail,
+    episodeTitle: subDetail,
+    quality: languageLabel || '-',
+    protocol: 'subtitle',
+    timeLeft: '-',
+    progress: statusKey === 'completed' ? 100 : 0,
+    statusKey,
+    statusKeys: [statusKey],
+  };
+}
+
+function mapAutobrrQueueItem(entry, mode = 'recent-matches') {
+  const statusText = pickFirstNonEmpty([entry?.status, entry?.state, entry?.result, entry?.action, entry?.type]);
+  const statusKey = mapAutobrrStatusKey(statusText);
+  const protocolRaw = pickFirstNonEmpty([entry?.protocol, entry?.source, entry?.kind, entry?.type]);
+  const protocol = protocolRaw.toLowerCase().includes('usenet') ? 'usenet' : 'torrent';
+  const sizeBytes = parseFiniteNumber(entry?.size || entry?.bytes || entry?.totalSize || 0);
+  const quality = sizeBytes > 0 ? formatBytesLabel(sizeBytes) : '-';
+  const sourceName = pickFirstNonEmpty([
+    entry?.indexer,
+    entry?.indexerName,
+    entry?.tracker,
+    entry?.filter,
+    entry?.filterName,
+    mode === 'delivery-queue' ? 'Delivery' : 'Match',
+  ]);
+  const subDetail = pickFirstNonEmpty([
+    entry?.title,
+    entry?.releaseTitle,
+    entry?.releaseName,
+    entry?.name,
+    '-',
+  ]);
+  return {
+    kind: protocol,
+    title: pickFirstNonEmpty([entry?.name, entry?.releaseName, entry?.releaseTitle, entry?.title, 'Unknown']),
+    episode: sourceName,
+    episodeTitle: subDetail,
+    quality,
+    protocol,
+    timeLeft: '-',
+    progress: statusKey === 'completed' ? 100 : (statusKey === 'active' ? 50 : 0),
+    statusKey,
+    statusKeys: [statusKey],
+  };
+}
+
+app.get('/api/jackett/search/filters', requireUser, async (req, res) => {
+  const config = loadConfig();
+  const apps = config.apps || [];
+  const jackettApp = apps.find((appItem) => normalizeAppId(appItem?.id) === 'jackett');
+  if (!jackettApp) return res.status(404).json({ error: 'Jackett app is not configured.' });
+  if (!canAccessDashboardApp(config, jackettApp, getEffectiveRole(req))) {
+    return res.status(403).json({ error: 'Jackett dashboard access denied.' });
+  }
+
+  const apiKey = String(jackettApp.apiKey || '').trim();
+  if (!apiKey) return res.status(400).json({ error: 'Missing Jackett API key.' });
+
+  const candidates = resolveAppApiCandidates(jackettApp, req);
+  if (!candidates.length) return res.status(400).json({ error: 'Missing Jackett URL.' });
+
+  let lastError = '';
+  for (let index = 0; index < candidates.length; index += 1) {
+    const baseUrl = candidates[index];
+    if (!baseUrl) continue;
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      let payload = {};
+      try {
+        const upstreamUrl = buildAppApiUrl(baseUrl, 'api/v2.0/indexers');
+        upstreamUrl.searchParams.set('apikey', apiKey);
+        const upstreamRes = await fetch(upstreamUrl.toString(), {
+          headers: { Accept: 'application/json' },
+          signal: controller.signal,
+        });
+        const text = await upstreamRes.text();
+        if (!upstreamRes.ok) {
+          lastError = `Jackett indexer metadata failed (${upstreamRes.status}) via ${baseUrl}.`;
+          continue;
+        }
+        payload = text ? JSON.parse(text) : {};
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      const rawIndexers = Array.isArray(payload?.Indexers)
+        ? payload.Indexers
+        : (Array.isArray(payload?.indexers)
+          ? payload.indexers
+          : (Array.isArray(payload) ? payload : []));
+      const categoryProtocols = new Map();
+      const indexers = rawIndexers
+        .map((entry) => {
+          const enabled = entry?.enabled !== false && entry?.Enabled !== false;
+          if (!enabled) return null;
+          const id = String(entry?.id || entry?.Id || entry?.ID || entry?.name || entry?.Name || '').trim();
+          const name = String(entry?.name || entry?.Name || id || '').trim();
+          if (!id || !name) return null;
+          const protocol = normalizeIndexerProtocol(
+            entry?.type
+            || entry?.Type
+            || entry?.protocol
+            || entry?.Protocol
+            || entry?.searchType
+            || entry?.SearchType
+            || entry?.caps?.type
+          ) || 'torrent';
+          const categoryIds = extractTopLevelCategoryIds(
+            entry?.categories
+            || entry?.Categories
+            || entry?.caps?.categories
+            || entry?.caps?.Categories
+          );
+          categoryIds.forEach((categoryId) => {
+            if (!categoryProtocols.has(categoryId)) categoryProtocols.set(categoryId, new Set());
+            categoryProtocols.get(categoryId).add(protocol);
+          });
+          return { id, name, protocol };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      const categories = toTopLevelCategoryOptions(
+        payload?.Categories
+        || payload?.categories
+        || rawIndexers.map((entry) => entry?.categories || entry?.Categories || entry?.caps?.categories || entry?.caps?.Categories)
+      ).map((entry) => {
+        const numericId = Number(entry.id);
+        const protocols = categoryProtocols.has(numericId)
+          ? Array.from(categoryProtocols.get(numericId))
+          : [];
+        return {
+          id: entry.id,
+          name: entry.name,
+          protocols,
+        };
+      });
+
+      return res.json({ indexers, categories });
+    } catch (err) {
+      lastError = safeMessage(err) || `Failed to reach Jackett via ${baseUrl}.`;
+    }
+  }
+
+  return res.status(502).json({ error: lastError || 'Failed to fetch Jackett search filters.' });
+});
+
+app.get('/api/jackett/search', requireUser, async (req, res) => {
+  const query = String(req.query?.query || req.query?.q || '').trim();
+  if (!query) return res.status(400).json({ error: 'Missing search query.' });
+
+  const config = loadConfig();
+  const apps = config.apps || [];
+  const jackettApp = apps.find((appItem) => normalizeAppId(appItem?.id) === 'jackett');
+  if (!jackettApp) return res.status(404).json({ error: 'Jackett app is not configured.' });
+  if (!canAccessDashboardApp(config, jackettApp, getEffectiveRole(req))) {
+    return res.status(403).json({ error: 'Jackett dashboard access denied.' });
+  }
+
+  const apiKey = String(jackettApp.apiKey || '').trim();
+  if (!apiKey) return res.status(400).json({ error: 'Missing Jackett API key.' });
+
+  const limit = Math.max(1, Math.min(250, parseFiniteNumber(req.query?.limit || 25, 25)));
+  const offset = Math.max(0, parseFiniteNumber(req.query?.offset || 0, 0));
+  const protocolFilter = normalizeIndexerProtocol(req.query?.protocol || req.query?.type || '');
+  const indexerFilter = String(req.query?.indexer || req.query?.indexerId || '').trim().toLowerCase();
+  const indexerNameFilter = String(req.query?.indexerName || '').trim().toLowerCase();
+  const categoryFilter = toTopLevelCategoryId(req.query?.category || req.query?.categories || '');
+  const candidates = resolveAppApiCandidates(jackettApp, req);
+  if (!candidates.length) return res.status(400).json({ error: 'Missing Jackett URL.' });
+
+  let lastError = '';
+  for (let index = 0; index < candidates.length; index += 1) {
+    const baseUrl = candidates[index];
+    if (!baseUrl) continue;
+    try {
+      const jsonUrl = buildAppApiUrl(baseUrl, 'api/v2.0/indexers/all/results');
+      jsonUrl.searchParams.set('apikey', apiKey);
+      jsonUrl.searchParams.set('Query', query);
+      jsonUrl.searchParams.set('limit', String(Math.max(limit + offset + 100, 250)));
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      let response;
+      try {
+        response = await fetch(jsonUrl.toString(), {
+          headers: { Accept: 'application/json' },
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+      const bodyText = await response.text();
+      if (!response.ok) {
+        lastError = `Jackett request failed (${response.status}) via ${baseUrl}.`;
+        continue;
+      }
+      let items = [];
+      try {
+        const parsed = bodyText ? JSON.parse(bodyText) : {};
+        items = parseJackettJsonItems(parsed);
+      } catch (err) {
+        items = parseJackettTorznabItems(bodyText);
+      }
+      if (protocolFilter) {
+        items = items.filter((item) => normalizeIndexerProtocol(item?.protocol) === protocolFilter);
+      }
+      if (indexerFilter || indexerNameFilter) {
+        items = items.filter((item) => {
+          const candidateValues = [
+            item?.indexerId,
+            item?.indexer,
+          ]
+            .map((value) => String(value || '').trim().toLowerCase())
+            .filter(Boolean);
+          if (indexerFilter && candidateValues.includes(indexerFilter)) return true;
+          if (indexerNameFilter && candidateValues.includes(indexerNameFilter)) return true;
+          return false;
+        });
+      }
+      if (categoryFilter) {
+        items = items.filter((item) => Array.isArray(item?.categoryIds) && item.categoryIds.includes(categoryFilter));
+      }
+      const total = items.length;
+      const pageItems = items.slice(offset, offset + limit);
+      return res.json({
+        records: pageItems,
+        totalRecords: total,
+        offset,
+        limit,
+      });
+    } catch (err) {
+      lastError = safeMessage(err) || `Failed to reach Jackett via ${baseUrl}.`;
+    }
+  }
+
+  return res.status(502).json({ error: lastError || 'Failed to reach Jackett.' });
+});
+
+app.get('/api/bazarr/subtitle-queue', requireUser, async (req, res) => {
+  const config = loadConfig();
+  const apps = config.apps || [];
+  const bazarrApp = apps.find((appItem) => normalizeAppId(appItem?.id) === 'bazarr');
+  if (!bazarrApp) return res.status(404).json({ error: 'Bazarr app is not configured.' });
+  if (!canAccessDashboardApp(config, bazarrApp, getEffectiveRole(req))) {
+    return res.status(403).json({ error: 'Bazarr dashboard access denied.' });
+  }
+
+  const apiKey = String(bazarrApp.apiKey || '').trim();
+  if (!apiKey) return res.status(400).json({ error: 'Missing Bazarr API key.' });
+
+  const candidates = resolveAppApiCandidates(bazarrApp, req);
+  if (!candidates.length) return res.status(400).json({ error: 'Missing Bazarr URL.' });
+
+  const fetchWanted = async (baseUrl, suffix) => {
+    const url = buildAppApiUrl(baseUrl, suffix);
+    url.searchParams.set('start', '0');
+    url.searchParams.set('length', '200');
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    try {
+      const response = await fetch(url.toString(), {
+        headers: {
+          Accept: 'application/json',
+          'X-API-KEY': apiKey,
+        },
+        signal: controller.signal,
+      });
+      const text = await response.text();
+      if (!response.ok) {
+        return { ok: false, error: `Bazarr request failed (${response.status}).` };
+      }
+      const parsed = text ? JSON.parse(text) : {};
+      const list = Array.isArray(parsed?.data)
+        ? parsed.data
+        : (Array.isArray(parsed?.records)
+          ? parsed.records
+          : (Array.isArray(parsed) ? parsed : []));
+      return { ok: true, items: list };
+    } catch (err) {
+      return { ok: false, error: safeMessage(err) || 'Failed to reach Bazarr.' };
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
+  let lastError = '';
+  for (let index = 0; index < candidates.length; index += 1) {
+    const baseUrl = candidates[index];
+    if (!baseUrl) continue;
+    try {
+      const episodeResult = await fetchWanted(baseUrl, 'api/episodes/wanted');
+      const movieResult = await fetchWanted(baseUrl, 'api/movies/wanted');
+      if (!episodeResult.ok && !movieResult.ok) {
+        lastError = episodeResult.error || movieResult.error || `Failed to reach Bazarr via ${baseUrl}.`;
+        continue;
+      }
+      const episodeItems = Array.isArray(episodeResult.items) ? episodeResult.items : [];
+      const movieItems = Array.isArray(movieResult.items) ? movieResult.items : [];
+      const mapped = [...episodeItems, ...movieItems]
+        .map(mapBazarrQueueItem)
+        .filter((item) => Boolean(item?.title));
+      return res.json({ items: mapped });
+    } catch (err) {
+      lastError = safeMessage(err) || `Failed to reach Bazarr via ${baseUrl}.`;
+    }
+  }
+
+  return res.status(502).json({ error: lastError || 'Failed to fetch Bazarr subtitle queue.' });
+});
+
+app.get('/api/autobrr/:kind', requireUser, async (req, res) => {
+  const kind = String(req.params.kind || '').trim().toLowerCase();
+  if (!['recent-matches', 'delivery-queue'].includes(kind)) {
+    return res.status(400).json({ error: 'Unsupported Autobrr endpoint.' });
+  }
+
+  const config = loadConfig();
+  const apps = config.apps || [];
+  const autobrrApp = apps.find((appItem) => normalizeAppId(appItem?.id) === 'autobrr');
+  if (!autobrrApp) return res.status(404).json({ error: 'Autobrr app is not configured.' });
+  if (!canAccessDashboardApp(config, autobrrApp, getEffectiveRole(req))) {
+    return res.status(403).json({ error: 'Autobrr dashboard access denied.' });
+  }
+
+  const apiKey = String(autobrrApp.apiKey || '').trim();
+  if (!apiKey) return res.status(400).json({ error: 'Missing Autobrr API key.' });
+
+  const candidates = resolveAppApiCandidates(autobrrApp, req);
+  if (!candidates.length) return res.status(400).json({ error: 'Missing Autobrr URL.' });
+
+  let lastError = '';
+  for (let index = 0; index < candidates.length; index += 1) {
+    const baseUrl = candidates[index];
+    if (!baseUrl) continue;
+    try {
+      const url = buildAppApiUrl(baseUrl, 'api/release');
+      url.searchParams.set('limit', '200');
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      let response;
+      try {
+        response = await fetch(url.toString(), {
+          headers: {
+            Accept: 'application/json',
+            'X-API-Token': apiKey,
+          },
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+      const text = await response.text();
+      if (!response.ok) {
+        lastError = `Autobrr request failed (${response.status}) via ${baseUrl}.`;
+        continue;
+      }
+      const parsed = text ? JSON.parse(text) : {};
+      const list = Array.isArray(parsed?.items)
+        ? parsed.items
+        : (Array.isArray(parsed?.releases)
+          ? parsed.releases
+          : (Array.isArray(parsed) ? parsed : []));
+      const mapped = list.map((entry) => mapAutobrrQueueItem(entry, kind)).filter((item) => Boolean(item?.title));
+      const filtered = kind === 'delivery-queue'
+        ? mapped.filter((item) => ['queued', 'active', 'paused', 'completed', 'error'].includes(item.statusKey))
+        : mapped;
+      const items = filtered.length ? filtered : mapped;
+      return res.json({ items: items.slice(0, 200) });
+    } catch (err) {
+      lastError = safeMessage(err) || `Failed to reach Autobrr via ${baseUrl}.`;
+    }
+  }
+
+  return res.status(502).json({ error: lastError || 'Failed to fetch Autobrr data.' });
 });
 
 function buildBasicAuthHeader(username, password) {
@@ -6174,6 +6951,23 @@ function canAccessDashboardApp(config, appItem, role) {
   return canAccessDashboardAppViaCombined(config, appItem, role);
 }
 
+function resolveTableVisibleRows(elementId, rawValue, fallbackValue = undefined) {
+  const id = String(elementId || '').trim().toLowerCase();
+  const isIndexerSearch = id === 'search';
+  const minRows = 5;
+  const maxRows = isIndexerSearch ? 100 : 50;
+  const defaultRows = isIndexerSearch ? 25 : 10;
+  const parsed = Number(rawValue);
+  if (Number.isFinite(parsed)) {
+    return Math.max(minRows, Math.min(maxRows, parsed));
+  }
+  const parsedFallback = Number(fallbackValue);
+  if (Number.isFinite(parsedFallback)) {
+    return Math.max(minRows, Math.min(maxRows, parsedFallback));
+  }
+  return defaultRows;
+}
+
 function mergeOverviewElementSettings(appItem) {
   const elements = getOverviewElements(appItem);
   if (!elements.length) return [];
@@ -6185,10 +6979,7 @@ function mergeOverviewElementSettings(appItem) {
     const resolveBoolean = (value, fallback) => (value === undefined ? fallback : Boolean(value));
     const dashboardVisibilityRole = resolveDashboardElementVisibilityRole(appItem, savedItem, 'user');
     const dashboardVisible = dashboardVisibilityRole !== 'disabled';
-    const rawQueueRows = Number(savedItem.queueVisibleRows);
-    const queueVisibleRows = Number.isFinite(rawQueueRows)
-      ? Math.max(5, Math.min(50, rawQueueRows))
-      : 10;
+    const queueVisibleRows = resolveTableVisibleRows(element.id, savedItem.queueVisibleRows);
     const queueLabels = resolveQueueColumnLabels(appItem);
     return {
       id: element.id,
@@ -6231,10 +7022,10 @@ function buildOverviewElementsFromRequest(appItem, body) {
     const orderValue = body[`element_order_${element.id}`];
     const parsedOrder = Number(orderValue);
     const isQueue = element.id === 'activity-queue';
-    const queueRowsValue = Number(body[`element_queue_visible_rows_${element.id}`]);
-    const queueVisibleRows = Number.isFinite(queueRowsValue)
-      ? Math.max(5, Math.min(50, queueRowsValue))
-      : undefined;
+    const queueRowsRaw = body[`element_queue_visible_rows_${element.id}`];
+    const queueVisibleRows = queueRowsRaw === undefined
+      ? undefined
+      : resolveTableVisibleRows(element.id, queueRowsRaw);
     return {
       id: element.id,
       enable: Boolean(body[`element_enable_${element.id}`]),
@@ -6302,10 +7093,10 @@ function buildDashboardElementsFromRequest(appItem, body) {
       resolveDashboardElementVisibilityRole(appItem, existingSettings.get(element.id) || {}, 'user')
     );
     const dashboardVisible = visibilityRole !== 'disabled';
-    const queueRowsValue = Number(body[`${prefix}queue_visible_rows`]);
-    const queueVisibleRows = Number.isFinite(queueRowsValue)
-      ? Math.max(5, Math.min(50, queueRowsValue))
-      : undefined;
+    const queueRowsRaw = body[`${prefix}queue_visible_rows`];
+    const queueVisibleRows = queueRowsRaw === undefined
+      ? undefined
+      : resolveTableVisibleRows(element.id, queueRowsRaw);
     return {
       id: element.id,
       enable: dashboardVisible,
@@ -7049,44 +7840,46 @@ function deepEqual(a, b) {
   return stableStringify(a) === stableStringify(b);
 }
 
-function loadDefaultApps() {
-  const fallbackPath = path.join(__dirname, '..', 'config', 'default-apps.json');
-  try {
-    const raw = fs.readFileSync(DEFAULT_APPS_PATH, 'utf8');
-    const parsed = JSON.parse(raw);
-    const list = Array.isArray(parsed)
-      ? parsed
-      : (parsed && Array.isArray(parsed.apps) ? parsed.apps : []);
-    return dedupeApps(list);
-  } catch (err) {
+function readJsonFileCandidates(candidatePaths) {
+  const uniquePaths = Array.from(new Set(
+    (Array.isArray(candidatePaths) ? candidatePaths : [])
+      .map((candidate) => String(candidate || '').trim())
+      .filter(Boolean)
+  ));
+  for (const candidatePath of uniquePaths) {
     try {
-      const raw = fs.readFileSync(fallbackPath, 'utf8');
-      const parsed = JSON.parse(raw);
-      const list = Array.isArray(parsed)
-        ? parsed
-        : (parsed && Array.isArray(parsed.apps) ? parsed.apps : []);
-      return dedupeApps(list);
-    } catch (fallbackErr) {
-      return [];
+      const raw = fs.readFileSync(candidatePath, 'utf8');
+      return JSON.parse(raw);
+    } catch (err) {
+      continue;
     }
   }
+  return null;
+}
+
+function loadDefaultApps() {
+  const configDefaultPath = path.join(path.dirname(CONFIG_PATH), 'default-apps.json');
+  const parsed = readJsonFileCandidates([
+    DEFAULT_APPS_PATH,
+    BUNDLED_DEFAULT_APPS_PATH,
+    configDefaultPath,
+    SOURCE_DEFAULT_APPS_PATH,
+  ]);
+  const list = Array.isArray(parsed)
+    ? parsed
+    : (parsed && Array.isArray(parsed.apps) ? parsed.apps : []);
+  return dedupeApps(list);
 }
 
 function loadDefaultCategories() {
-  const fallbackPath = path.join(__dirname, '..', 'config', 'default-categories.json');
-  try {
-    const raw = fs.readFileSync(DEFAULT_CATEGORIES_PATH, 'utf8');
-    const parsed = JSON.parse(raw);
-    return normalizeCategoryEntries(parsed);
-  } catch (err) {
-    try {
-      const raw = fs.readFileSync(fallbackPath, 'utf8');
-      const parsed = JSON.parse(raw);
-      return normalizeCategoryEntries(parsed);
-    } catch (fallbackErr) {
-      return [];
-    }
-  }
+  const configDefaultPath = path.join(path.dirname(CONFIG_PATH), 'default-categories.json');
+  const parsed = readJsonFileCandidates([
+    DEFAULT_CATEGORIES_PATH,
+    BUNDLED_DEFAULT_CATEGORIES_PATH,
+    configDefaultPath,
+    SOURCE_DEFAULT_CATEGORIES_PATH,
+  ]);
+  return normalizeCategoryEntries(parsed);
 }
 
 function dedupeApps(apps) {

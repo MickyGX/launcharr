@@ -79,6 +79,7 @@
     })();
   </script>
   <link rel="stylesheet" href="/styles.css?v=<%= assetVersion %>" />
+  <link rel="stylesheet" href="/table-cards-overrides.css?v=<%= assetVersion %>" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" type="image/png" href="/icons/launcharr-icon.png" />
   <meta name="theme-color" content="#1cc6c2" />
@@ -690,12 +691,18 @@
                 </div>
               </section>
             <% } %>
-            <% if (item.app.id === 'prowlarr' && item.element.id === 'search') { %>
-              <section class="plex-module plex-module--no-subtitle" id="prowlarr-search">
+            <% if (['prowlarr', 'jackett'].includes(item.app.id) && item.element.id === 'search') { %>
+              <% const searchPrefix = item.app.id; %>
+              <% const searchActionLabel = item.app.id === 'prowlarr' ? 'Action' : 'Open'; %>
+              <% const rawSearchVisibleRows = Number(item.element?.queueVisibleRows); %>
+              <% const searchVisibleRows = Number.isFinite(rawSearchVisibleRows) ? Math.max(5, Math.min(100, rawSearchVisibleRows)) : 25; %>
+              <% const searchPageSizeOptions = [5, 10, 25, 50]; %>
+              <% const searchPageSize = 25; %>
+              <section class="plex-module plex-module--no-subtitle" id="<%= searchPrefix %>-search">
                 <div class="plex-topbar">
                   <div class="plex-title-wrap">
                     <div class="plex-title">
-                      <img class="plex-logo" src="/icons/prowlarr.png" alt="Prowlarr" loading="eager" />
+                      <img class="plex-logo" src="<%= resolveAppIconPath(item.app) %>" alt="<%= item.app.name %>" loading="eager" />
                       <span>Indexer Search</span>
                     </div>
                     <div class="plex-subtitle"></div>
@@ -705,25 +712,39 @@
 
                   <div class="plex-controls-right">
                     <div class="plex-search" title="Search">
-                      <input id="prowlarrSearchInput" type="text" placeholder="Search indexers" aria-label="Search indexers" />
-                      <button class="plex-search-btn" id="prowlarrSearchButton" type="button">Search</button>
+                      <input id="<%= searchPrefix %>SearchInput" type="text" placeholder="Search indexers" aria-label="Search indexers" />
+                      <button class="plex-search-btn" id="<%= searchPrefix %>SearchButton" type="button">Search</button>
                     </div>
 
-                    <div class="plex-select plex-xsmall" title="Limit">
-                      <select id="prowlarrSearchLimitSelect" aria-label="Limit">
-                        <option value="25" selected>25</option>
-                        <option value="50">50</option>
-                        <option value="100">100</option>
+                    <div class="plex-select plex-icon plex-filter-source" title="Indexer type">
+                      <select id="<%= searchPrefix %>SearchTypeFilter" aria-label="Indexer type">
+                        <option value="all" data-icon="/icons/all-type.svg" selected>All indexers</option>
+                        <option value="usenet" data-icon="/icons/download.svg">Usenet</option>
+                        <option value="torrent" data-icon="/icons/download.svg">Torrent</option>
                       </select>
                     </div>
 
-                    <div class="prowlarr-pagination">
-                      <button class="plex-iconbtn" id="prowlarrSearchPrevBtn" type="button" aria-label="Previous page"><div class="plex-chev plex-left"></div></button>
-                      <span id="prowlarrSearchPageLabel" class="prowlarr-page-label">Page 1</span>
-                      <button class="plex-iconbtn" id="prowlarrSearchNextBtn" type="button" aria-label="Next page"><div class="plex-chev plex-right"></div></button>
+                    <div class="plex-select plex-icon plex-filter-source" title="Available indexers">
+                      <select id="<%= searchPrefix %>SearchIndexerFilter" aria-label="Available indexers">
+                        <option value="all" data-icon="/icons/all-type.svg" selected>All available indexers</option>
+                      </select>
                     </div>
 
-                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="prowlarr-search" data-collapse-global="true">
+                    <div class="plex-select plex-icon plex-filter-status" title="Top level categories">
+                      <select id="<%= searchPrefix %>SearchCategoryFilter" aria-label="Top level categories">
+                        <option value="all" data-icon="/icons/all-type.svg" selected>All top level categories</option>
+                      </select>
+                    </div>
+
+                    <div class="plex-select plex-xsmall" title="Limit">
+                      <select id="<%= searchPrefix %>SearchLimitSelect" aria-label="Limit">
+                        <% searchPageSizeOptions.forEach((limitValue) => { %>
+                          <option value="<%= limitValue %>" <%= limitValue === searchPageSize ? 'selected' : '' %>><%= limitValue %></option>
+                        <% }) %>
+                      </select>
+                    </div>
+
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="<%= searchPrefix %>-search" data-collapse-global="true">
                       <div class="plex-doublechev">
                         <div class="plex-chev plex-up"></div>
                         <div class="plex-chev plex-down"></div>
@@ -732,18 +753,25 @@
                   </div>
                 </div>
 
-                <div class="plex-panel">
-                  <div class="prowlarr-table">
-                    <div class="prowlarr-row prowlarr-row--head">
-                      <div>Name</div>
-                      <div>Peers</div>
-                      <div>Quality</div>
-                      <div>Protocol</div>
-                      <div>Action</div>
+                <div class="plex-panel queue-panel">
+                  <div class="queue-table queue-table--manual queue-hide-timeleft queue-hide-progress indexer-table" style="--queue-visible-rows:<%= searchVisibleRows %>">
+                    <div class="queue-row header indexer-head">
+                      <div class="queue-col-title">Name</div>
+                      <div class="queue-col-detail">Peers</div>
+                      <div class="queue-col-subdetail">Quality</div>
+                      <div class="queue-col-size">Protocol</div>
+                      <div class="queue-col-protocol"><%= searchActionLabel %></div>
                     </div>
-                    <div id="prowlarrSearchResults" class="prowlarr-results">
-                      <div class="prowlarr-row prowlarr-row--empty">Enter a search term to get results.</div>
+                    <div id="<%= searchPrefix %>SearchResults" class="queue-body indexer-results">
+                      <div class="queue-row indexer-row indexer-row--empty">
+                        <div class="queue-col-title">Enter a search term to get results.</div>
+                      </div>
                     </div>
+                  </div>
+                  <div class="queue-pagination indexer-pagination">
+                    <button class="plex-iconbtn queue-page-prev" id="<%= searchPrefix %>SearchPrevBtn" type="button" aria-label="Previous page"><div class="plex-chev plex-left"></div></button>
+                    <span id="<%= searchPrefix %>SearchPageLabel" class="queue-page-label">Page 1</span>
+                    <button class="plex-iconbtn queue-page-next" id="<%= searchPrefix %>SearchNextBtn" type="button" aria-label="Next page"><div class="plex-chev plex-right"></div></button>
                   </div>
                 </div>
               </section>
@@ -1234,6 +1262,144 @@
                 </div>
               </section>
             <% } %>
+            <% if (item.app.id === 'bazarr' && item.element.id === 'subtitle-queue') { %>
+              <%
+                const moduleId = `${item.app.id}-subtitle-queue`;
+                const controlPrefix = `${item.app.id}SubtitleQueue`;
+                const queueDisplay = item.element || {};
+                const queueClasses = [
+                  queueDisplay.queueShowDetail === false ? 'queue-hide-detail' : '',
+                  queueDisplay.queueShowSubDetail === false ? 'queue-hide-subdetail' : '',
+                  queueDisplay.queueShowSize === false ? 'queue-hide-size' : '',
+                  queueDisplay.queueShowProtocol === false ? 'queue-hide-protocol' : '',
+                  queueDisplay.queueShowTimeLeft === false ? 'queue-hide-timeleft' : '',
+                  queueDisplay.queueShowProgress === false ? 'queue-hide-progress' : '',
+                ].filter(Boolean).join(' ');
+                const queueVisibleRows = queueDisplay.queueVisibleRows || 10;
+              %>
+              <section class="plex-module plex-module--no-subtitle" id="<%= moduleId %>">
+                <div class="plex-topbar">
+                  <div class="plex-title-wrap">
+                    <div class="plex-title">
+                      <img class="plex-logo" src="<%= resolveAppIconPath(item.app) %>" alt="<%= item.app.name %>" loading="eager" />
+                      <span>Subtitle Queue</span>
+                    </div>
+                    <div class="plex-subtitle"></div>
+                  </div>
+                  <div class="plex-spacer"></div>
+                  <div class="plex-controls-right">
+                    <div class="plex-select plex-icon plex-filter-media" title="Type">
+                      <select id="<%= controlPrefix %>TypeFilter" aria-label="Media type">
+                        <option value="all" selected>All</option>
+                        <option value="tv">TV</option>
+                        <option value="movie">Movies</option>
+                      </select>
+                    </div>
+                    <div class="plex-select plex-icon plex-filter-status" title="Status">
+                      <select id="<%= controlPrefix %>StatusFilter" aria-label="Queue status">
+                        <option value="all" selected>All</option>
+                        <option value="active">Active</option>
+                        <option value="queued">Queued</option>
+                        <option value="completed">Completed</option>
+                        <option value="error">Error</option>
+                      </select>
+                    </div>
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="<%= moduleId %>" data-collapse-global="true">
+                      <div class="plex-doublechev">
+                        <div class="plex-chev plex-up"></div>
+                        <div class="plex-chev plex-down"></div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="plex-panel queue-panel">
+                  <div class="queue-table <%= queueClasses %>" style="--queue-visible-rows:<%= queueVisibleRows %>">
+                    <div class="queue-row header">
+                      <div class="queue-col-title">Title</div>
+                      <div class="queue-col-detail">Target</div>
+                      <div class="queue-col-subdetail">Subtitle</div>
+                      <div class="queue-col-size">Languages</div>
+                      <div class="queue-col-protocol">Protocol</div>
+                      <div class="queue-col-time">Time Left</div>
+                      <div class="queue-col-progress">Progress</div>
+                    </div>
+                    <div id="<%= controlPrefix %>Body" class="queue-body">
+                      <div class="queue-empty">Loading…</div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            <% } %>
+            <% if (item.app.id === 'autobrr' && ['recent-matches', 'delivery-queue'].includes(item.element.id)) { %>
+              <%
+                const isRecentMatches = item.element.id === 'recent-matches';
+                const moduleId = `${item.app.id}-${item.element.id}`;
+                const controlPrefix = `${item.app.id}${isRecentMatches ? 'RecentMatches' : 'DeliveryQueue'}`;
+                const queueDisplay = item.element || {};
+                const queueClasses = [
+                  queueDisplay.queueShowDetail === false ? 'queue-hide-detail' : '',
+                  queueDisplay.queueShowSubDetail === false ? 'queue-hide-subdetail' : '',
+                  queueDisplay.queueShowSize === false ? 'queue-hide-size' : '',
+                  queueDisplay.queueShowProtocol === false ? 'queue-hide-protocol' : '',
+                  queueDisplay.queueShowTimeLeft === false ? 'queue-hide-timeleft' : '',
+                  queueDisplay.queueShowProgress === false ? 'queue-hide-progress' : '',
+                ].filter(Boolean).join(' ');
+                const queueVisibleRows = queueDisplay.queueVisibleRows || 10;
+              %>
+              <section class="plex-module plex-module--no-subtitle" id="<%= moduleId %>">
+                <div class="plex-topbar">
+                  <div class="plex-title-wrap">
+                    <div class="plex-title">
+                      <img class="plex-logo" src="<%= resolveAppIconPath(item.app) %>" alt="<%= item.app.name %>" loading="eager" />
+                      <span><%= isRecentMatches ? 'Recent Matches' : 'Delivery Queue' %></span>
+                    </div>
+                    <div class="plex-subtitle"></div>
+                  </div>
+                  <div class="plex-spacer"></div>
+                  <div class="plex-controls-right">
+                    <div class="plex-select plex-icon plex-filter-media" title="Type">
+                      <select id="<%= controlPrefix %>TypeFilter" aria-label="Release type">
+                        <option value="all" selected>All</option>
+                        <option value="torrent">Torrent</option>
+                        <option value="usenet">Usenet</option>
+                      </select>
+                    </div>
+                    <div class="plex-select plex-icon plex-filter-status" title="Status">
+                      <select id="<%= controlPrefix %>StatusFilter" aria-label="Status">
+                        <option value="all" selected>All</option>
+                        <option value="active">Active</option>
+                        <option value="queued">Queued</option>
+                        <option value="completed">Completed</option>
+                        <option value="error">Error</option>
+                      </select>
+                    </div>
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="<%= moduleId %>" data-collapse-global="true">
+                      <div class="plex-doublechev">
+                        <div class="plex-chev plex-up"></div>
+                        <div class="plex-chev plex-down"></div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+                <div class="plex-panel queue-panel">
+                  <div class="queue-table <%= queueClasses %>" style="--queue-visible-rows:<%= queueVisibleRows %>">
+                    <div class="queue-row header">
+                      <div class="queue-col-title">Title</div>
+                      <div class="queue-col-detail"><%= isRecentMatches ? 'Indexer' : 'Destination' %></div>
+                      <div class="queue-col-subdetail">Release</div>
+                      <div class="queue-col-size">Size</div>
+                      <div class="queue-col-protocol">Protocol</div>
+                      <div class="queue-col-time">Time Left</div>
+                      <div class="queue-col-progress">Progress</div>
+                    </div>
+                    <div id="<%= controlPrefix %>Body" class="queue-body">
+                      <div class="queue-empty">Loading…</div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            <% } %>
             <% if (['transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(item.app.id) && item.element.id === 'activity-queue') { %>
               <%
                 const isCombined = Boolean(item.downloaderCombined);
@@ -1312,6 +1478,14 @@
                         <% } %>
                       </select>
                     </div>
+                    <div class="plex-select plex-xsmall" title="Per page">
+                      <select id="<%= controlPrefix %>LimitFilter" aria-label="Items per page">
+                        <option value="5">5</option>
+                        <option value="10" selected>10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                      </select>
+                    </div>
                     <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="<%= moduleId %>" data-collapse-global="true">
                       <div class="plex-doublechev">
                         <div class="plex-chev plex-up"></div>
@@ -1322,7 +1496,7 @@
                 </div>
 
                 <div class="plex-panel queue-panel">
-                  <div class="queue-table <%= queueClasses %>" style="--queue-visible-rows:<%= queueVisibleRows %>">
+                  <div class="queue-table <%= queueClasses %>" data-page-size-select-id="<%= controlPrefix %>LimitFilter" style="--queue-visible-rows:<%= queueVisibleRows %>">
                     <div class="queue-row header">
                       <div class="queue-col-title">Title</div>
                       <div class="queue-col-detail"><%= detailLabel %></div>
@@ -1825,7 +1999,9 @@
         }).join('');
 
         container.querySelectorAll('.arr-filter-option').forEach((button) => {
-          button.addEventListener('click', () => {
+          button.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
             const index = Number(button.dataset.index);
             if (!Number.isFinite(index) || !options[index]) return;
             const value = String(options[index].value || '').trim();
@@ -1881,10 +2057,16 @@
 
         if (!sections.length) return;
 
-        const sync = () => {
+        let needsSync = true;
+        const sync = ({ force = false } = {}) => {
+          if (!force && menu.classList.contains('plex-hidden')) {
+            needsSync = true;
+            return;
+          }
           sections.forEach((entry) => {
             renderOptionButtons(entry.select, entry.container, entry.kind);
           });
+          needsSync = false;
         };
 
         trigger.addEventListener('click', (event) => {
@@ -1894,7 +2076,7 @@
           closeAll(isOpen ? null : popover);
           trigger.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
           menu.classList.toggle('plex-hidden', isOpen);
-          if (!isOpen) sync();
+          if (!isOpen && needsSync) sync({ force: true });
         });
 
         sections.forEach((entry) => {
@@ -2198,32 +2380,73 @@
       <script src="/pulsarr-overview.js?v=<%= assetVersion %>"></script>
     <% }) %>
   <% } %>
-  <% if (dashboardModules.some((item) => item.app.id === 'prowlarr' && item.element.id === 'search')) { %>
-    <% const prowlarrApp = dashboardModules.find((item) => item.app.id === 'prowlarr')?.app; %>
-    <% if (prowlarrApp) { %>
+  <% if (dashboardModules.some((item) => ['prowlarr', 'jackett'].includes(resolveAppBaseId(item.app.id)) && item.element.id === 'search')) { %>
+    <%
+      const indexerSearchApps = Array.from(new Set(
+        dashboardModules
+          .filter((item) => ['prowlarr', 'jackett'].includes(resolveAppBaseId(item.app.id)) && item.element.id === 'search')
+          .map((item) => item.app.id)
+      )).map((id) => dashboardModules.find((entry) => entry.app.id === id)?.app).filter(Boolean);
+      const indexerSearchConfigs = indexerSearchApps.map((searchApp) => {
+        const baseId = resolveAppBaseId(searchApp.id);
+        const isJackett = baseId === 'jackett';
+        return {
+          appId: searchApp.id,
+          appName: searchApp.name,
+          prefix: isJackett ? 'jackett' : 'prowlarr',
+          endpoint: isJackett ? '/api/jackett/search' : '/api/prowlarr/search',
+          filtersEndpoint: isJackett ? '/api/jackett/search/filters' : '/api/prowlarr/search/filters',
+          canDownload: !isJackett,
+          downloadEndpoint: '/api/prowlarr/download',
+        };
+      });
+    %>
+    <% if (indexerSearchConfigs.length) { %>
       <script>
-        window.PROWLARR_OVERVIEW_CONFIG = <%- JSON.stringify({
-          appId: prowlarrApp.id,
-          appName: prowlarrApp.name,
-          displaySettings: dashboardModules
-            .filter((item) => item.app.id === prowlarrApp.id)
-            .reduce((acc, item) => {
-              if (!item?.element?.id) return acc;
-              acc[item.element.id] = {
-                showSubtitle: item.element.showSubtitle !== false,
-                showMeta: item.element.showMeta !== false,
-                showPill: item.element.showPill !== false,
-                showTypeIcon: item.element.showTypeIcon !== false,
-                showViewIcon: item.element.showViewIcon !== false,
-                showUsername: item.element.showUsername !== false,
-              };
-              return acc;
-            }, {})
-        }) %>;
+        window.INDEXER_SEARCH_CONFIGS = <%- JSON.stringify(indexerSearchConfigs) %>;
       </script>
-      <script src="/prowlarr-overview.js?v=<%= assetVersion %>"></script>
+      <script src="/indexer-search.js?v=<%= assetVersion %>"></script>
     <% } %>
   <% } %>
+  <% if (dashboardModules.some((item) => (item.app.id === 'bazarr' && item.element.id === 'subtitle-queue') || (item.app.id === 'autobrr' && ['recent-matches', 'delivery-queue'].includes(item.element.id)))) { %>
+    <%
+      const queueCardConfigs = dashboardModules
+        .filter((item) => (item.app.id === 'bazarr' && item.element.id === 'subtitle-queue') || (item.app.id === 'autobrr' && ['recent-matches', 'delivery-queue'].includes(item.element.id)))
+        .map((item) => {
+          if (item.app.id === 'bazarr') {
+            const controlPrefix = `${item.app.id}SubtitleQueue`;
+            return {
+              moduleId: `${item.app.id}-subtitle-queue`,
+              bodyId: `${controlPrefix}Body`,
+              typeFilterId: `${controlPrefix}TypeFilter`,
+              statusFilterId: `${controlPrefix}StatusFilter`,
+              endpoint: '/api/bazarr/subtitle-queue',
+              appName: item.app.name || 'Bazarr',
+            };
+          }
+          const isRecentMatches = item.element.id === 'recent-matches';
+          const controlPrefix = `${item.app.id}${isRecentMatches ? 'RecentMatches' : 'DeliveryQueue'}`;
+          return {
+            moduleId: `${item.app.id}-${item.element.id}`,
+            bodyId: `${controlPrefix}Body`,
+            typeFilterId: `${controlPrefix}TypeFilter`,
+            statusFilterId: `${controlPrefix}StatusFilter`,
+            endpoint: `/api/autobrr/${item.element.id}`,
+            appName: item.app.name || 'Autobrr',
+          };
+        });
+    %>
+    <% if (queueCardConfigs.length) { %>
+      <script>
+        window.QUEUE_CARD_CONFIGS = <%- JSON.stringify(queueCardConfigs) %>;
+      </script>
+      <script src="/queue-cards.js?v=<%= assetVersion %>"></script>
+    <% } %>
+  <% } %>
+  <% if (dashboardModules.some((item) => ['prowlarr', 'jackett'].includes(item.app.id) && item.element.id === 'search')) { %>
+    <script src="/indexer-table-sort.js?v=<%= assetVersion %>"></script>
+  <% } %>
+  <script src="/table-pagination.js?v=<%= assetVersion %>"></script>
   <script src="/version-badge.js?v=<%= assetVersion %>"></script>
   <script src="/brand-menu.js?v=<%= assetVersion %>"></script>
   <script src="/starfield-3d.js"></script>

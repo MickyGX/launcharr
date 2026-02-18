@@ -957,6 +957,7 @@
                   <% const combinedOrderValue = combinedOrderKey && dashboardCombinedOrder ? Number(dashboardCombinedOrder[combinedOrderKey]) : NaN; %>
                   <% const orderValue = Number.isFinite(combinedOrderValue) ? combinedOrderValue : (Number.isFinite(element.order) ? element.order : index + 1); %>
                   <% const isQueue = element.id === 'activity-queue'; %>
+                  <% const isTableCard = ['activity-queue', 'subtitle-queue', 'recent-matches', 'delivery-queue', 'search'].includes(element.id); %>
                   <% const isDisabled = Boolean(item.appAccess === false); %>
                   <% const combinedKey = item.combined ? `combined:${item.combinedType || 'mixed'}:${item.combinedSection || element.id || 'unknown'}` : ''; %>
                   <% const combinedSettings = combinedKey && dashboardCombinedSettings ? dashboardCombinedSettings[combinedKey] : null; %>
@@ -1231,7 +1232,23 @@
                             />
                           </label>
                         </div>
-                      <% } else if (!item.combined || (element.id !== 'activity-queue')) { %>
+                      <% } else if (!item.combined && isTableCard) { %>
+                        <% const isIndexerSearch = element.id === 'search'; %>
+                        <div class="settings-card-title">Table Display Options</div>
+                        <div class="settings-grid">
+                          <label class="field">
+                            <span><%= isIndexerSearch ? 'Visible items in table' : 'Visible items in queue' %></span>
+                            <input
+                              type="number"
+                              min="5"
+                              max="<%= isIndexerSearch ? 100 : 50 %>"
+                              step="1"
+                              name="dashboard_<%= item.appId %>_<%= element.id %>_queue_visible_rows"
+                              value="<%= element.queueVisibleRows || (isIndexerSearch ? 25 : 10) %>"
+                            />
+                          </label>
+                        </div>
+                      <% } else if (!item.combined || (element.id !== 'activity-queue' && !isTableCard)) { %>
                         <div class="settings-card-title">Carousel Display Options</div>
                         <div class="settings-grid">
                           <label class="radio-pill">

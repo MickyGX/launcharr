@@ -581,7 +581,7 @@
     "menu": {
       "overview": {
         "user": false,
-        "admin": false
+        "admin": true
       },
       "launch": {
         "user": false,
@@ -597,6 +597,15 @@
     "launchMode": "iframe",
     "localUrl": "http://localhost:6767",
     "remoteUrl": "",
+    "overviewElements": [
+      {
+        "id": "subtitle-queue",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "order": 1
+      }
+    ],
     "plexToken": ""
   },
   {
@@ -981,6 +990,15 @@
     "launchMode": "iframe",
     "localUrl": "http://localhost:9117",
     "remoteUrl": "",
+    "overviewElements": [
+      {
+        "id": "search",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "order": 1
+      }
+    ],
     "plexToken": ""
   },
   {
@@ -1016,6 +1034,22 @@
     "launchMode": "iframe",
     "localUrl": "http://localhost:7474",
     "remoteUrl": "",
+    "overviewElements": [
+      {
+        "id": "recent-matches",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "order": 1
+      },
+      {
+        "id": "delivery-queue",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "order": 2
+      }
+    ],
     "plexToken": ""
   }
 ]
