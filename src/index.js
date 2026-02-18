@@ -5439,6 +5439,7 @@ function getNavApps(apps, role, req, categoryOrder = DEFAULT_CATEGORY_ORDER, gen
 
   return apps
     .map((appItem) => {
+      if (appItem?.removed) return null;
       const baseId = getAppBaseId(appItem?.id);
       const supportsInstances = MULTI_INSTANCE_APP_IDS.includes(baseId);
       const instanceName = supportsInstances ? String(appItem?.instanceName || '').trim() : '';
@@ -5452,9 +5453,13 @@ function getNavApps(apps, role, req, categoryOrder = DEFAULT_CATEGORY_ORDER, gen
       const sidebarActivityAccess = canAccessSidebarActivity(appItem, role);
       const menuAccess = {
         ...access,
-        overview: sidebarOverviewAccess,
+        overview: sidebarOverviewAccess && access.overview,
         settings: sidebarSettingsAccess && access.settings && !generalSettings.hideSidebarAppSettingsLink,
-        activity: sidebarActivityAccess && sidebarOverviewAccess && role === 'admin' && !generalSettings.hideSidebarActivityLink,
+        activity: sidebarActivityAccess
+          && sidebarOverviewAccess
+          && access.overview
+          && role === 'admin'
+          && !generalSettings.hideSidebarActivityLink,
       };
       return {
         ...appItem,
@@ -5465,7 +5470,7 @@ function getNavApps(apps, role, req, categoryOrder = DEFAULT_CATEGORY_ORDER, gen
         menuAccess,
       };
     })
-    .filter((appItem) => appItem.menuAccess.sidebar && hasAnyMenuAccess(appItem.menuAccess))
+    .filter((appItem) => appItem && appItem.menuAccess.sidebar && hasAnyMenuAccess(appItem.menuAccess))
     .sort((a, b) => {
       const favouriteDelta = (isFavourite(b) ? 1 : 0) - (isFavourite(a) ? 1 : 0);
       if (favouriteDelta !== 0) return favouriteDelta;
@@ -5648,6 +5653,7 @@ function canAccess(appItem, role, key) {
 }
 
 function canAccessSidebarOverview(appItem, role) {
+  if (appItem?.removed) return false;
   const roleKey = parseVisibilityRole(role);
   if (!roleKey) return false;
   const menu = normalizeMenu(appItem);
@@ -5655,6 +5661,7 @@ function canAccessSidebarOverview(appItem, role) {
 }
 
 function canAccessSidebarSettings(appItem, role) {
+  if (appItem?.removed) return false;
   const roleKey = parseVisibilityRole(role);
   if (!roleKey) return false;
   const menu = normalizeMenu(appItem);
@@ -5662,6 +5669,7 @@ function canAccessSidebarSettings(appItem, role) {
 }
 
 function canAccessSidebarActivity(appItem, role) {
+  if (appItem?.removed) return false;
   const roleKey = parseVisibilityRole(role);
   if (!roleKey) return false;
   const menu = normalizeMenu(appItem);
@@ -5669,6 +5677,14 @@ function canAccessSidebarActivity(appItem, role) {
 }
 
 function getMenuAccess(appItem, role) {
+  if (appItem?.removed) {
+    return {
+      sidebar: false,
+      overview: false,
+      launch: false,
+      settings: false,
+    };
+  }
   const menu = normalizeMenu(appItem);
   const launchMode = resolveAppLaunchMode(appItem, menu);
   const launchEnabled = launchMode !== 'disabled';
