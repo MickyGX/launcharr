@@ -1,4 +1,11 @@
-# Release Notes (v0.1.0 -> v0.2.19)
+# Release Notes (v0.1.0 -> v0.2.20)
+
+## v0.2.20 (2026-02-18)
+
+- [Added]
+- [Changed]
+- [Fixed]
+
 
 ## v0.2.19 (2026-02-18)
 
