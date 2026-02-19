@@ -622,7 +622,7 @@
     "name": "Prowlarr",
     "url": "http://localhost:9696",
     "description": "Indexer manager",
-    "category": "Arr Suite",
+    "category": "Indexers",
     "roles": [
       "admin",
       "user"
@@ -978,7 +978,7 @@
     "icon": "/icons/jackett.png",
     "url": "http://localhost:9117",
     "description": "Indexer manager",
-    "category": "Arr Suite",
+    "category": "Indexers",
     "roles": [
       "admin",
       "user"

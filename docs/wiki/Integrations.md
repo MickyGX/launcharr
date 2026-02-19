@@ -13,8 +13,8 @@
 | Lidarr | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/lidarr.png" alt="Lidarr" width="20" /> | `lidarr` | `Arr Suite` | `http://localhost:8686` | Yes |
 | Readarr | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/readarr.png" alt="Readarr" width="20" /> | `readarr` | `Arr Suite` | `http://localhost:8787` | Yes |
 | Bazarr | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/bazarr.png" alt="Bazarr" width="20" /> | `bazarr` | `Arr Suite` | `http://localhost:6767` | Yes |
-| Prowlarr | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/prowlarr.png" alt="Prowlarr" width="20" /> | `prowlarr` | `Arr Suite` | `http://localhost:9696` | Yes |
-| Jackett | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/jackett.png" alt="Jackett" width="20" /> | `jackett` | `Arr Suite` | `http://localhost:9117` | Yes |
+| Prowlarr | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/prowlarr.png" alt="Prowlarr" width="20" /> | `prowlarr` | `Indexers` | `http://localhost:9696` | Yes |
+| Jackett | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/jackett.png" alt="Jackett" width="20" /> | `jackett` | `Indexers` | `http://localhost:9117` | Yes |
 | Pulsarr | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/pulsarr.png" alt="Pulsarr" width="20" /> | `pulsarr` | `Arr Suite` | `http://localhost:3030` | Yes |
 | Seerr | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/seerr.png" alt="Seerr" width="20" /> | `seerr` | `Arr Suite` | `http://localhost:5055` | Yes |
 | Autobrr | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/autobrr.png" alt="Autobrr" width="20" /> | `autobrr` | `Arr Suite` | `http://localhost:7474` | Yes |

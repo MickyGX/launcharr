@@ -1,4 +1,13 @@
-# Release Notes (v0.1.0 -> v0.2.29)
+# Release Notes (v0.1.0 -> v0.2.30)
+
+## v0.2.30 (2026-02-19)
+
+- Added default `Indexers` category with a dedicated category icon and default ordering support.
+- Updated default app catalog so `Prowlarr` and `Jackett` now default to the `Indexers` category.
+- Updated settings dashboard customization so removed sidebar apps no longer continue to generate app-specific dashboard cards.
+- Preserved combined dashboard cards unless no active source apps remain for that combined module.
+- Fixed app-instance deletion flow so non-primary instances remain deletable even when the primary instance is absent.
+- Fixed settings instance-tab UI to show a delete action for first visible non-primary instances (for example `qbittorrent-2`).
 
 ## v0.2.29 (2026-02-19)
 

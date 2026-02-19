@@ -1884,6 +1884,8 @@
               const maxInstancesForBase = Math.max(2, Number(multiInstanceMaxMap?.[appBaseId]) || 5);
               const canAddInstance = supportsInstances && baseInstanceCount < maxInstancesForBase;
               const firstInstanceItem = supportsInstances && instanceItems.length ? instanceItems[0] : null;
+              const firstInstanceSuffix = firstInstanceItem ? resolveAppInstanceSuffix(firstInstanceItem?.id, appBaseId) : NaN;
+              const canDeleteFirstInstanceItem = Boolean(firstInstanceItem) && Number.isFinite(firstInstanceSuffix) && firstInstanceSuffix > 1;
               const remainingInstanceItems = supportsInstances && instanceItems.length > 1 ? instanceItems.slice(1) : [];
               const activeAppId = String(panelAppItem?.id || '').trim();
               const instancePlaceholder = String(multiInstancePlaceholderMap?.[appBaseId] || 'Instance (e.g. Main)');
@@ -1895,13 +1897,33 @@
                 <% if (supportsInstances) { %>
                   <div class="settings-subtabs app-instance-tabs" role="tablist" aria-label="<%= resolveAppBaseTitle(appBaseId) %> instance tabs">
                     <% if (firstInstanceItem) { %>
-                      <a
-                        class="settings-subtab-btn<%= String(firstInstanceItem.id || '').trim() === activeAppId ? ' is-active' : '' %>"
-                        data-instance-id="<%= String(firstInstanceItem.id || '').trim().toLowerCase() %>"
-                        href="/settings?tab=app&app=<%= encodeURIComponent(String(firstInstanceItem.id || '').trim()) %>"
-                      >
-                        <span class="settings-subtab-text"><%= resolveInstanceTabLabel(firstInstanceItem) %></span>
-                      </a>
+                      <div class="app-instance-tab-entry">
+                        <a
+                          class="settings-subtab-btn<%= String(firstInstanceItem.id || '').trim() === activeAppId ? ' is-active' : '' %>"
+                          data-instance-id="<%= String(firstInstanceItem.id || '').trim().toLowerCase() %>"
+                          href="/settings?tab=app&app=<%= encodeURIComponent(String(firstInstanceItem.id || '').trim()) %>"
+                        >
+                          <span class="settings-subtab-text"><%= resolveInstanceTabLabel(firstInstanceItem) %></span>
+                        </a>
+                        <% if (canDeleteFirstInstanceItem) { %>
+                          <form
+                            method="post"
+                            action="/settings/apps/instances/delete"
+                            class="app-instance-tab-delete-form"
+                            onsubmit="return confirm('Delete this instance? This cannot be undone.');"
+                          >
+                            <input type="hidden" name="appId" value="<%= String(firstInstanceItem.id || '').trim() %>" />
+                            <button
+                              class="app-instance-tab-delete"
+                              type="submit"
+                              title="Delete <%= resolveInstanceTabLabel(firstInstanceItem) %>"
+                              aria-label="Delete <%= resolveInstanceTabLabel(firstInstanceItem) %>"
+                            >
+                              <img src="/icons/delete.svg" alt="" />
+                            </button>
+                          </form>
+                        <% } %>
+                      </div>
                     <% } %>
                     <% remainingInstanceItems.forEach((instanceEntry) => { %>
                       <div class="app-instance-tab-entry">

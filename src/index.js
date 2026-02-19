@@ -46,7 +46,7 @@ const MEDIA_APP_IDS = ['plex', 'jellyfin', 'emby'];
 const LEGACY_MULTI_INSTANCE_APP_IDS = ['radarr', 'sonarr', 'bazarr', 'transmission'];
 const DEFAULT_MAX_MULTI_INSTANCES_PER_APP = 5;
 const DEFAULT_INSTANCE_NAME_PLACEHOLDER = 'Instance (e.g. Main)';
-const DEFAULT_CATEGORY_ORDER = ['Admin', 'Media', 'Manager', 'Games', 'Arr Suite', 'Downloaders', 'Tools'];
+const DEFAULT_CATEGORY_ORDER = ['Admin', 'Media', 'Manager', 'Games', 'Arr Suite', 'Indexers', 'Downloaders', 'Tools'];
 const DEFAULT_CATEGORY_ICON = '/icons/category.svg';
 const ARR_COMBINE_SECTIONS = [
   { key: 'downloadingSoon', elementId: 'downloading-soon' },
@@ -1807,32 +1807,33 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     icon: resolvePersistedAppIconPath(appItem),
     canRemoveDefaultApp: canManageWithDefaultAppManager(appItem),
   }));
+  const dashboardSettingsApps = settingsAppsWithIcons.filter((appItem) => !appItem?.removed);
   const multiInstanceBaseIds = getMultiInstanceBaseIds();
   const multiInstanceTitleMap = getMultiInstanceTitleMap();
   const multiInstanceMaxMap = getMultiInstanceMaxMap(settingsAppsWithIcons);
   const multiInstancePlaceholderMap = getMultiInstancePlaceholderMap(settingsAppsWithIcons);
-  const arrDashboardCombinedCards = resolveArrDashboardCombinedCards(config, settingsAppsWithIcons);
-  const arrSettingsAppIds = settingsApps
+  const arrDashboardCombinedCards = resolveArrDashboardCombinedCards(config, dashboardSettingsApps);
+  const arrSettingsAppIds = dashboardSettingsApps
     .filter((appItem) => isAppInSet(appItem.id, ARR_APP_IDS))
     .map((appItem) => appItem.id);
   const arrAppLookup = new Map(
-    settingsAppsWithIcons
+    dashboardSettingsApps
       .filter((appItem) => isAppInSet(appItem.id, ARR_APP_IDS))
       .map((appItem) => [normalizeAppId(appItem.id), appItem])
   );
-  const downloaderSettingsAppIds = settingsApps
+  const downloaderSettingsAppIds = dashboardSettingsApps
     .filter((appItem) => isAppInSet(appItem.id, DOWNLOADER_APP_IDS))
     .map((appItem) => appItem.id);
-  const mediaSettingsAppIds = settingsApps
+  const mediaSettingsAppIds = dashboardSettingsApps
     .filter((appItem) => isAppInSet(appItem.id, MEDIA_APP_IDS))
     .map((appItem) => appItem.id);
-  const multiInstanceCountsByBase = settingsApps.reduce((acc, appItem) => {
+  const multiInstanceCountsByBase = dashboardSettingsApps.reduce((acc, appItem) => {
     const baseId = getAppBaseId(appItem?.id);
     if (!supportsAppInstances(baseId)) return acc;
     acc[baseId] = (acc[baseId] || 0) + 1;
     return acc;
   }, {});
-  const baseDashboardElements = settingsApps.flatMap((appItem) => {
+  const baseDashboardElements = dashboardSettingsApps.flatMap((appItem) => {
     const elements = mergeOverviewElementSettings(appItem);
     const baseId = getAppBaseId(appItem?.id);
     const isMultiInstanceGroup = supportsAppInstances(baseId) && Number(multiInstanceCountsByBase[baseId] || 0) > 1;
@@ -3211,17 +3212,7 @@ app.post('/settings/apps/instances/delete', requireSettingsAdmin, (req, res) => 
     return redirectWithError('Instance not found.');
   }
 
-  const sortedInstances = [...sameBaseApps].sort((a, b) => {
-    const aSuffix = getInstanceSuffix(a?.id, baseId);
-    const bSuffix = getInstanceSuffix(b?.id, baseId);
-    const aOrder = Number.isFinite(aSuffix) ? aSuffix : Number.MAX_SAFE_INTEGER;
-    const bOrder = Number.isFinite(bSuffix) ? bSuffix : Number.MAX_SAFE_INTEGER;
-    if (aOrder !== bOrder) return aOrder - bOrder;
-    return String(a?.id || '').localeCompare(String(b?.id || ''));
-  });
-
-  const firstInstanceId = normalizeAppId(sortedInstances[0]?.id);
-  if (!firstInstanceId || appId === firstInstanceId) {
+  if (getInstanceSuffix(appId, baseId) === 1) {
     return redirectWithError('The first instance cannot be deleted.');
   }
 
@@ -8027,6 +8018,7 @@ function resolveDefaultCategoryIcon(name) {
   if (key === 'media') return '/icons/media-play.svg';
   if (key === 'manager') return '/icons/settings.svg';
   if (key === 'arr suite') return '/icons/app.svg';
+  if (key === 'indexers') return '/icons/indexers.svg';
   if (key === 'downloaders') return '/icons/download.svg';
   if (key === 'tools') return '/icons/tools.svg';
   return DEFAULT_CATEGORY_ICON;
