@@ -195,9 +195,7 @@
 
       <div class="dash-user">
         <div class="user-pill user-pill--menu" data-user-menu role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
-          <% if (user.avatar) { %>
-            <img class="user-avatar" src="<%= user.avatar %>" alt="" />
-          <% } %>
+          <img class="user-avatar" src="<%= user.avatar || user.avatarFallback || '/icons/user-profile.svg' %>" alt="" onerror="this.onerror=null;this.src='<%= user.avatarFallback || '/icons/user-profile.svg' %>';" />
           <div class="user-meta">
             <span class="role"><%= role %></span>
             <div class="username"><%= user.username %></div>
@@ -1948,6 +1946,7 @@
             const localUsersResultMap = {
               added: 'Launcharr user added.',
               'role-saved': 'Launcharr user role updated.',
+              removed: 'Launcharr user deleted.',
             };
             const localUsersNote = localUsersError
               ? localUsersError
@@ -1983,20 +1982,24 @@
               <button class="primary-button" type="submit">Add Launcharr user</button>
             </form>
             <div class="settings-users-table">
-              <div class="settings-users-row settings-users-head">
-                <div class="settings-users-head-cell">
+              <div class="settings-users-row settings-users-row--local settings-users-head">
+                <div class="settings-users-head-cell settings-users-col-user">
                   <img class="settings-head-icon" src="/icons/name.svg" alt="" />
                   <span>User</span>
                 </div>
-                <div class="settings-users-head-cell">
+                <div class="settings-users-head-cell settings-users-col-email">
                   <span>Email</span>
                 </div>
-                <div class="settings-users-head-cell">
+                <div class="settings-users-head-cell settings-users-col-last">
                   <span>Last Launcharr login</span>
                 </div>
-                <div class="settings-users-head-cell">
+                <div class="settings-users-head-cell settings-users-col-role">
                   <img class="settings-head-icon" src="/icons/role.svg" alt="" />
                   <span>Role</span>
+                </div>
+                <div class="settings-users-head-cell settings-users-head-cell--delete settings-users-col-delete">
+                  <img class="settings-head-icon" src="/icons/delete.svg" alt="" />
+                  <span>Delete</span>
                 </div>
               </div>
               <% if (Array.isArray(localUsers) && localUsers.length) { %>
@@ -2006,16 +2009,16 @@
                       ? new Date(localUser.lastLauncharrLogin).toLocaleString()
                       : '—';
                   %>
-                  <div class="settings-users-row">
-                    <div class="settings-users-name">
+                  <div class="settings-users-row settings-users-row--local">
+                    <div class="settings-users-name settings-users-col-user" data-label="User">
                       <%= localUser.username %>
                       <% if (localUser.isCurrentSessionUser) { %>
                         <span class="settings-users-locked">Current session</span>
                       <% } %>
                     </div>
-                    <div class="settings-users-login"><%= localUser.email || '—' %></div>
-                    <div class="settings-users-login" title="<%= localUser.lastLauncharrLogin || '' %>"><%= localLogin %></div>
-                    <div class="settings-users-role">
+                    <div class="settings-users-login settings-users-col-email" data-label="Email"><%= localUser.email || '—' %></div>
+                    <div class="settings-users-login settings-users-col-last" data-label="Last Launcharr login" title="<%= localUser.lastLauncharrLogin || '' %>"><%= localLogin %></div>
+                    <div class="settings-users-role settings-users-col-role" data-label="Role">
                       <form method="post" action="/settings/local-users/role" class="settings-role-inline-form">
                         <input type="hidden" name="username" value="<%= localUser.username %>" />
                         <select name="role">
@@ -2026,14 +2029,34 @@
                         <button class="primary-button" type="submit">Save</button>
                       </form>
                     </div>
+                    <div class="settings-users-delete settings-users-col-delete" data-label="Delete">
+                      <form
+                        method="post"
+                        action="/settings/local-users/delete"
+                        class="local-user-delete-form"
+                        onsubmit="return confirm('Delete this Launcharr user? This cannot be undone.');"
+                      >
+                        <input type="hidden" name="username" value="<%= localUser.username %>" />
+                        <button
+                          class="local-user-delete"
+                          type="submit"
+                          <%= localUser.canDelete ? '' : 'disabled' %>
+                          title="<%= localUser.isOwnerAccount ? 'Owner admin account cannot be deleted' : (localUser.isCurrentSessionUser ? 'You cannot delete your current session account' : 'Delete Launcharr user') %>"
+                          aria-label="Delete Launcharr user"
+                        >
+                          <img src="/icons/delete.svg" alt="" />
+                        </button>
+                      </form>
+                    </div>
                   </div>
                 <% }) %>
               <% } else { %>
-                <div class="settings-users-row">
-                  <div class="settings-users-login">No local Launcharr users found.</div>
-                  <div class="settings-users-login">—</div>
-                  <div class="settings-users-login">—</div>
-                  <div class="settings-users-login">—</div>
+                <div class="settings-users-row settings-users-row--local">
+                  <div class="settings-users-login settings-users-col-user">No local Launcharr users found.</div>
+                  <div class="settings-users-login settings-users-col-email">—</div>
+                  <div class="settings-users-login settings-users-col-last">—</div>
+                  <div class="settings-users-login settings-users-col-role">—</div>
+                  <div class="settings-users-login settings-users-col-delete">—</div>
                 </div>
               <% } %>
             </div>

@@ -34,6 +34,10 @@ const CONFIG_EXAMPLE_PATH = process.env.CONFIG_EXAMPLE_PATH || path.join(__dirna
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const ICONS_DIR = path.join(PUBLIC_DIR, 'icons');
+const USER_AVATAR_DIR = path.join(ICONS_DIR, 'custom', 'avatars');
+const USER_AVATAR_BASE = '/icons/custom/avatars';
+const MAX_USER_AVATAR_BYTES = 2 * 1024 * 1024;
+const USER_AVATAR_ALLOWED_MIME = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
 const ADMIN_USERS = parseCsv(process.env.ADMIN_USERS || '');
 const ARR_APP_IDS = ['radarr', 'sonarr', 'lidarr', 'readarr'];
@@ -360,7 +364,7 @@ async function sendAppriseNotification(settings, payload = {}) {
 
 function normalizeLocalUsers(items) {
   if (!Array.isArray(items)) return [];
-  return items
+  const normalized = items
     .map((entry) => {
       if (!entry || typeof entry !== 'object') return null;
       const username = String(entry.username || '').trim();
@@ -369,16 +373,37 @@ function normalizeLocalUsers(items) {
       const passwordHash = String(entry.passwordHash || '').trim();
       const salt = String(entry.salt || '').trim();
       if (!username || !passwordHash || !salt) return null;
+      const rawAvatar = String(entry.avatar || '').trim();
+      const avatar = normalizeStoredAvatarPath(rawAvatar);
+      const createdByRaw = String(entry.createdBy || '').trim().toLowerCase();
+      const createdBy = createdByRaw === 'setup' ? 'setup' : 'system';
+      const setupAccount = entry.setupAccount === true || createdBy === 'setup';
+      const systemCreated = entry.systemCreated !== false;
       return {
         username,
         email,
         role: normalizeLocalRole(role, 'admin'),
         passwordHash,
         salt,
+        avatar,
+        createdBy,
+        setupAccount,
+        systemCreated,
         createdAt: entry.createdAt ? String(entry.createdAt) : new Date().toISOString(),
       };
     })
     .filter(Boolean);
+
+  const setupAdminKey = resolveSetupAdminUserKey(normalized);
+  return normalized.map((entry) => {
+    const usernameKey = normalizeUserKey(entry.username || '');
+    const isSetupAdmin = Boolean(setupAdminKey && usernameKey && setupAdminKey === usernameKey);
+    return {
+      ...entry,
+      isSetupAdmin,
+      avatarFallback: resolveLocalAvatarFallback({ ...entry, isSetupAdmin }),
+    };
+  });
 }
 
 function normalizeLocalRole(value, fallback = 'user') {
@@ -412,12 +437,80 @@ function resolveLocalUsers(config) {
   return normalizeLocalUsers(config?.users);
 }
 
+function serializeLocalUsers(users) {
+  if (!Array.isArray(users)) return [];
+  return users
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return null;
+      const username = String(entry.username || '').trim();
+      const email = String(entry.email || '').trim();
+      const role = normalizeLocalRole(entry.role, 'user');
+      const passwordHash = String(entry.passwordHash || '').trim();
+      const salt = String(entry.salt || '').trim();
+      if (!username || !passwordHash || !salt) return null;
+      const createdByRaw = String(entry.createdBy || '').trim().toLowerCase();
+      const createdBy = createdByRaw === 'setup' ? 'setup' : 'system';
+      return {
+        username,
+        email,
+        role,
+        passwordHash,
+        salt,
+        avatar: normalizeStoredAvatarPath(entry.avatar || ''),
+        createdBy,
+        setupAccount: entry.setupAccount === true || createdBy === 'setup',
+        systemCreated: entry.systemCreated !== false,
+        createdAt: entry.createdAt ? String(entry.createdAt) : new Date().toISOString(),
+      };
+    })
+    .filter(Boolean);
+}
+
 function hasLocalAdmin(config) {
   return resolveLocalUsers(config).some((user) => user.role === 'admin');
 }
 
 function normalizeUserKey(value) {
   return String(value || '').trim().toLowerCase();
+}
+
+function resolveSetupAdminUserKey(users) {
+  if (!Array.isArray(users) || !users.length) return '';
+  const explicit = users.find((entry) => entry?.setupAccount === true || entry?.createdBy === 'setup');
+  if (explicit) return normalizeUserKey(explicit.username || explicit.email || '');
+
+  const adminUsers = users.filter((entry) => entry?.role === 'admin');
+  if (!adminUsers.length) return '';
+
+  const sorted = adminUsers
+    .slice()
+    .sort((a, b) => {
+      const aTime = Date.parse(String(a?.createdAt || '').trim());
+      const bTime = Date.parse(String(b?.createdAt || '').trim());
+      const safeATime = Number.isNaN(aTime) ? Number.MAX_SAFE_INTEGER : aTime;
+      const safeBTime = Number.isNaN(bTime) ? Number.MAX_SAFE_INTEGER : bTime;
+      if (safeATime !== safeBTime) return safeATime - safeBTime;
+      return String(a?.username || '').localeCompare(String(b?.username || ''));
+    });
+  const firstAdmin = sorted[0];
+  return normalizeUserKey(firstAdmin?.username || firstAdmin?.email || '');
+}
+
+function resolveLocalAvatarFallback(user) {
+  const isSetupAdmin = Boolean(
+    user?.isSetupAdmin
+    || user?.setupAccount === true
+    || String(user?.createdBy || '').trim().toLowerCase() === 'setup'
+  );
+  return isSetupAdmin ? '/icons/role.svg' : '/icons/user-profile.svg';
+}
+
+function normalizeStoredAvatarPath(value) {
+  const avatar = String(value || '').trim();
+  if (!avatar) return '';
+  if (avatar.startsWith('/icons/')) return avatar;
+  if (avatar.startsWith('http://') || avatar.startsWith('https://')) return avatar;
+  return '';
 }
 
 function resolveUserLogins(config) {
@@ -532,12 +625,18 @@ function verifyPassword(password, user) {
 }
 
 function setSessionUser(req, user, source = 'local') {
+  const normalizedSource = String(source || '').trim().toLowerCase() || 'local';
+  const avatar = normalizeStoredAvatarPath(user?.avatar || '');
+  const avatarFallback = normalizedSource === 'local'
+    ? resolveLocalAvatarFallback(user)
+    : '/icons/user-profile.svg';
   req.session.user = {
     username: user.username,
     email: user.email || '',
-    avatar: '',
+    avatar,
+    avatarFallback,
     role: user.role || 'admin',
-    source,
+    source: normalizedSource,
   };
   req.session.viewRole = null;
 }
@@ -595,6 +694,90 @@ function saveCustomIcon(iconDataUrl, targetDir, nameHint = '') {
     return { iconPath: filename };
   } catch (err) {
     return { iconPath: '' };
+  }
+}
+
+function detectAvatarMimeFromBuffer(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return '';
+  if (
+    buffer.length >= 8
+    && buffer[0] === 0x89
+    && buffer[1] === 0x50
+    && buffer[2] === 0x4E
+    && buffer[3] === 0x47
+    && buffer[4] === 0x0D
+    && buffer[5] === 0x0A
+    && buffer[6] === 0x1A
+    && buffer[7] === 0x0A
+  ) {
+    return 'image/png';
+  }
+  if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) {
+    return 'image/jpeg';
+  }
+  if (
+    buffer[0] === 0x52
+    && buffer[1] === 0x49
+    && buffer[2] === 0x46
+    && buffer[3] === 0x46
+    && buffer[8] === 0x57
+    && buffer[9] === 0x45
+    && buffer[10] === 0x42
+    && buffer[11] === 0x50
+  ) {
+    return 'image/webp';
+  }
+  return '';
+}
+
+function parseUserAvatarDataUrl(dataUrl) {
+  const raw = String(dataUrl || '').trim();
+  if (!raw) return { ok: false, error: 'Avatar image data is missing.' };
+  const match = raw.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) return { ok: false, error: 'Avatar must be a valid PNG, JPG, or WEBP image.' };
+
+  const requestedMime = String(match[1] || '').trim().toLowerCase();
+  const mime = requestedMime === 'image/jpg' ? 'image/jpeg' : requestedMime;
+  if (!USER_AVATAR_ALLOWED_MIME.has(mime)) {
+    return { ok: false, error: 'Avatar type is not allowed. Use PNG, JPG, or WEBP.' };
+  }
+
+  const encoded = String(match[2] || '').trim();
+  let buffer = null;
+  try {
+    buffer = Buffer.from(encoded, 'base64');
+  } catch (err) {
+    return { ok: false, error: 'Avatar image could not be decoded.' };
+  }
+  if (!buffer || !buffer.length) return { ok: false, error: 'Avatar image is empty.' };
+  if (buffer.length > MAX_USER_AVATAR_BYTES) {
+    return { ok: false, error: 'Avatar image is too large. Maximum size is 2 MB.' };
+  }
+
+  const decodedMime = detectAvatarMimeFromBuffer(buffer);
+  if (!decodedMime || decodedMime !== mime) {
+    return { ok: false, error: 'Avatar image content does not match the selected file type.' };
+  }
+
+  const ext = mime === 'image/png'
+    ? 'png'
+    : (mime === 'image/webp' ? 'webp' : 'jpg');
+  return { ok: true, mime, ext, buffer };
+}
+
+function saveCustomUserAvatar(buffer, ext, nameHint = '') {
+  if (!Buffer.isBuffer(buffer) || !buffer.length) return '';
+  const safeExt = String(ext || '').trim().toLowerCase();
+  if (!['png', 'jpg', 'webp'].includes(safeExt)) return '';
+  try {
+    if (!fs.existsSync(USER_AVATAR_DIR)) fs.mkdirSync(USER_AVATAR_DIR, { recursive: true });
+    const baseName = slugifyId(nameHint) || 'avatar';
+    const filename = `${baseName}-${Date.now()}.${safeExt}`;
+    const fullPath = path.join(USER_AVATAR_DIR, filename);
+    fs.writeFileSync(fullPath, buffer);
+    return `${USER_AVATAR_BASE}/${filename}`;
+  } catch (err) {
+    return '';
   }
 }
 
@@ -738,6 +921,41 @@ app.use(
     maxAge: 7 * 24 * 60 * 60 * 1000,
   })
 );
+app.use((req, res, next) => {
+  const sessionUser = req.session?.user;
+  if (!sessionUser || typeof sessionUser !== 'object') return next();
+
+  const source = String(sessionUser.source || '').trim().toLowerCase();
+  if (source === 'local') {
+    const config = loadConfig();
+    const users = resolveLocalUsers(config);
+    const index = findLocalUserIndex(users, {
+      username: sessionUser.username,
+      email: sessionUser.email,
+    });
+    if (index >= 0) {
+      const localUser = users[index];
+      req.session.user = {
+        ...sessionUser,
+        username: localUser.username,
+        email: localUser.email || '',
+        role: localUser.role || sessionUser.role || 'user',
+        avatar: normalizeStoredAvatarPath(localUser.avatar || ''),
+        avatarFallback: resolveLocalAvatarFallback(localUser),
+        source: 'local',
+      };
+      return next();
+    }
+  }
+
+  req.session.user = {
+    ...sessionUser,
+    avatar: normalizeStoredAvatarPath(sessionUser.avatar || ''),
+    avatarFallback: sessionUser.avatarFallback || '/icons/user-profile.svg',
+    source: source || sessionUser.source || 'local',
+  };
+  return next();
+});
 
 loadLogsFromDisk(resolveLogSettings(loadConfig()));
 // DEBUG: confirm Plex client id creation on startup.
@@ -877,10 +1095,14 @@ app.post('/setup', (req, res) => {
     role: 'admin',
     passwordHash,
     salt,
+    avatar: '',
+    createdBy: 'setup',
+    setupAccount: true,
+    systemCreated: true,
     createdAt: new Date().toISOString(),
   };
 
-  saveConfig({ ...config, users: [...users, newUser] });
+  saveConfig({ ...config, users: serializeLocalUsers([...users, newUser]) });
   setSessionUser(req, newUser, 'local');
   return res.redirect('/dashboard');
 });
@@ -1432,9 +1654,16 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
       sessionUsernameKey && sessionUsernameKey === usernameKey
       || (sessionEmailKey && emailKey && sessionEmailKey === emailKey)
     );
+    const isOwnerAccount = Boolean(
+      entry?.isSetupAdmin
+      || entry?.setupAccount === true
+      || String(entry?.createdBy || '').trim().toLowerCase() === 'setup'
+    );
     return {
       ...entry,
       isCurrentSessionUser,
+      isOwnerAccount,
+      canDelete: !isOwnerAccount && !isCurrentSessionUser && entry?.systemCreated !== false,
       lastLauncharrLogin: loginKey ? String(localLoginStore[loginKey] || '') : '',
     };
   });
@@ -2327,6 +2556,7 @@ app.post('/user-settings/profile', requireUser, (req, res) => {
   const email = String(req.body?.email || '').trim();
   const newPassword = String(req.body?.newPassword || '');
   const confirmPassword = String(req.body?.confirmPassword || '');
+  const avatarDataUrl = String(req.body?.avatarDataUrl || '').trim();
 
   if (!username) {
     return res.redirect('/user-settings?profileError=Username+is+required.');
@@ -2365,10 +2595,26 @@ app.post('/user-settings/profile', requireUser, (req, res) => {
     nextUser.salt = salt;
     nextUser.passwordHash = hashPassword(newPassword, salt);
   }
+  if (avatarDataUrl) {
+    const parsedAvatar = parseUserAvatarDataUrl(avatarDataUrl);
+    if (!parsedAvatar.ok) {
+      const encodedError = encodeURIComponent(parsedAvatar.error || 'Invalid avatar image.');
+      return res.redirect(`/user-settings?profileError=${encodedError}`);
+    }
+    const savedAvatar = saveCustomUserAvatar(parsedAvatar.buffer, parsedAvatar.ext, `${username}-avatar`);
+    if (!savedAvatar) {
+      return res.redirect('/user-settings?profileError=Failed+to+save+avatar+image.');
+    }
+    const previousAvatar = normalizeStoredAvatarPath(currentUser.avatar || '');
+    nextUser.avatar = savedAvatar;
+    if (previousAvatar && previousAvatar !== savedAvatar) {
+      deleteCustomIcon(previousAvatar, [USER_AVATAR_BASE]);
+    }
+  }
 
   const nextUsers = [...users];
   nextUsers[index] = nextUser;
-  saveConfig({ ...config, users: nextUsers });
+  saveConfig({ ...config, users: serializeLocalUsers(nextUsers) });
   setSessionUser(req, nextUser, 'local');
 
   return res.redirect('/user-settings?profileResult=saved');
@@ -2406,9 +2652,13 @@ app.post('/settings/local-users', requireSettingsAdmin, (req, res) => {
     role,
     salt,
     passwordHash: hashPassword(password, salt),
+    avatar: '',
+    createdBy: 'system',
+    setupAccount: false,
+    systemCreated: true,
     createdAt: new Date().toISOString(),
   };
-  saveConfig({ ...config, users: [...users, newUser] });
+  saveConfig({ ...config, users: serializeLocalUsers([...users, newUser]) });
   return res.redirect('/settings?tab=user&localUsersResult=added');
 });
 
@@ -2436,8 +2686,47 @@ app.post('/settings/local-users/role', requireSettingsAdmin, (req, res) => {
 
   const nextUsers = [...users];
   nextUsers[index] = { ...nextUsers[index], role };
-  saveConfig({ ...config, users: nextUsers });
+  saveConfig({ ...config, users: serializeLocalUsers(nextUsers) });
   return res.redirect('/settings?tab=user&localUsersResult=role-saved');
+});
+
+app.post('/settings/local-users/delete', requireSettingsAdmin, (req, res) => {
+  const config = loadConfig();
+  const users = resolveLocalUsers(config);
+  const username = String(req.body?.username || '').trim();
+  if (!username) return res.redirect('/settings?tab=user&localUsersError=Missing+username.');
+
+  const index = users.findIndex((entry) => normalizeUserKey(entry?.username || '') === normalizeUserKey(username));
+  if (index < 0) return res.redirect('/settings?tab=user&localUsersError=Launcharr+user+not+found.');
+
+  const targetUser = users[index];
+  const isOwnerAccount = Boolean(
+    targetUser?.isSetupAdmin
+    || targetUser?.setupAccount === true
+    || String(targetUser?.createdBy || '').trim().toLowerCase() === 'setup'
+  );
+  if (isOwnerAccount) {
+    return res.redirect('/settings?tab=user&localUsersError=Owner+admin+account+cannot+be+deleted.');
+  }
+  if (targetUser?.systemCreated === false) {
+    return res.redirect('/settings?tab=user&localUsersError=Only+system-generated+local+users+can+be+deleted.');
+  }
+
+  const currentSessionSource = String(req.session?.user?.source || '').trim().toLowerCase();
+  const isCurrentSessionUser = currentSessionSource === 'local'
+    && normalizeUserKey(req.session?.user?.username || '') === normalizeUserKey(targetUser.username || '');
+  if (isCurrentSessionUser) {
+    return res.redirect('/settings?tab=user&localUsersError=You+cannot+delete+your+current+session+account.');
+  }
+
+  const avatarPath = normalizeStoredAvatarPath(targetUser.avatar || '');
+  if (avatarPath) {
+    deleteCustomIcon(avatarPath, [USER_AVATAR_BASE]);
+  }
+
+  const nextUsers = users.filter((_entry, entryIndex) => entryIndex !== index);
+  saveConfig({ ...config, users: serializeLocalUsers(nextUsers) });
+  return res.redirect('/settings?tab=user&localUsersResult=removed');
 });
 
 // DEPRECATED: Legacy endpoint kept for compatibility with older clients.
@@ -8782,6 +9071,7 @@ async function completePlexLogin(req, authToken) {
     username: plexUser.username || plexUser.title || 'Plex User',
     email: plexUser.email || null,
     avatar,
+    avatarFallback: '/icons/user-profile.svg',
     role,
     source: 'plex',
   };

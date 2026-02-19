@@ -99,9 +99,7 @@
     <div class="auth">
       <% if (user) { %>
         <div class="user-pill user-pill--menu user-pill--menu-down" data-user-menu role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
-          <% if (user.avatar) { %>
-            <img class="user-avatar" src="<%= user.avatar %>" alt="" />
-          <% } %>
+          <img class="user-avatar" src="<%= user.avatar || user.avatarFallback || '/icons/user-profile.svg' %>" alt="" onerror="this.onerror=null;this.src='<%= user.avatarFallback || '/icons/user-profile.svg' %>';" />
           <div class="user-meta">
             <span class="role"><%= role %></span>
             <div class="username"><%= user.username %></div>

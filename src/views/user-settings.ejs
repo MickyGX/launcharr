@@ -195,9 +195,7 @@
 
       <div class="dash-user">
         <div class="user-pill user-pill--menu" data-user-menu role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
-          <% if (user.avatar) { %>
-            <img class="user-avatar" src="<%= user.avatar %>" alt="" />
-          <% } %>
+          <img class="user-avatar" src="<%= user.avatar || user.avatarFallback || '/icons/user-profile.svg' %>" alt="" onerror="this.onerror=null;this.src='<%= user.avatarFallback || '/icons/user-profile.svg' %>';" />
           <div class="user-meta">
             <span class="role"><%= role %></span>
             <div class="username"><%= user.username %></div>
@@ -262,14 +260,43 @@
             : (profileResultMap[profileResult] || (isLocalUser
               ? 'Update your Launcharr account details.'
               : 'This profile is managed by your Plex account.'));
+          const profileRole = isLocalUser
+            ? (localProfile?.role || actualRole)
+            : role;
         %>
         <div class="settings-form">
           <div class="settings-card">
-            <div class="settings-card-title">Profile</div>
-            <div class="settings-card-sub"><%= isLocalUser ? 'Launcharr account details' : 'Plex account details' %></div>
+            <div class="settings-profile-head">
+              <div class="settings-profile-head-copy">
+                <div class="settings-card-title">Profile</div>
+                <div class="settings-card-sub"><%= isLocalUser ? 'Launcharr account details' : 'Plex account details' %></div>
+              </div>
+              <strong class="settings-role-pill settings-role-pill--profile">
+                <img class="settings-role-pill-icon" src="/icons/role.svg" alt="" />
+                <%= profileRole %>
+              </strong>
+            </div>
+            <%
+              const profileAvatarFallback = user.avatarFallback || '/icons/user-profile.svg';
+              const profileAvatarSrc = (localProfile?.avatar || user.avatar || profileAvatarFallback);
+            %>
+            <div class="settings-profile-avatar">
+              <img
+                class="settings-profile-avatar-image"
+                id="profileAvatarPreview"
+                src="<%= profileAvatarSrc %>"
+                alt="Current avatar"
+                onerror="this.onerror=null;this.src='<%= profileAvatarFallback %>';"
+              />
+              <div class="settings-profile-avatar-meta">
+                <strong class="settings-profile-avatar-label">Current avatar</strong>
+                <span class="settings-profile-avatar-help">PNG, JPG, or WEBP up to 2 MB.</span>
+              </div>
+            </div>
             <span class="settings-users-note<%= profileError ? ' settings-users-note--error' : '' %>"><%= profileNote %></span>
             <% if (isLocalUser) { %>
-              <form method="post" action="/user-settings/profile" class="settings-form">
+              <form method="post" action="/user-settings/profile" class="settings-form" id="profileDetailsForm">
+                <input type="hidden" name="avatarDataUrl" id="avatarDataUrl" value="" />
                 <label class="field">
                   <span>Username</span>
                   <input type="text" name="username" value="<%= localProfile?.username || user.username || '' %>" required />
@@ -286,18 +313,19 @@
                   <span>Confirm new password</span>
                   <input type="password" name="confirmPassword" placeholder="Repeat new password" />
                 </label>
+                <label class="field">
+                  <span>Avatar image (optional)</span>
+                  <input class="settings-icon-file" type="file" id="avatarUploadInput" accept="image/png,image/jpeg,image/webp" />
+                </label>
+                <span class="settings-users-note settings-users-note--error" id="avatarUploadError" hidden></span>
                 <button class="primary-button" type="submit">Save profile details</button>
               </form>
-              <div class="settings-card-lines">
-                <div class="settings-card-line"><span>Role</span><strong><%= localProfile?.role || actualRole %></strong></div>
-              </div>
             <% } else { %>
               <div class="settings-card-lines">
                 <div class="settings-card-line"><span>Username</span><strong><%= user.username %></strong></div>
                 <% if (user.email) { %>
                   <div class="settings-card-line"><span>Email</span><strong><%= user.email %></strong></div>
                 <% } %>
-                <div class="settings-card-line"><span>Role</span><strong><%= role %></strong></div>
               </div>
             <% } %>
           </div>
@@ -489,6 +517,86 @@
     if (viewModeForm && viewModeToggle) {
       viewModeToggle.addEventListener('change', () => {
         viewModeForm.submit();
+      });
+    }
+
+    const avatarUploadInput = document.getElementById('avatarUploadInput');
+    const avatarDataUrlField = document.getElementById('avatarDataUrl');
+    const avatarPreview = document.getElementById('profileAvatarPreview');
+    const avatarUploadError = document.getElementById('avatarUploadError');
+    const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
+    const MIN_AVATAR_DIMENSION = 64;
+    const MAX_AVATAR_DIMENSION = 1024;
+    const ALLOWED_AVATAR_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+
+    function setAvatarError(message) {
+      if (!avatarUploadError) return;
+      const text = String(message || '').trim();
+      avatarUploadError.hidden = !text;
+      avatarUploadError.textContent = text;
+    }
+
+    function resetAvatarUploadInput() {
+      if (!avatarUploadInput) return;
+      avatarUploadInput.value = '';
+      if (avatarDataUrlField) avatarDataUrlField.value = '';
+    }
+
+    if (avatarUploadInput && avatarDataUrlField && avatarPreview) {
+      avatarUploadInput.addEventListener('change', () => {
+        setAvatarError('');
+        avatarDataUrlField.value = '';
+        const file = avatarUploadInput.files && avatarUploadInput.files[0];
+        if (!file) return;
+
+        const mime = String(file.type || '').trim().toLowerCase();
+        if (!ALLOWED_AVATAR_TYPES.has(mime)) {
+          setAvatarError('Avatar must be PNG, JPG, or WEBP.');
+          resetAvatarUploadInput();
+          return;
+        }
+        if (file.size > MAX_AVATAR_BYTES) {
+          setAvatarError('Avatar image is too large. Maximum size is 2 MB.');
+          resetAvatarUploadInput();
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onerror = () => {
+          setAvatarError('Avatar file could not be read.');
+          resetAvatarUploadInput();
+        };
+        reader.onload = () => {
+          const dataUrl = String(reader.result || '');
+          if (!dataUrl) {
+            setAvatarError('Avatar file is empty.');
+            resetAvatarUploadInput();
+            return;
+          }
+          const probe = new Image();
+          probe.onerror = () => {
+            setAvatarError('Avatar file is not a valid image.');
+            resetAvatarUploadInput();
+          };
+          probe.onload = () => {
+            const width = Number(probe.naturalWidth || 0);
+            const height = Number(probe.naturalHeight || 0);
+            if (
+              width < MIN_AVATAR_DIMENSION
+              || height < MIN_AVATAR_DIMENSION
+              || width > MAX_AVATAR_DIMENSION
+              || height > MAX_AVATAR_DIMENSION
+            ) {
+              setAvatarError('Avatar dimensions must be between 64x64 and 1024x1024 pixels.');
+              resetAvatarUploadInput();
+              return;
+            }
+            avatarDataUrlField.value = dataUrl;
+            avatarPreview.src = dataUrl;
+          };
+          probe.src = dataUrl;
+        };
+        reader.readAsDataURL(file);
       });
     }
   </script>

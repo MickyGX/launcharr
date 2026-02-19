@@ -1,4 +1,12 @@
-# Release Notes (v0.1.0 -> v0.2.24)
+# Release Notes (v0.1.0 -> v0.2.25)
+
+## v0.2.25 (2026-02-19)
+
+- Added local account avatar upload in user profile with validation and preview.
+- Added owner-aware user avatar fallback behavior (`role.svg` for setup owner admin, `user-profile.svg` for other local/system users).
+- Added local Launcharr user delete actions in `Settings -> User` with confirmation plus owner/current-session protections.
+- Updated profile role display to a top-right header pill in user profile.
+- Improved mobile handling for local users table controls to reduce clipping/overflow regressions.
 
 ## v0.2.24 (2026-02-19)
 
@@ -150,7 +158,7 @@
 - Fixed empty-state behavior for active stream modules to align card output across Plex/Jellyfin/Emby and combined views.
 
 
-This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.24`.
+This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.25`.
 
 ## v0.2.5 (2026-02-15)
 
