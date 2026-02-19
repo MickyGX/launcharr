@@ -1,4 +1,10 @@
-# Release Notes (v0.1.0 -> v0.2.27)
+# Release Notes (v0.1.0 -> v0.2.28)
+
+## v0.2.28 (2026-02-19)
+
+- Restored Seerr API key field visibility in both `Settings -> App` and per-app settings pages.
+- Updated API-key-required app detection to use explicit base app IDs so field visibility does not regress with category metadata changes.
+- Fixed settings token-status evaluation for Seerr/Pulsarr and related API-key integrations when category labels are customized.
 
 ## v0.2.27 (2026-02-19)
 
@@ -171,7 +177,7 @@
 - Fixed empty-state behavior for active stream modules to align card output across Plex/Jellyfin/Emby and combined views.
 
 
-This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.27`.
+This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.28`.
 
 ## v0.2.5 (2026-02-15)
 

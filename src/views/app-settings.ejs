@@ -261,7 +261,23 @@
           return matched || id;
         })();
         const isArrSuite = String(app.category || '').toLowerCase() === 'arr suite';
-        const requiresApiKey = isArrSuite || ['tautulli', 'jellyfin', 'emby', 'prowlarr', 'sabnzbd'].includes(appBaseId);
+        const apiKeyAppBaseIds = new Set([
+          'radarr',
+          'sonarr',
+          'lidarr',
+          'readarr',
+          'bazarr',
+          'prowlarr',
+          'pulsarr',
+          'seerr',
+          'tautulli',
+          'jellyfin',
+          'emby',
+          'sabnzbd',
+          'jackett',
+          'autobrr',
+        ]);
+        const requiresApiKey = isArrSuite || apiKeyAppBaseIds.has(appBaseId);
         const hasToken = appBaseId === 'plex'
           ? Boolean(app.plexToken)
           : (requiresApiKey ? Boolean(app.apiKey) : true);

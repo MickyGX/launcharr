@@ -1826,7 +1826,23 @@
               const appEnabled = appHasMenu ? Boolean(appOverview[appRoleKey] || appLaunch[appRoleKey] || appSettingsMenu[appRoleKey]) : true;
               const appHasUrl = Boolean(panelAppItem.localUrl || panelAppItem.remoteUrl);
               const appIsArrSuite = String(panelAppItem.category || '').toLowerCase() === 'arr suite';
-              const appRequiresApiKey = appIsArrSuite || ['tautulli', 'jellyfin', 'emby', 'prowlarr', 'sabnzbd'].includes(appBaseId);
+              const apiKeyAppBaseIds = new Set([
+                'radarr',
+                'sonarr',
+                'lidarr',
+                'readarr',
+                'bazarr',
+                'prowlarr',
+                'pulsarr',
+                'seerr',
+                'tautulli',
+                'jellyfin',
+                'emby',
+                'sabnzbd',
+                'jackett',
+                'autobrr',
+              ]);
+              const appRequiresApiKey = appIsArrSuite || apiKeyAppBaseIds.has(appBaseId);
               const appHasToken = appBaseId === 'plex'
                 ? Boolean(panelAppItem.plexToken)
                 : (appRequiresApiKey ? Boolean(panelAppItem.apiKey) : true);
