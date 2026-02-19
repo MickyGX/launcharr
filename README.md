@@ -28,4 +28,4 @@ For installation, setup, configuration, and troubleshooting, use the wiki docs:
 
 ## Support
 
-<a href="https://www.buymeacoffee.com/MickyGX"><img src="https://img.buymeacoffee.com/button-api/?text=Buy me a coffee&emoji=&slug=MickyGX&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff" /></a>
+[![Buy Me a Coffee](https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee&emoji=&slug=MickyGX&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff)](https://www.buymeacoffee.com/MickyGX)
