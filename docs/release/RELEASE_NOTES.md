@@ -1,4 +1,11 @@
-# Release Notes (v0.1.0 -> v0.2.25)
+# Release Notes (v0.1.0 -> v0.2.26)
+
+## v0.2.26 (2026-02-19)
+
+- Added separate `Overview` visibility control in `Settings -> Custom -> Dashboard` visibility popovers.
+- Updated dashboard visibility popover ordering so `Overview` appears above `Dashboard`.
+- Updated element visibility persistence to keep `overviewVisibilityRole` and `dashboardVisibilityRole` independent.
+- Updated app overview rendering to enforce the dedicated overview visibility role by user role.
 
 ## v0.2.25 (2026-02-19)
 
@@ -158,7 +165,7 @@
 - Fixed empty-state behavior for active stream modules to align card output across Plex/Jellyfin/Emby and combined views.
 
 
-This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.25`.
+This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.26`.
 
 ## v0.2.5 (2026-02-15)
 

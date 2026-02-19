@@ -1488,6 +1488,10 @@ app.get('/apps/:id', requireUser, (req, res) => {
     return res.status(403).send('Overview access denied.');
   }
   const appWithIcon = { ...appItem, icon: resolvePersistedAppIconPath(appItem) };
+  const overviewElements = mergeOverviewElementSettings(appItem).map((element) => ({
+    ...element,
+    enable: element.enable !== false && canAccessOverviewElement(appItem, element, role),
+  }));
 
   res.render('app-overview', {
     user: req.session.user,
@@ -1499,7 +1503,7 @@ app.get('/apps/:id', requireUser, (req, res) => {
     multiInstanceBaseIds: getMultiInstanceBaseIds(),
     appBaseUrls,
     app: appWithIcon,
-    overviewElements: mergeOverviewElementSettings(appItem),
+    overviewElements,
     tautulliCards: mergeTautulliCardSettings(appItem),
   });
 });
@@ -7136,15 +7140,35 @@ function buildCategoryRank(categoryOrder) {
   };
 }
 
+function resolveOverviewElementVisibilityRole(appItem, elementSettings = {}, fallback = 'user') {
+  const source = elementSettings && typeof elementSettings === 'object' ? elementSettings : {};
+  const explicit = parseVisibilityRole(source.overviewVisibilityRole);
+  if (explicit) return explicit;
+  const legacyDashboardRole = parseVisibilityRole(source.dashboardVisibilityRole);
+  const isEnabled = source.enable === undefined ? true : Boolean(source.enable);
+  if (!isEnabled) return 'disabled';
+  if (legacyDashboardRole) return legacyDashboardRole;
+  const menu = normalizeMenu(appItem);
+  return normalizeVisibilityRole(menu?.overview?.minRole || fallback, fallback);
+}
+
 function resolveDashboardElementVisibilityRole(appItem, elementSettings = {}, fallback = 'user') {
   const source = elementSettings && typeof elementSettings === 'object' ? elementSettings : {};
   const explicit = parseVisibilityRole(source.dashboardVisibilityRole);
   if (explicit) return explicit;
-  const isEnabled = source.enable === undefined ? true : Boolean(source.enable);
-  const isOnDashboard = source.dashboard === undefined ? true : Boolean(source.dashboard);
-  if (!isEnabled || !isOnDashboard) return 'disabled';
+  const isOnDashboard = source.dashboard === undefined
+    ? (source.enable === undefined ? true : Boolean(source.enable))
+    : Boolean(source.dashboard);
+  if (!isOnDashboard) return 'disabled';
   const menu = normalizeMenu(appItem);
   return normalizeVisibilityRole(menu?.overview?.minRole || fallback, fallback);
+}
+
+function canAccessOverviewElement(appItem, elementSettings, role) {
+  const roleKey = parseVisibilityRole(role);
+  if (!roleKey) return false;
+  const minRole = resolveOverviewElementVisibilityRole(appItem, elementSettings, 'user');
+  return roleMeetsMinRole(roleKey, minRole);
 }
 
 function canAccessDashboardElement(appItem, elementSettings, role) {
@@ -7292,15 +7316,18 @@ function mergeOverviewElementSettings(appItem) {
     const savedItem = savedMap.get(element.id) || {};
     const orderValue = Number(savedItem.order);
     const resolveBoolean = (value, fallback) => (value === undefined ? fallback : Boolean(value));
+    const overviewVisibilityRole = resolveOverviewElementVisibilityRole(appItem, savedItem, 'user');
     const dashboardVisibilityRole = resolveDashboardElementVisibilityRole(appItem, savedItem, 'user');
+    const overviewVisible = overviewVisibilityRole !== 'disabled';
     const dashboardVisible = dashboardVisibilityRole !== 'disabled';
     const queueVisibleRows = resolveTableVisibleRows(element.id, savedItem.queueVisibleRows);
     const queueLabels = resolveQueueColumnLabels(appItem);
     return {
       id: element.id,
       name: element.name,
-      enable: resolveBoolean(savedItem.enable, dashboardVisible),
+      enable: resolveBoolean(savedItem.enable, overviewVisible),
       dashboard: resolveBoolean(savedItem.dashboard, dashboardVisible),
+      overviewVisibilityRole,
       dashboardVisibilityRole,
       favourite: resolveBoolean(savedItem.favourite, false),
       showSubtitle: resolveBoolean(savedItem.showSubtitle, true),
@@ -7333,7 +7360,11 @@ function mergeOverviewElementSettings(appItem) {
 function buildOverviewElementsFromRequest(appItem, body) {
   const elements = getOverviewElements(appItem);
   if (!elements.length) return appItem.overviewElements;
+  const existingSettings = new Map(
+    mergeOverviewElementSettings(appItem).map((item) => [item.id, item])
+  );
   return elements.map((element, index) => {
+    const existing = existingSettings.get(element.id) || {};
     const orderValue = body[`element_order_${element.id}`];
     const parsedOrder = Number(orderValue);
     const isQueue = element.id === 'activity-queue';
@@ -7345,6 +7376,8 @@ function buildOverviewElementsFromRequest(appItem, body) {
       id: element.id,
       enable: Boolean(body[`element_enable_${element.id}`]),
       dashboard: Boolean(body[`element_dashboard_${element.id}`]),
+      overviewVisibilityRole: resolveOverviewElementVisibilityRole(appItem, existing, 'user'),
+      dashboardVisibilityRole: resolveDashboardElementVisibilityRole(appItem, existing, 'user'),
       favourite: Boolean(body[`element_favourite_${element.id}`]),
       showSubtitle: Boolean(body[`element_showSubtitle_${element.id}`]),
       showMeta: Boolean(body[`element_showMeta_${element.id}`]),
@@ -7376,11 +7409,13 @@ function buildDashboardElementsFromRequest(appItem, body) {
     if (!isPresent) {
       const fallback = existingSettings.get(element.id);
       if (fallback) {
+        const fallbackOverviewVisibilityRole = resolveOverviewElementVisibilityRole(appItem, fallback, 'user');
         const fallbackVisibilityRole = resolveDashboardElementVisibilityRole(appItem, fallback, 'user');
         return {
           id: element.id,
           enable: Boolean(fallback.enable),
           dashboard: Boolean(fallback.dashboard),
+          overviewVisibilityRole: fallbackOverviewVisibilityRole,
           dashboardVisibilityRole: fallbackVisibilityRole,
           favourite: Boolean(fallback.favourite),
           showSubtitle: Boolean(fallback.showSubtitle),
@@ -7403,10 +7438,15 @@ function buildDashboardElementsFromRequest(appItem, body) {
     const orderValue = body[`${prefix}order`];
     const parsedOrder = Number(orderValue);
     const isQueue = element.id === 'activity-queue';
+    const overviewVisibilityRole = normalizeVisibilityRole(
+      body[`${prefix}overview_visibility_role`],
+      resolveOverviewElementVisibilityRole(appItem, existingSettings.get(element.id) || {}, 'user')
+    );
     const visibilityRole = normalizeVisibilityRole(
       body[`${prefix}visibility_role`],
       resolveDashboardElementVisibilityRole(appItem, existingSettings.get(element.id) || {}, 'user')
     );
+    const overviewVisible = overviewVisibilityRole !== 'disabled';
     const dashboardVisible = visibilityRole !== 'disabled';
     const queueRowsRaw = body[`${prefix}queue_visible_rows`];
     const queueVisibleRows = queueRowsRaw === undefined
@@ -7414,8 +7454,9 @@ function buildDashboardElementsFromRequest(appItem, body) {
       : resolveTableVisibleRows(element.id, queueRowsRaw);
     return {
       id: element.id,
-      enable: dashboardVisible,
+      enable: overviewVisible,
       dashboard: dashboardVisible,
+      overviewVisibilityRole,
       dashboardVisibilityRole: visibilityRole,
       favourite: Boolean(body[`${prefix}favourite`]),
       showSubtitle: Boolean(body[`${prefix}showSubtitle`]),

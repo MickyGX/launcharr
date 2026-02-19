@@ -974,12 +974,19 @@
                   <% const isDisabled = Boolean(item.appAccess === false); %>
                   <% const combinedKey = item.combined ? `combined:${item.combinedType || 'mixed'}:${item.combinedSection || element.id || 'unknown'}` : ''; %>
                   <% const combinedSettings = combinedKey && dashboardCombinedSettings ? dashboardCombinedSettings[combinedKey] : null; %>
+                  <% const baseOverviewVisibilityRole = item.combined
+                    ? 'disabled'
+                    : normalizeDashboardVisibilityRole(
+                      element.overviewVisibilityRole,
+                      (element.enable === false) ? 'disabled' : 'user'
+                    ); %>
                   <% const baseVisibilityRole = item.combined
                     ? resolveCombinedDashboardVisibilityRoleView(combinedSettings, 'user')
                     : normalizeDashboardVisibilityRole(
                       element.dashboardVisibilityRole,
                       (element.enable === false || element.dashboard === false) ? 'disabled' : 'user'
                     ); %>
+                  <% const effectiveOverviewVisibilityRole = isDisabled ? 'disabled' : baseOverviewVisibilityRole; %>
                   <% const effectiveVisibilityRole = isDisabled ? 'disabled' : baseVisibilityRole; %>
                   <% const combinedPrefix = item.combined ? `dashboard_combined_${item.combinedType || 'mixed'}_${item.combinedSection || element.id}` : `dashboard_${item.appId}_${element.id}`; %>
                   <div class="settings-row settings-row--elements settings-row--with-expand settings-row--draggable <%= effectiveVisibilityRole === 'disabled' ? 'is-disabled' : '' %>" data-app-id="<%= item.appId %>" data-category="<%= item.category || 'Tools' %>" data-category-rank="<%= categoryRank %>" draggable="true">
@@ -992,6 +999,17 @@
                       <div class="settings-visibility-popover" data-dashboard-visibility-popover>
                         <button class="settings-visibility-trigger" type="button" aria-label="Configure dashboard visibility role" aria-expanded="false" aria-haspopup="true" <%= isDisabled ? 'disabled' : '' %>></button>
                         <div class="settings-visibility-menu" hidden>
+                          <label class="settings-visibility-group">
+                            <span class="settings-visibility-label">Overview</span>
+                            <select class="settings-select settings-visibility-select dashboard-overview-visibility-select" name="<%= combinedPrefix %>_overview_visibility_role" data-dashboard-overview-visibility-role <%= (isDisabled || item.combined) ? 'disabled title="Overview visibility is configurable for app overview cards only."' : '' %>>
+                              <% dashboardVisibilityRoles.forEach((option) => { %>
+                                <option value="<%= option.value %>" <%= option.value === effectiveOverviewVisibilityRole ? 'selected' : '' %>><%= option.label %></option>
+                              <% }) %>
+                            </select>
+                            <% if (item.combined) { %>
+                              <input type="hidden" name="<%= combinedPrefix %>_overview_visibility_role" value="disabled" />
+                            <% } %>
+                          </label>
                           <label class="settings-visibility-group">
                             <span class="settings-visibility-label">Dashboard</span>
                             <select class="settings-select settings-visibility-select dashboard-visibility-select" name="<%= combinedPrefix %>_visibility_role" data-dashboard-visibility-role <%= isDisabled ? 'disabled' : '' %>>
