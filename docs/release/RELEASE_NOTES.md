@@ -1,4 +1,10 @@
-# Release Notes (v0.1.0 -> v0.2.26)
+# Release Notes (v0.1.0 -> v0.2.27)
+
+## v0.2.27 (2026-02-19)
+
+- Updated Seerr/Pulsarr request API URL candidate resolution to prefer configured `remoteUrl`/`localUrl` values.
+- Fixed request fallback behavior to avoid loopback-only candidates (`localhost`/`127.0.0.1`/`::1`) when explicit non-loopback URLs are configured.
+- Improved Seerr error diagnostics to include all attempted upstream base URLs when requests fail.
 
 ## v0.2.26 (2026-02-19)
 
@@ -165,7 +171,7 @@
 - Fixed empty-state behavior for active stream modules to align card output across Plex/Jellyfin/Emby and combined views.
 
 
-This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.26`.
+This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.27`.
 
 ## v0.2.5 (2026-02-15)
 

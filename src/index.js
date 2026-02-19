@@ -4540,9 +4540,11 @@ function mapSeerrFilter(statusValue) {
 
 async function fetchSeerrJson({ candidates, apiKey, path, query }) {
   let lastError = '';
+  const attempted = [];
   for (let index = 0; index < candidates.length; index += 1) {
     const baseUrl = candidates[index];
     if (!baseUrl) continue;
+    attempted.push(baseUrl);
     const upstreamUrl = buildAppApiUrl(baseUrl, path);
     Object.entries(query || {}).forEach(([key, value]) => {
       if (value === undefined || value === null || value === '') return;
@@ -4572,7 +4574,8 @@ async function fetchSeerrJson({ candidates, apiKey, path, query }) {
       lastError = `${reason} via ${baseUrl}`;
     }
   }
-  throw new Error(lastError || 'Failed to reach Seerr.');
+  const attemptsSummary = attempted.length ? ` (tried: ${attempted.join(', ')})` : '';
+  throw new Error((lastError || 'Failed to reach Seerr.') + attemptsSummary);
 }
 
 app.get('/api/pulsarr/stats/:kind', requireUser, async (req, res) => {
@@ -4596,12 +4599,7 @@ app.get('/api/pulsarr/stats/:kind', requireUser, async (req, res) => {
   const apiKey = String(pulsarrApp.apiKey || '').trim();
   if (!apiKey) return res.status(400).json({ error: 'Missing Pulsarr API key.' });
 
-  const candidates = uniqueList([
-    normalizeBaseUrl(pulsarrApp.remoteUrl || ''),
-    normalizeBaseUrl(resolveLaunchUrl(pulsarrApp, req)),
-    normalizeBaseUrl(pulsarrApp.localUrl || ''),
-    normalizeBaseUrl(pulsarrApp.url || ''),
-  ]);
+  const candidates = resolveRequestApiCandidates(pulsarrApp, req);
   if (!candidates.length) return res.status(400).json({ error: 'Missing Pulsarr URL.' });
 
   let lastError = '';
@@ -4666,12 +4664,7 @@ app.get('/api/seerr/stats/:kind', requireUser, async (req, res) => {
   const apiKey = String(seerrApp.apiKey || '').trim();
   if (!apiKey) return res.status(400).json({ error: 'Missing Seerr API key.' });
 
-  const candidates = uniqueList([
-    normalizeBaseUrl(seerrApp.remoteUrl || ''),
-    normalizeBaseUrl(resolveLaunchUrl(seerrApp, req)),
-    normalizeBaseUrl(seerrApp.localUrl || ''),
-    normalizeBaseUrl(seerrApp.url || ''),
-  ]);
+  const candidates = resolveRequestApiCandidates(seerrApp, req);
   if (!candidates.length) return res.status(400).json({ error: 'Missing Seerr URL.' });
 
   try {
@@ -4819,12 +4812,7 @@ app.get('/api/pulsarr/tmdb/:kind/:id', requireUser, async (req, res) => {
   const apiKey = String(pulsarrApp.apiKey || '').trim();
   if (!apiKey) return res.status(400).json({ error: 'Missing Pulsarr API key.' });
 
-  const candidates = uniqueList([
-    normalizeBaseUrl(pulsarrApp.remoteUrl || ''),
-    normalizeBaseUrl(resolveLaunchUrl(pulsarrApp, req)),
-    normalizeBaseUrl(pulsarrApp.localUrl || ''),
-    normalizeBaseUrl(pulsarrApp.url || ''),
-  ]);
+  const candidates = resolveRequestApiCandidates(pulsarrApp, req);
   if (!candidates.length) return res.status(400).json({ error: 'Missing Pulsarr URL.' });
 
   let lastError = '';
@@ -4892,12 +4880,7 @@ app.get('/api/seerr/tmdb/:kind/:id', requireUser, async (req, res) => {
   const apiKey = String(seerrApp.apiKey || '').trim();
   if (!apiKey) return res.status(400).json({ error: 'Missing Seerr API key.' });
 
-  const candidates = uniqueList([
-    normalizeBaseUrl(seerrApp.remoteUrl || ''),
-    normalizeBaseUrl(resolveLaunchUrl(seerrApp, req)),
-    normalizeBaseUrl(seerrApp.localUrl || ''),
-    normalizeBaseUrl(seerrApp.url || ''),
-  ]);
+  const candidates = resolveRequestApiCandidates(seerrApp, req);
   if (!candidates.length) return res.status(400).json({ error: 'Missing Seerr URL.' });
 
   try {
@@ -5325,6 +5308,41 @@ function resolveAppApiCandidates(appItem, req) {
     normalizeBaseUrl(appItem?.localUrl || ''),
     normalizeBaseUrl(appItem?.url || ''),
   ]);
+}
+
+function isLoopbackHost(host) {
+  const value = String(host || '').trim().toLowerCase().replace(/^\[|\]$/g, '');
+  if (!value) return false;
+  return value === 'localhost' || value === '127.0.0.1' || value === '::1';
+}
+
+function isLoopbackBaseUrl(value) {
+  const normalized = normalizeBaseUrl(value || '');
+  if (!normalized) return false;
+  try {
+    const parsed = new URL(normalized);
+    return isLoopbackHost(parsed.hostname);
+  } catch (err) {
+    return false;
+  }
+}
+
+function resolveRequestApiCandidates(appItem, req) {
+  const remoteUrl = normalizeBaseUrl(appItem?.remoteUrl || '');
+  const localUrl = normalizeBaseUrl(appItem?.localUrl || '');
+  const launchUrl = normalizeBaseUrl(resolveLaunchUrl(appItem, req));
+  const fallbackUrl = normalizeBaseUrl(appItem?.url || '');
+  const explicitCandidates = uniqueList([remoteUrl, localUrl]).filter(Boolean);
+  const explicitSet = new Set(explicitCandidates);
+  const hasExplicitNonLoopback = explicitCandidates.some((candidate) => !isLoopbackBaseUrl(candidate));
+
+  return uniqueList([...explicitCandidates, launchUrl, fallbackUrl])
+    .filter(Boolean)
+    .filter((candidate) => {
+      if (!hasExplicitNonLoopback) return true;
+      if (explicitSet.has(candidate)) return true;
+      return !isLoopbackBaseUrl(candidate);
+    });
 }
 
 function parseFiniteNumber(value, fallback = 0) {
