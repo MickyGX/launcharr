@@ -2,29 +2,29 @@
 
 ## Built-in App Catalog
 
-| App | ID | Category | Default URL | Overview Modules Available |
-| --- | --- | --- | --- | --- |
-| Plex | `plex` | `Media` | `http://localhost:32400/web` | Yes |
-| Jellyfin | `jellyfin` | `Media` | `http://localhost:8096/web/index.html` | Yes |
-| Emby | `emby` | `Media` | `http://localhost:8096/web/index.html` | Yes |
-| Tautulli | `tautulli` | `Manager` | `http://localhost:8181` | Yes |
-| Radarr | `radarr` | `Arr Suite` | `http://localhost:7878` | Yes |
-| Sonarr | `sonarr` | `Arr Suite` | `http://localhost:8989` | Yes |
-| Lidarr | `lidarr` | `Arr Suite` | `http://localhost:8686` | Yes |
-| Readarr | `readarr` | `Arr Suite` | `http://localhost:8787` | Yes |
-| Bazarr | `bazarr` | `Arr Suite` | `http://localhost:6767` | Yes |
-| Prowlarr | `prowlarr` | `Arr Suite` | `http://localhost:9696` | Yes |
-| Jackett | `jackett` | `Arr Suite` | `http://localhost:9117` | Yes |
-| Pulsarr | `pulsarr` | `Arr Suite` | `http://localhost:3030` | Yes |
-| Seerr | `seerr` | `Arr Suite` | `http://localhost:5055` | Yes |
-| Autobrr | `autobrr` | `Arr Suite` | `http://localhost:7474` | Yes |
-| Cleanuparr | `cleanuparr` | `Arr Suite` | `http://localhost:11011` | No (launch/settings only by default) |
-| Huntarr | `huntarr` | `Arr Suite` | `http://localhost:9705` | No (launch/settings only by default) |
-| Transmission | `transmission` | `Downloaders` | `http://localhost:9091` | Yes |
-| qBittorrent | `qbittorrent` | `Downloaders` | `http://localhost:8080` | Yes |
-| SABnzbd | `sabnzbd` | `Downloaders` | `http://localhost:8085` | Yes |
-| NZBGet | `nzbget` | `Downloaders` | `http://localhost:6789` | Yes |
-| Romm | `romm` | `Games` | `http://localhost:8080` | Yes |
+| App | Icon | ID | Category | Default URL | Overview Modules Available |
+| --- | --- | --- | --- | --- | --- |
+| Plex | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/plex.png" alt="Plex" width="20" /> | `plex` | `Media` | `http://localhost:32400/web` | Yes |
+| Jellyfin | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/jellyfin.png" alt="Jellyfin" width="20" /> | `jellyfin` | `Media` | `http://localhost:8096/web/index.html` | Yes |
+| Emby | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/emby.png" alt="Emby" width="20" /> | `emby` | `Media` | `http://localhost:8096/web/index.html` | Yes |
+| Tautulli | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/tautulli.png" alt="Tautulli" width="20" /> | `tautulli` | `Manager` | `http://localhost:8181` | Yes |
+| Radarr | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/radarr.png" alt="Radarr" width="20" /> | `radarr` | `Arr Suite` | `http://localhost:7878` | Yes |
+| Sonarr | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/sonarr.png" alt="Sonarr" width="20" /> | `sonarr` | `Arr Suite` | `http://localhost:8989` | Yes |
+| Lidarr | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/lidarr.png" alt="Lidarr" width="20" /> | `lidarr` | `Arr Suite` | `http://localhost:8686` | Yes |
+| Readarr | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/readarr.png" alt="Readarr" width="20" /> | `readarr` | `Arr Suite` | `http://localhost:8787` | Yes |
+| Bazarr | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/bazarr.png" alt="Bazarr" width="20" /> | `bazarr` | `Arr Suite` | `http://localhost:6767` | Yes |
+| Prowlarr | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/prowlarr.png" alt="Prowlarr" width="20" /> | `prowlarr` | `Arr Suite` | `http://localhost:9696` | Yes |
+| Jackett | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/jackett.png" alt="Jackett" width="20" /> | `jackett` | `Arr Suite` | `http://localhost:9117` | Yes |
+| Pulsarr | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/pulsarr.png" alt="Pulsarr" width="20" /> | `pulsarr` | `Arr Suite` | `http://localhost:3030` | Yes |
+| Seerr | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/seerr.png" alt="Seerr" width="20" /> | `seerr` | `Arr Suite` | `http://localhost:5055` | Yes |
+| Autobrr | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/autobrr.png" alt="Autobrr" width="20" /> | `autobrr` | `Arr Suite` | `http://localhost:7474` | Yes |
+| Cleanuparr | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/cleanuparr.png" alt="Cleanuparr" width="20" /> | `cleanuparr` | `Arr Suite` | `http://localhost:11011` | No (launch/settings only by default) |
+| Huntarr | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/huntarr.png" alt="Huntarr" width="20" /> | `huntarr` | `Arr Suite` | `http://localhost:9705` | No (launch/settings only by default) |
+| Transmission | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/transmission.png" alt="Transmission" width="20" /> | `transmission` | `Downloaders` | `http://localhost:9091` | Yes |
+| qBittorrent | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/qbittorrent.png" alt="qBittorrent" width="20" /> | `qbittorrent` | `Downloaders` | `http://localhost:8080` | Yes |
+| SABnzbd | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/sabnzbd.png" alt="SABnzbd" width="20" /> | `sabnzbd` | `Downloaders` | `http://localhost:8085` | Yes |
+| NZBGet | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/nzbget.svg" alt="NZBGet" width="20" /> | `nzbget` | `Downloaders` | `http://localhost:6789` | Yes |
+| Romm | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/romm.svg" alt="Romm" width="20" /> | `romm` | `Games` | `http://localhost:8080` | Yes |
 
 ## Integration Setup Pattern
 
