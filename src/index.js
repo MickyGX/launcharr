@@ -39,8 +39,9 @@ const ADMIN_USERS = parseCsv(process.env.ADMIN_USERS || '');
 const ARR_APP_IDS = ['radarr', 'sonarr', 'lidarr', 'readarr'];
 const DOWNLOADER_APP_IDS = ['transmission', 'nzbget', 'qbittorrent', 'sabnzbd'];
 const MEDIA_APP_IDS = ['plex', 'jellyfin', 'emby'];
-const MULTI_INSTANCE_APP_IDS = ['radarr', 'sonarr', 'bazarr'];
-const MAX_MULTI_INSTANCES_PER_APP = 5;
+const LEGACY_MULTI_INSTANCE_APP_IDS = ['radarr', 'sonarr', 'bazarr', 'transmission'];
+const DEFAULT_MAX_MULTI_INSTANCES_PER_APP = 5;
+const DEFAULT_INSTANCE_NAME_PLACEHOLDER = 'Instance (e.g. Main)';
 const DEFAULT_CATEGORY_ORDER = ['Admin', 'Media', 'Manager', 'Games', 'Arr Suite', 'Downloaders', 'Tools'];
 const DEFAULT_CATEGORY_ICON = '/icons/category.svg';
 const ARR_COMBINE_SECTIONS = [
@@ -203,7 +204,15 @@ const APP_BASE_NAME_MAP = {
   radarr: 'Radarr',
   sonarr: 'Sonarr',
   bazarr: 'Bazarr',
+  transmission: 'Transmission',
 };
+const APP_INSTANCE_PLACEHOLDER_MAP = {
+  radarr: 'Movies (e.g. 4K)',
+  sonarr: 'TV (e.g. Anime)',
+  bazarr: 'Subtitles (e.g. Foreign)',
+  transmission: 'Client (e.g. Main)',
+};
+let RUNTIME_MULTI_INSTANCE_BASE_IDS = [...LEGACY_MULTI_INSTANCE_APP_IDS];
 const VISIBILITY_ROLE_ORDER = ['disabled', 'guest', 'user', 'co-admin', 'admin'];
 const VISIBILITY_ROLE_RANK = {
   disabled: -1,
@@ -1226,6 +1235,7 @@ app.get('/dashboard', requireUser, (req, res) => {
     user: req.session.user,
     apps: navApps,
     navCategories,
+    multiInstanceBaseIds: getMultiInstanceBaseIds(),
     appBaseUrls,
     dashboardModules,
     arrDashboardCombine,
@@ -1264,6 +1274,7 @@ app.get('/apps/:id', requireUser, (req, res) => {
     page: 'overview',
     apps: navApps,
     navCategories,
+    multiInstanceBaseIds: getMultiInstanceBaseIds(),
     appBaseUrls,
     app: appWithIcon,
     overviewElements: mergeOverviewElementSettings(appItem),
@@ -1371,6 +1382,7 @@ app.get('/apps/:id/settings', requireAdmin, (req, res) => {
     actualRole,
     page: 'settings',
     navCategories,
+    multiInstanceBaseIds: getMultiInstanceBaseIds(),
     app: appWithIcon,
     overviewElements: mergeOverviewElementSettings(appWithIcon),
     tautulliCards: mergeTautulliCardSettings(appWithIcon),
@@ -1443,6 +1455,10 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     icon: resolvePersistedAppIconPath(appItem),
     canRemoveDefaultApp: canManageWithDefaultAppManager(appItem),
   }));
+  const multiInstanceBaseIds = getMultiInstanceBaseIds();
+  const multiInstanceTitleMap = getMultiInstanceTitleMap();
+  const multiInstanceMaxMap = getMultiInstanceMaxMap(settingsAppsWithIcons);
+  const multiInstancePlaceholderMap = getMultiInstancePlaceholderMap(settingsAppsWithIcons);
   const arrDashboardCombinedCards = resolveArrDashboardCombinedCards(config, settingsAppsWithIcons);
   const arrSettingsAppIds = settingsApps
     .filter((appItem) => isAppInSet(appItem.id, ARR_APP_IDS))
@@ -1460,14 +1476,14 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     .map((appItem) => appItem.id);
   const multiInstanceCountsByBase = settingsApps.reduce((acc, appItem) => {
     const baseId = getAppBaseId(appItem?.id);
-    if (!MULTI_INSTANCE_APP_IDS.includes(baseId)) return acc;
+    if (!supportsAppInstances(baseId)) return acc;
     acc[baseId] = (acc[baseId] || 0) + 1;
     return acc;
   }, {});
   const baseDashboardElements = settingsApps.flatMap((appItem) => {
     const elements = mergeOverviewElementSettings(appItem);
     const baseId = getAppBaseId(appItem?.id);
-    const isMultiInstanceGroup = MULTI_INSTANCE_APP_IDS.includes(baseId) && Number(multiInstanceCountsByBase[baseId] || 0) > 1;
+    const isMultiInstanceGroup = supportsAppInstances(baseId) && Number(multiInstanceCountsByBase[baseId] || 0) > 1;
     const appTitle = String(appItem?.name || '').trim() || getDefaultInstanceName(baseId, appItem?.id);
     const itemIconPath = resolvePersistedAppIconPath(appItem);
     return elements.map((element) => ({
@@ -1669,7 +1685,7 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     const baseId = getAppBaseId(item?.appId);
     const baseTitle = getBaseAppTitle(baseId);
     const rawName = String(item?.appName || '').trim();
-    if (!MULTI_INSTANCE_APP_IDS.includes(baseId)) {
+    if (!supportsAppInstances(baseId)) {
       return rawName || baseTitle || 'Apps';
     }
     if (!rawName) return baseTitle || 'Apps';
@@ -1840,6 +1856,10 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     localUsersError,
     navCategories,
     coAdmins: loadCoAdmins(),
+    multiInstanceBaseIds,
+    multiInstanceTitleMap,
+    multiInstanceMaxMap,
+    multiInstancePlaceholderMap,
     role,
     actualRole,
   });
@@ -2619,6 +2639,7 @@ app.post('/settings/apps/instances/add', requireSettingsAdmin, (req, res) => {
   const apps = Array.isArray(config.apps) ? config.apps : [];
   const sourceId = normalizeAppId(req.body?.sourceId || '');
   const baseId = getAppBaseId(req.body?.baseId || sourceId);
+  const maxInstances = getMaxMultiInstancesForBase(baseId, apps);
   const focusApp = sourceId || baseId;
   const redirectWithError = (message) => {
     const appParam = encodeURIComponent(String(focusApp || baseId || '').trim());
@@ -2626,13 +2647,13 @@ app.post('/settings/apps/instances/add', requireSettingsAdmin, (req, res) => {
     return res.redirect(`/settings?tab=app&app=${appParam}&appInstanceError=${encodedMessage}`);
   };
 
-  if (!MULTI_INSTANCE_APP_IDS.includes(baseId)) {
+  if (!supportsAppInstances(baseId)) {
     return redirectWithError('Unsupported app for instances.');
   }
 
   const sameBaseApps = apps.filter((appItem) => getAppBaseId(appItem?.id) === baseId);
-  if (sameBaseApps.length >= MAX_MULTI_INSTANCES_PER_APP) {
-    return redirectWithError(`Maximum ${MAX_MULTI_INSTANCES_PER_APP} instances reached for ${getBaseAppTitle(baseId)}.`);
+  if (sameBaseApps.length >= maxInstances) {
+    return redirectWithError(`Maximum ${maxInstances} instances reached for ${getBaseAppTitle(baseId)}.`);
   }
 
   const nextId = buildNextInstanceId(baseId, apps);
@@ -2689,7 +2710,7 @@ app.post('/settings/apps/instances/delete', requireSettingsAdmin, (req, res) => 
     return res.redirect(`/settings?tab=app&app=${appParam}&appInstanceError=${encodedMessage}`);
   };
 
-  if (!appId || !MULTI_INSTANCE_APP_IDS.includes(baseId)) {
+  if (!appId || !supportsAppInstances(baseId)) {
     return redirectWithError('Unsupported app for instance deletion.');
   }
 
@@ -3326,7 +3347,7 @@ app.post('/apps/:id/settings', requireAdmin, (req, res) => {
   const apps = (config.apps || []).map((appItem) => {
     if (appItem.id !== req.params.id) return appItem;
     const baseId = getAppBaseId(appItem.id);
-    const supportsInstances = MULTI_INSTANCE_APP_IDS.includes(baseId);
+    const supportsInstances = supportsAppInstances(baseId);
     const nextInstanceName = supportsInstances && !isDisplayOnlyUpdate
       ? String(req.body?.instanceName || '').trim()
       : String(appItem.instanceName || '').trim();
@@ -5861,17 +5882,18 @@ async function fetchSabnzbdQueue(baseUrl, apiKey, authHeader) {
 }
 
 app.get('/api/downloaders/:appId/queue', requireUser, async (req, res) => {
-  const appId = String(req.params.appId || '').trim().toLowerCase();
-  if (!['transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(appId)) {
+  const requestedAppId = normalizeAppId(req.params.appId || '');
+  const baseId = getAppBaseId(requestedAppId);
+  if (!requestedAppId || !DOWNLOADER_APP_IDS.includes(baseId)) {
     return res.status(400).json({ error: 'Unsupported downloader app.' });
   }
 
   const config = loadConfig();
   const apps = config.apps || [];
-  const appItem = apps.find((item) => item.id === appId);
-  if (!appItem) return res.status(404).json({ error: `${appId} is not configured.` });
+  const appItem = apps.find((item) => normalizeAppId(item?.id) === requestedAppId);
+  if (!appItem) return res.status(404).json({ error: `${requestedAppId} is not configured.` });
   if (!canAccessDashboardApp(config, appItem, getEffectiveRole(req))) {
-    return res.status(403).json({ error: `${appItem.name || appId} dashboard access denied.` });
+    return res.status(403).json({ error: `${appItem.name || requestedAppId} dashboard access denied.` });
   }
 
   const candidates = uniqueList([
@@ -5880,7 +5902,7 @@ app.get('/api/downloaders/:appId/queue', requireUser, async (req, res) => {
     normalizeBaseUrl(appItem.localUrl || ''),
     normalizeBaseUrl(appItem.url || ''),
   ]);
-  if (!candidates.length) return res.status(400).json({ error: `Missing ${appItem.name || appId} URL.` });
+  if (!candidates.length) return res.status(400).json({ error: `Missing ${appItem.name || requestedAppId} URL.` });
 
   const authHeader = buildBasicAuthHeader(appItem.username || '', appItem.password || '');
   const apiKey = String(appItem.apiKey || '').trim();
@@ -5891,11 +5913,11 @@ app.get('/api/downloaders/:appId/queue', requireUser, async (req, res) => {
     if (!baseUrl) continue;
     try {
       let result;
-      if (appId === 'transmission') {
+      if (baseId === 'transmission') {
         result = await fetchTransmissionQueue(baseUrl, authHeader);
-      } else if (appId === 'nzbget') {
+      } else if (baseId === 'nzbget') {
         result = await fetchNzbgetQueue(baseUrl, authHeader);
-      } else if (appId === 'qbittorrent') {
+      } else if (baseId === 'qbittorrent') {
         result = await fetchQbittorrentQueue(baseUrl, appItem.username || '', appItem.password || '');
       } else {
         result = await fetchSabnzbdQueue(baseUrl, apiKey, authHeader);
@@ -5903,25 +5925,25 @@ app.get('/api/downloaders/:appId/queue', requireUser, async (req, res) => {
       if (result.items) {
         pushLog({
           level: 'info',
-          app: appId,
+          app: requestedAppId,
           action: 'downloader.queue',
-          message: `${appItem.name || appId} queue response received.`,
+          message: `${appItem.name || requestedAppId} queue response received.`,
         });
         return res.json({ items: result.items });
       }
-      lastError = result.error || `Failed to reach ${appItem.name || appId}.`;
+      lastError = result.error || `Failed to reach ${appItem.name || requestedAppId}.`;
     } catch (err) {
-      lastError = safeMessage(err) || `Failed to reach ${appItem.name || appId}.`;
+      lastError = safeMessage(err) || `Failed to reach ${appItem.name || requestedAppId}.`;
     }
   }
 
   pushLog({
     level: 'error',
-    app: appId,
+    app: requestedAppId,
     action: 'downloader.queue',
-    message: lastError || `Failed to reach ${appItem.name || appId}.`,
+    message: lastError || `Failed to reach ${appItem.name || requestedAppId}.`,
   });
-  return res.status(502).json({ error: lastError || `Failed to reach ${appItem.name || appId}.` });
+  return res.status(502).json({ error: lastError || `Failed to reach ${appItem.name || requestedAppId}.` });
 });
 
 app.get('/api/arr/:appId/:version/*', requireUser, async (req, res) => {
@@ -6222,7 +6244,7 @@ function getNavApps(apps, role, req, categoryOrder = DEFAULT_CATEGORY_ORDER, gen
     .map((appItem) => {
       if (appItem?.removed) return null;
       const baseId = getAppBaseId(appItem?.id);
-      const supportsInstances = MULTI_INSTANCE_APP_IDS.includes(baseId);
+      const supportsInstances = supportsAppInstances(baseId);
       const instanceName = supportsInstances ? String(appItem?.instanceName || '').trim() : '';
       const resolvedName = supportsInstances
         ? (instanceName || String(appItem?.name || '').trim() || getDefaultInstanceName(baseId, appItem?.id))
@@ -7772,10 +7794,55 @@ function normalizeAppId(value) {
   return String(value || '').trim().toLowerCase();
 }
 
+function isMultiInstanceEnabled(appItem) {
+  const raw = appItem?.supportsInstances;
+  return raw === true || String(raw || '').trim().toLowerCase() === 'true';
+}
+
+function getConfiguredInstanceBaseId(appItem) {
+  const configured = normalizeAppId(appItem?.instanceBaseId || '');
+  if (configured) return configured;
+  const id = normalizeAppId(appItem?.id || '');
+  if (!id) return '';
+  const match = id.match(/^(.*)-(\d+)$/);
+  if (match && Number(match[2]) > 1) return normalizeAppId(match[1] || '');
+  return id;
+}
+
+function refreshRuntimeMultiInstanceBaseIds(apps = []) {
+  const next = new Set(LEGACY_MULTI_INSTANCE_APP_IDS.map((id) => normalizeAppId(id)).filter(Boolean));
+  (Array.isArray(apps) ? apps : []).forEach((appItem) => {
+    if (!isMultiInstanceEnabled(appItem)) return;
+    const baseId = getConfiguredInstanceBaseId(appItem);
+    if (baseId) next.add(baseId);
+  });
+  RUNTIME_MULTI_INSTANCE_BASE_IDS = Array.from(next);
+}
+
+function getMultiInstanceBaseIds() {
+  return Array.from(new Set(
+    (Array.isArray(RUNTIME_MULTI_INSTANCE_BASE_IDS) ? RUNTIME_MULTI_INSTANCE_BASE_IDS : [])
+      .map((id) => normalizeAppId(id))
+      .filter(Boolean)
+  ));
+}
+
+function supportsAppInstances(baseId) {
+  const key = normalizeAppId(baseId);
+  return Boolean(key) && getMultiInstanceBaseIds().includes(key);
+}
+
 function getAppBaseId(value) {
   const id = normalizeAppId(value);
   if (!id) return '';
-  const matched = MULTI_INSTANCE_APP_IDS.find((baseId) => id === baseId || id.startsWith(`${baseId}-`));
+  const matched = getMultiInstanceBaseIds()
+    .slice()
+    .sort((a, b) => b.length - a.length)
+    .find((baseId) => {
+      if (id === baseId) return true;
+      if (!id.startsWith(`${baseId}-`)) return false;
+      return /^\d+$/.test(id.slice(baseId.length + 1));
+    });
   return matched || id;
 }
 
@@ -7816,15 +7883,71 @@ function getDefaultInstanceName(baseId, appId) {
   return title;
 }
 
+function coerceMultiInstanceLimit(value, fallback = DEFAULT_MAX_MULTI_INSTANCES_PER_APP) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(2, Math.min(20, Math.round(parsed)));
+}
+
+function getMaxMultiInstancesForBase(baseId, apps = []) {
+  const key = normalizeAppId(baseId);
+  if (!key) return DEFAULT_MAX_MULTI_INSTANCES_PER_APP;
+  const sourceApps = Array.isArray(apps) && apps.length ? apps : loadDefaultApps();
+  const match = sourceApps.find((appItem) => {
+    if (!appItem) return false;
+    const appId = normalizeAppId(appItem?.id);
+    const configuredBase = getConfiguredInstanceBaseId(appItem);
+    return configuredBase === key || appId === key;
+  });
+  return coerceMultiInstanceLimit(match?.maxInstances, DEFAULT_MAX_MULTI_INSTANCES_PER_APP);
+}
+
+function getInstanceNamePlaceholder(baseId, apps = []) {
+  const key = normalizeAppId(baseId);
+  if (!key) return DEFAULT_INSTANCE_NAME_PLACEHOLDER;
+  const sourceApps = Array.isArray(apps) && apps.length ? apps : loadDefaultApps();
+  const match = sourceApps.find((appItem) => {
+    if (!appItem) return false;
+    const appId = normalizeAppId(appItem?.id);
+    const configuredBase = getConfiguredInstanceBaseId(appItem);
+    return configuredBase === key || appId === key;
+  });
+  const configured = String(match?.instanceNamePlaceholder || '').trim();
+  if (configured) return configured;
+  return APP_INSTANCE_PLACEHOLDER_MAP[key] || DEFAULT_INSTANCE_NAME_PLACEHOLDER;
+}
+
+function getMultiInstanceTitleMap() {
+  return getMultiInstanceBaseIds().reduce((acc, baseId) => {
+    acc[baseId] = getBaseAppTitle(baseId);
+    return acc;
+  }, {});
+}
+
+function getMultiInstanceMaxMap(apps = []) {
+  return getMultiInstanceBaseIds().reduce((acc, baseId) => {
+    acc[baseId] = getMaxMultiInstancesForBase(baseId, apps);
+    return acc;
+  }, {});
+}
+
+function getMultiInstancePlaceholderMap(apps = []) {
+  return getMultiInstanceBaseIds().reduce((acc, baseId) => {
+    acc[baseId] = getInstanceNamePlaceholder(baseId, apps);
+    return acc;
+  }, {});
+}
+
 function buildNextInstanceId(baseId, apps = []) {
   const key = normalizeAppId(baseId);
-  if (!key || !MULTI_INSTANCE_APP_IDS.includes(key)) return '';
+  if (!key || !supportsAppInstances(key)) return '';
+  const maxInstances = getMaxMultiInstancesForBase(key, apps);
   const used = new Set(
     (Array.isArray(apps) ? apps : [])
       .map((appItem) => normalizeAppId(appItem?.id))
       .filter((appId) => getAppBaseId(appId) === key)
   );
-  for (let index = 2; index <= MAX_MULTI_INSTANCES_PER_APP; index += 1) {
+  for (let index = 2; index <= maxInstances; index += 1) {
     const candidate = `${key}-${index}`;
     if (!used.has(candidate)) return candidate;
   }
@@ -8056,8 +8179,10 @@ function loadConfig() {
     const overrideCategories = parsed && Array.isArray(parsed.categories) ? parsed.categories : [];
     const mergedApps = mergeAppDefaults(defaults, overrideApps);
     const mergedCategories = mergeCategoryDefaults(defaultCategories, overrideCategories);
+    refreshRuntimeMultiInstanceBaseIds(mergedApps);
     return { ...parsed, apps: mergedApps, categories: mergedCategories };
   } catch (err) {
+    refreshRuntimeMultiInstanceBaseIds(defaults);
     return { apps: defaults, categories: defaultCategories };
   }
 }
@@ -8066,12 +8191,17 @@ function saveConfig(config) {
   const defaults = loadDefaultApps();
   const defaultCategories = loadDefaultCategories();
   const nextConfig = { ...config };
+  const runtimeApps = mergeAppDefaults(
+    defaults,
+    Array.isArray(nextConfig.apps) ? nextConfig.apps : []
+  );
   if (defaults.length) {
     nextConfig.apps = buildAppOverrides(defaults, nextConfig.apps);
   }
   if (defaultCategories.length) {
     nextConfig.categories = buildCategoryOverrides(defaultCategories, nextConfig.categories);
   }
+  refreshRuntimeMultiInstanceBaseIds(runtimeApps);
   if (!fs.existsSync(path.dirname(CONFIG_PATH))) {
     fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
   }

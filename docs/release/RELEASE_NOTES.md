@@ -1,4 +1,13 @@
-# Release Notes (v0.1.0 -> v0.2.23)
+# Release Notes (v0.1.0 -> v0.2.24)
+
+## v0.2.24 (2026-02-19)
+
+- Added multi-instance support for Transmission end-to-end (settings forms, dashboard queue modules, and app overview queue modules).
+- Added metadata-driven instance capabilities in default app definitions (`supportsInstances`, `maxInstances`, `instanceNamePlaceholder`) for Radarr, Sonarr, Bazarr, Transmission, and qBittorrent.
+- Updated multi-instance runtime detection to use app metadata with legacy fallback compatibility.
+- Updated downloader queue server/client handling to resolve instance IDs (for example `transmission-2`) to base downloader behavior.
+- Fixed settings regressions where username/password fields could be missing for additional downloader instances.
+- Fixed overview runtime error (`{"error":"Server error"}`) caused by undefined downloader base resolution for instance IDs.
 
 ## v0.2.23 (2026-02-19)
 
@@ -141,7 +150,7 @@
 - Fixed empty-state behavior for active stream modules to align card output across Plex/Jellyfin/Emby and combined views.
 
 
-This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.22`.
+This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.24`.
 
 ## v0.2.5 (2026-02-15)
 

@@ -254,19 +254,25 @@
         .replace(/\u2028/g, '\\u2028')
         .replace(/\u2029/g, '\\u2029'); %>
       <%
+        const multiInstanceBaseIdsList = (Array.isArray(multiInstanceBaseIds) ? multiInstanceBaseIds : [])
+          .map((item) => String(item || '').trim().toLowerCase())
+          .filter(Boolean);
         const resolveAppBaseId = (value) => {
           const id = String(value || '').trim().toLowerCase();
           if (!id) return '';
-          if (id === 'radarr' || id.startsWith('radarr-')) return 'radarr';
-          if (id === 'sonarr' || id.startsWith('sonarr-')) return 'sonarr';
-          if (id === 'bazarr' || id.startsWith('bazarr-')) return 'bazarr';
-          return id;
+          const matched = multiInstanceBaseIdsList
+            .slice()
+            .sort((a, b) => b.length - a.length)
+            .find((baseId) => {
+              if (id === baseId) return true;
+              if (!id.startsWith(baseId + '-')) return false;
+              return /^\d+$/.test(id.slice(baseId.length + 1));
+            });
+          return matched || id;
         };
-        const appInstanceBaseTitles = {
-          radarr: 'Radarr',
-          sonarr: 'Sonarr',
-          bazarr: 'Bazarr',
-        };
+        const appInstanceBaseTitles = (multiInstanceTitleMap && typeof multiInstanceTitleMap === 'object')
+          ? multiInstanceTitleMap
+          : {};
         const resolveAppBaseTitle = (value) => {
           const key = resolveAppBaseId(value);
           if (!key) return 'App';
@@ -1144,7 +1150,7 @@
                       <% if (item.combined && item.combinedType === 'downloader' && element.id === 'activity-queue') { %>
                         <% const combinedDownloaderApps = (Array.isArray(downloaderApps) && downloaderApps.length)
                           ? downloaderApps
-                          : (Array.isArray(apps) ? apps.filter((appItem) => ['transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(appItem.id)) : []); %>
+                          : (Array.isArray(apps) ? apps.filter((appItem) => ['transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(resolveAppBaseId(appItem.id))) : []); %>
                         <div class="settings-card-title">Combined Download Queue Sources</div>
                         <div class="settings-combined-grid settings-combined-grid--arr" data-section="activityQueue">
                           <% combinedDownloaderApps.forEach((app) => { %>
@@ -1213,7 +1219,7 @@
                           </label>
                           <label class="radio-pill">
                             <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_queue_col_size" <%= element.queueShowSize !== false ? 'checked' : '' %> />
-                            <span><%= ['transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(item.appId) ? 'Size' : 'Quality' %></span>
+                            <span><%= ['transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(resolveAppBaseId(item.appId)) ? 'Size' : 'Quality' %></span>
                           </label>
                           <label class="radio-pill">
                             <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_queue_col_protocol" <%= element.queueShowProtocol !== false ? 'checked' : '' %> />
@@ -1739,7 +1745,7 @@
           appSettingsNav.forEach((appItem) => {
             const id = String(appItem?.id || '').trim();
             const baseId = resolveAppBaseId(id);
-            const isMultiInstanceApp = ['radarr', 'sonarr', 'bazarr'].includes(baseId);
+            const isMultiInstanceApp = multiInstanceBaseIdsList.includes(baseId);
             const panelKey = isMultiInstanceApp ? `base:${baseId}` : `app:${id}`;
             if (!id || appSettingsPanelSeen.has(panelKey)) return;
             appSettingsPanelSeen.add(panelKey);
@@ -1751,7 +1757,7 @@
             <% appSettingsPanels.forEach((appItem, appIndex) => { %>
               <%
                 const switcherBaseId = resolveAppBaseId(appItem.id);
-                const switcherLabel = ['radarr', 'sonarr', 'bazarr'].includes(switcherBaseId)
+                const switcherLabel = multiInstanceBaseIdsList.includes(switcherBaseId)
                   ? resolveAppBaseTitle(switcherBaseId)
                   : appItem.name;
               %>
@@ -1777,7 +1783,7 @@
             <%
               const appBaseId = resolveAppBaseId(appItem.id);
               const requestedAppId = String(selectedSettingsAppId || '').trim().toLowerCase();
-              const supportsInstances = ['radarr', 'sonarr', 'bazarr'].includes(appBaseId);
+              const supportsInstances = multiInstanceBaseIdsList.includes(appBaseId);
               const instanceItems = supportsInstances
                 ? appSettingsNav
                   .filter((entry) => resolveAppBaseId(entry.id) === appBaseId)
@@ -1810,13 +1816,12 @@
                 : (appRequiresApiKey ? Boolean(panelAppItem.apiKey) : true);
               const appStatusOk = appEnabled && appHasUrl && appHasToken;
               const baseInstanceCount = instanceItems.length;
-              const canAddInstance = supportsInstances && baseInstanceCount < 5;
+              const maxInstancesForBase = Math.max(2, Number(multiInstanceMaxMap?.[appBaseId]) || 5);
+              const canAddInstance = supportsInstances && baseInstanceCount < maxInstancesForBase;
               const firstInstanceItem = supportsInstances && instanceItems.length ? instanceItems[0] : null;
               const remainingInstanceItems = supportsInstances && instanceItems.length > 1 ? instanceItems.slice(1) : [];
               const activeAppId = String(panelAppItem?.id || '').trim();
-              const instancePlaceholder = appBaseId === 'radarr'
-                ? 'Movies (e.g. 4K)'
-                : (appBaseId === 'sonarr' ? 'TV (e.g. Anime)' : 'Subtitles (e.g. Foreign)');
+              const instancePlaceholder = String(multiInstancePlaceholderMap?.[appBaseId] || 'Instance (e.g. Main)');
             %>
             <div class="app-settings-panel<%= appIndex === 0 ? ' is-active' : '' %>" data-settings-app-panel data-app-id="<%= appItem.id %>">
               <div class="settings-card">
@@ -1876,7 +1881,7 @@
                     <% } %>
                   </div>
                   <div class="settings-users-actions">
-                    <span class="settings-users-note">Instances: <%= baseInstanceCount %>/5</span>
+                    <span class="settings-users-note">Instances: <%= baseInstanceCount %>/<%= maxInstancesForBase %></span>
                   </div>
                 <% } %>
                 <form method="post" action="/apps/<%= panelAppItem.id %>/settings?from=settings" class="settings-form">
@@ -1915,7 +1920,7 @@
                       <input type="password" name="apiKey" value="<%= panelAppItem.apiKey || '' %>" placeholder="<%= panelAppItem.name %> API key" />
                     </label>
                   <% } %>
-                  <% if (['nzbget', 'transmission', 'qbittorrent', 'sabnzbd'].includes(panelAppItem.id)) { %>
+                  <% if (['nzbget', 'transmission', 'qbittorrent', 'sabnzbd'].includes(appBaseId)) { %>
                     <label class="field">
                       <span>Username</span>
                       <input type="text" name="username" value="<%= panelAppItem.username || '' %>" placeholder="<%= panelAppItem.name %> username" />
@@ -2301,13 +2306,21 @@
 
     const appSettingsButtons = Array.from(document.querySelectorAll('[data-settings-app-button]'));
     const appSettingsPanels = Array.from(document.querySelectorAll('[data-settings-app-panel]'));
+    const multiInstanceBaseIdsList = (Array.isArray(<%- safeJson(multiInstanceBaseIds || []) %>) ? <%- safeJson(multiInstanceBaseIds || []) %> : [])
+      .map((item) => String(item || '').trim().toLowerCase())
+      .filter(Boolean);
     const resolveAppBaseId = (value) => {
       const id = String(value || '').trim().toLowerCase();
       if (!id) return '';
-      if (id === 'radarr' || id.startsWith('radarr-')) return 'radarr';
-      if (id === 'sonarr' || id.startsWith('sonarr-')) return 'sonarr';
-      if (id === 'bazarr' || id.startsWith('bazarr-')) return 'bazarr';
-      return id;
+      const matched = multiInstanceBaseIdsList
+        .slice()
+        .sort((a, b) => b.length - a.length)
+        .find((baseId) => {
+          if (id === baseId) return true;
+          if (!id.startsWith(baseId + '-')) return false;
+          return /^\d+$/.test(id.slice(baseId.length + 1));
+        });
+      return matched || id;
     };
     const setAppSettingsPanel = (appId, persist = true) => {
       if (!appId) return;

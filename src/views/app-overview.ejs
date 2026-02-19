@@ -89,15 +89,21 @@
 </head>
 <body class="dash-body">
   <%
+    const multiInstanceBaseIdsList = (Array.isArray(multiInstanceBaseIds) ? multiInstanceBaseIds : [])
+      .map((item) => String(item || '').trim().toLowerCase())
+      .filter(Boolean);
     const resolveAppBaseId = (value) => {
       const id = String(value || '').trim().toLowerCase();
       if (!id) return '';
-      if (id === 'radarr' || id.startsWith('radarr-')) return 'radarr';
-      if (id === 'sonarr' || id.startsWith('sonarr-')) return 'sonarr';
-      if (id === 'lidarr' || id.startsWith('lidarr-')) return 'lidarr';
-      if (id === 'readarr' || id.startsWith('readarr-')) return 'readarr';
-      if (id === 'bazarr' || id.startsWith('bazarr-')) return 'bazarr';
-      return id;
+      const matched = multiInstanceBaseIdsList
+        .slice()
+        .sort((a, b) => b.length - a.length)
+        .find((baseId) => {
+          if (id === baseId) return true;
+          if (!id.startsWith(baseId + '-')) return false;
+          return /^\d+$/.test(id.slice(baseId.length + 1));
+        });
+      return matched || id;
     };
     const resolveAppIconPath = (appItem) => {
       const customIcon = String(appItem?.icon || '').trim();
@@ -956,12 +962,12 @@
           const overviewItems = Array.isArray(overviewElements) ? overviewElements : [];
           const overviewById = new Map(overviewItems.map((item) => [item.id, item]));
           const activityQueueSettings = overviewById.get('activity-queue') || { enable: true, order: 1 };
-          const appLogo = app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'nzbget', 'qbittorrent', 'sabnzbd', 'jellyfin', 'emby'].includes(app.id)
-            ? '/icons/' + app.id + '.png'
-            : '/icons/' + app.id + '.svg');
+          const appLogo = app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'nzbget', 'qbittorrent', 'sabnzbd', 'jellyfin', 'emby'].includes(appBaseId)
+            ? '/icons/' + appBaseId + '.png'
+            : '/icons/' + appBaseId + '.svg');
           const appPrefix = app.id;
-          const isTorrentDownloader = ['transmission', 'qbittorrent'].includes(appPrefix);
-          const isUsenetDownloader = ['nzbget', 'sabnzbd'].includes(appPrefix);
+          const isTorrentDownloader = ['transmission', 'qbittorrent'].includes(appBaseId);
+          const isUsenetDownloader = ['nzbget', 'sabnzbd'].includes(appBaseId);
           const queueDetailLabel = isUsenetDownloader ? 'Category' : 'Status';
           const queueSubDetailLabel = isUsenetDownloader ? 'Status' : 'Rate';
           const orderedDownloaderSections = [

@@ -246,9 +246,25 @@
         const hasMenu = Boolean(menu.overview || menu.launch || menu.settings);
         const enabled = hasMenu ? Boolean(overview[roleKey] || launch[roleKey] || settingsMenu[roleKey]) : true;
         const hasUrl = Boolean(app.localUrl || app.remoteUrl);
+        const multiInstanceBaseIdsList = (Array.isArray(multiInstanceBaseIds) ? multiInstanceBaseIds : [])
+          .map((item) => String(item || '').trim().toLowerCase())
+          .filter(Boolean);
+        const appBaseId = (() => {
+          const id = String(app.id || '').trim().toLowerCase();
+          if (!id) return '';
+          const matched = multiInstanceBaseIdsList
+            .slice()
+            .sort((a, b) => b.length - a.length)
+            .find((baseId) => {
+              if (id === baseId) return true;
+              if (!id.startsWith(baseId + '-')) return false;
+              return /^\d+$/.test(id.slice(baseId.length + 1));
+            });
+          return matched || id;
+        })();
         const isArrSuite = String(app.category || '').toLowerCase() === 'arr suite';
-        const requiresApiKey = isArrSuite || ['tautulli', 'jellyfin', 'emby', 'prowlarr', 'sabnzbd'].includes(app.id);
-        const hasToken = app.id === 'plex'
+        const requiresApiKey = isArrSuite || ['tautulli', 'jellyfin', 'emby', 'prowlarr', 'sabnzbd'].includes(appBaseId);
+        const hasToken = appBaseId === 'plex'
           ? Boolean(app.plexToken)
           : (requiresApiKey ? Boolean(app.apiKey) : true);
         const statusOk = enabled && hasUrl && hasToken;
@@ -258,7 +274,7 @@
           <img class="toggle-icon" src="/icons/sidebar-toggle.svg" alt="" />
         </button>
         <div class="main-window-title">
-          <img class="main-window-icon" src="<%= app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'jellyfin', 'emby'].includes(app.id) ? '/icons/' + app.id + '.png' : '/icons/' + app.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
+          <img class="main-window-icon" src="<%= app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'jellyfin', 'emby'].includes(appBaseId) ? '/icons/' + appBaseId + '.png' : '/icons/' + appBaseId + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
           <span class="main-window-app"><%= app.name %></span>
           <span class="main-window-rest">| Settings</span>
         </div>
@@ -351,7 +367,7 @@
               <div class="plex-settings-note">Tip: Keep this key private.</div>
             </div>
           <% } %>
-          <% if (['nzbget', 'transmission', 'qbittorrent', 'sabnzbd'].includes(app.id)) { %>
+          <% if (['nzbget', 'transmission', 'qbittorrent', 'sabnzbd'].includes(appBaseId)) { %>
             <div class="settings-card plex-settings-card">
               <div class="settings-card-title"><%= app.name %> Access</div>
               <div class="settings-card-sub">Credentials for local or remote access.</div>

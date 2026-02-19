@@ -174,11 +174,22 @@
   }
 
   function mapQueueItem(appId, item, options = {}) {
-    if (appId === 'transmission') return mapTransmissionItem(item, options);
-    if (appId === 'nzbget') return mapNzbgetItem(item, options);
-    if (appId === 'qbittorrent') return mapQbittorrentItem(item, options);
-    if (appId === 'sabnzbd') return mapSabnzbdItem(item, options);
+    const baseId = resolveDownloaderBaseId(appId);
+    if (baseId === 'transmission') return mapTransmissionItem(item, options);
+    if (baseId === 'nzbget') return mapNzbgetItem(item, options);
+    if (baseId === 'qbittorrent') return mapQbittorrentItem(item, options);
+    if (baseId === 'sabnzbd') return mapSabnzbdItem(item, options);
     return null;
+  }
+
+  function resolveDownloaderBaseId(value) {
+    const appId = String(value || '').trim().toLowerCase();
+    if (!appId) return '';
+    if (appId === 'transmission' || appId.startsWith('transmission-')) return 'transmission';
+    if (appId === 'nzbget' || appId.startsWith('nzbget-')) return 'nzbget';
+    if (appId === 'qbittorrent' || appId.startsWith('qbittorrent-')) return 'qbittorrent';
+    if (appId === 'sabnzbd' || appId.startsWith('sabnzbd-')) return 'sabnzbd';
+    return appId;
   }
 
   function mapTransmissionItem(item, options = {}) {
