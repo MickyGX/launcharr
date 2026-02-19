@@ -1,4 +1,11 @@
-# Release Notes (v0.1.0 -> v0.2.22)
+# Release Notes (v0.1.0 -> v0.2.23)
+
+## v0.2.23 (2026-02-19)
+
+- Restored `Base URL Path` in `Settings -> General` with persisted `general.basePath` handling.
+- Updated Launcharr public/callback URL resolution to apply configured base path (including Plex auth forward URLs).
+- Updated integration/proxy URL joins to preserve app path prefixes for subpath deployments (for example `https://domain.com/app`).
+- Updated quick-menu starfield/maximize UX (stateful labels, disabled starfield toggle in mobile/maximized, automatic starfield state restore).
 
 ## v0.2.22 (2026-02-18)
 

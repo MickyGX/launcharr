@@ -334,7 +334,7 @@
           <form method="post" action="/settings/general" class="settings-form">
             <div class="settings-card">
               <div class="settings-card-title">Server Identity</div>
-              <div class="settings-card-sub">Remote URL is used for external links and sharing. Local URL is preferred for LAN Plex SSO.</div>
+              <div class="settings-card-sub">Remote URL is used for external links and sharing. Local URL is preferred for LAN Plex SSO. Use Base URL Path when Launcharr is served behind a subpath (for example <code>/launcharr</code>).</div>
               <label class="field">
                 <span>Server Name</span>
                 <input
@@ -360,6 +360,15 @@
                   name="local_url"
                   value="<%= generalSettings?.localUrl || '' %>"
                   placeholder="http://192.168.0.2:3333"
+                />
+              </label>
+              <label class="field">
+                <span>Base URL Path</span>
+                <input
+                  type="text"
+                  name="base_path"
+                  value="<%= generalSettings?.basePath || '' %>"
+                  placeholder="/launcharr"
                 />
               </label>
               <label class="settings-toggle">

@@ -3,6 +3,7 @@
     "serverName": "Launcharr",
     "remoteUrl": "",
     "localUrl": "",
+    "basePath": "",
     "restrictGuests": false
   },
   "apps": [],

@@ -183,6 +183,7 @@ const DEFAULT_GENERAL_SETTINGS = {
   serverName: 'Launcharr',
   remoteUrl: '',
   localUrl: '',
+  basePath: '',
   restrictGuests: false,
   autoOpenSingleAppMenuItem: false,
   hideSidebarAppSettingsLink: false,
@@ -230,6 +231,7 @@ function resolveGeneralSettings(config) {
     serverName: String(raw.serverName || DEFAULT_GENERAL_SETTINGS.serverName || '').trim(),
     remoteUrl: String(raw.remoteUrl || DEFAULT_GENERAL_SETTINGS.remoteUrl || '').trim(),
     localUrl: String(raw.localUrl || DEFAULT_GENERAL_SETTINGS.localUrl || '').trim(),
+    basePath: normalizeBasePath(raw.basePath || DEFAULT_GENERAL_SETTINGS.basePath || ''),
     restrictGuests,
     autoOpenSingleAppMenuItem,
     hideSidebarAppSettingsLink,
@@ -486,7 +488,7 @@ async function fetchPlexHistoryLastSeenMap(baseUrl, token) {
   if (!baseUrl || !token) return {};
   const paths = ['/status/sessions/history/all', '/status/sessions/history'];
   for (let index = 0; index < paths.length; index += 1) {
-    const url = new URL(paths[index], baseUrl);
+    const url = buildAppApiUrl(baseUrl, paths[index]);
     url.searchParams.set('X-Plex-Token', token);
     url.searchParams.set('sort', 'viewedAt:desc');
     url.searchParams.set('count', '2000');
@@ -886,7 +888,7 @@ app.get('/auth/plex', async (req, res) => {
     });
     return res.render('plex-auth', {
       title: 'Plex Login',
-      baseUrl: authBaseUrl,
+      callbackUrl: buildAppApiUrl(authBaseUrl, 'oauth/callback').toString(),
       client: {
         id: CLIENT_ID,
         product: PRODUCT,
@@ -2927,6 +2929,7 @@ app.post('/settings/general', requireSettingsAdmin, (req, res) => {
   const serverName = String(req.body?.server_name || '').trim();
   const remoteUrl = String(req.body?.remote_url || '').trim();
   const localUrl = String(req.body?.local_url || '').trim();
+  const basePath = normalizeBasePath(req.body?.base_path || '');
   const restrictGuests = Boolean(req.body?.restrictGuests);
   const autoOpenSingleAppMenuItem = Boolean(req.body?.autoOpenSingleAppMenuItem);
   const hideSidebarAppSettingsLink = Boolean(req.body?.hideSidebarAppSettingsLink);
@@ -2935,6 +2938,7 @@ app.post('/settings/general', requireSettingsAdmin, (req, res) => {
     serverName: serverName || DEFAULT_GENERAL_SETTINGS.serverName,
     remoteUrl,
     localUrl,
+    basePath,
     restrictGuests,
     autoOpenSingleAppMenuItem,
     hideSidebarAppSettingsLink,
@@ -3215,10 +3219,10 @@ app.get('/settings/plex-users', requireSettingsAdmin, async (req, res) => {
       }
       if (serverToken) {
         const candidates = uniqueList([
-          normalizeBaseUrl(resolveLaunchUrl(plexApp, req)),
-          normalizeBaseUrl(plexApp.localUrl || ''),
-          normalizeBaseUrl(plexApp.remoteUrl || ''),
-          normalizeBaseUrl(plexApp.url || ''),
+          normalizeBaseUrl(resolveLaunchUrl(plexApp, req), { stripWeb: true }),
+          normalizeBaseUrl(plexApp.localUrl || '', { stripWeb: true }),
+          normalizeBaseUrl(plexApp.remoteUrl || '', { stripWeb: true }),
+          normalizeBaseUrl(plexApp.url || '', { stripWeb: true }),
         ]).filter(Boolean);
         for (let index = 0; index < candidates.length; index += 1) {
           const baseUrl = candidates[index];
@@ -3445,10 +3449,10 @@ app.get('/api/plex/machine', requireAdmin, async (req, res) => {
   if (!token) return res.status(400).json({ error: 'Missing Plex token.' });
 
   const candidates = uniqueList([
-    normalizeBaseUrl(plexApp.remoteUrl || ''),
-    normalizeBaseUrl(resolveLaunchUrl(plexApp, req)),
-    normalizeBaseUrl(plexApp.localUrl || ''),
-    normalizeBaseUrl(plexApp.url || ''),
+    normalizeBaseUrl(plexApp.remoteUrl || '', { stripWeb: true }),
+    normalizeBaseUrl(resolveLaunchUrl(plexApp, req), { stripWeb: true }),
+    normalizeBaseUrl(plexApp.localUrl || '', { stripWeb: true }),
+    normalizeBaseUrl(plexApp.url || '', { stripWeb: true }),
   ]);
   if (!candidates.length) return res.status(400).json({ error: 'Missing Plex URL.' });
 
@@ -3606,19 +3610,19 @@ app.post('/api/plex/discovery/watchlist', requireUser, async (req, res) => {
 
 function resolveJellyfinCandidates(appItem, req) {
   return uniqueList([
-    normalizeBaseUrl(appItem?.remoteUrl || ''),
-    normalizeBaseUrl(resolveLaunchUrl(appItem, req)),
-    normalizeBaseUrl(appItem?.localUrl || ''),
-    normalizeBaseUrl(appItem?.url || ''),
+    normalizeBaseUrl(appItem?.remoteUrl || '', { stripWeb: true }),
+    normalizeBaseUrl(resolveLaunchUrl(appItem, req), { stripWeb: true }),
+    normalizeBaseUrl(appItem?.localUrl || '', { stripWeb: true }),
+    normalizeBaseUrl(appItem?.url || '', { stripWeb: true }),
   ]).filter(Boolean);
 }
 
 function resolveEmbyCandidates(appItem, req) {
   return uniqueList([
-    normalizeBaseUrl(appItem?.remoteUrl || ''),
-    normalizeBaseUrl(resolveLaunchUrl(appItem, req)),
-    normalizeBaseUrl(appItem?.localUrl || ''),
-    normalizeBaseUrl(appItem?.url || ''),
+    normalizeBaseUrl(appItem?.remoteUrl || '', { stripWeb: true }),
+    normalizeBaseUrl(resolveLaunchUrl(appItem, req), { stripWeb: true }),
+    normalizeBaseUrl(appItem?.localUrl || '', { stripWeb: true }),
+    normalizeBaseUrl(appItem?.url || '', { stripWeb: true }),
   ]).filter(Boolean);
 }
 
@@ -3626,7 +3630,7 @@ function buildJellyfinImageUrl({ baseUrl, itemId, type, apiKey, tag = '', index 
   if (!baseUrl || !itemId || !type) return '';
   const safeType = String(type).trim();
   const safeId = encodeURIComponent(String(itemId).trim());
-  const url = new URL(`/Items/${safeId}/Images/${safeType}${index !== '' ? `/${encodeURIComponent(String(index))}` : ''}`, baseUrl);
+  const url = buildAppApiUrl(baseUrl, `Items/${safeId}/Images/${safeType}${index !== '' ? `/${encodeURIComponent(String(index))}` : ''}`);
   if (apiKey) url.searchParams.set('api_key', apiKey);
   if (tag) url.searchParams.set('tag', String(tag));
   url.searchParams.set('quality', '90');
@@ -3637,7 +3641,7 @@ function buildEmbyImageUrl({ baseUrl, itemId, type, apiKey, tag = '', index = ''
   if (!baseUrl || !itemId || !type) return '';
   const safeType = String(type).trim();
   const safeId = encodeURIComponent(String(itemId).trim());
-  const url = new URL(`/emby/Items/${safeId}/Images/${safeType}${index !== '' ? `/${encodeURIComponent(String(index))}` : ''}`, baseUrl);
+  const url = buildAppApiUrl(baseUrl, `emby/Items/${safeId}/Images/${safeType}${index !== '' ? `/${encodeURIComponent(String(index))}` : ''}`);
   if (apiKey) url.searchParams.set('api_key', apiKey);
   if (tag) url.searchParams.set('tag', String(tag));
   url.searchParams.set('quality', '90');
@@ -3686,7 +3690,7 @@ async function fetchJellyfinJson({ candidates, apiKey, path, query }) {
   for (let index = 0; index < candidates.length; index += 1) {
     const baseUrl = candidates[index];
     if (!baseUrl) continue;
-    const upstreamUrl = new URL(path, baseUrl);
+    const upstreamUrl = buildAppApiUrl(baseUrl, path);
     Object.entries(query || {}).forEach(([key, value]) => {
       if (value === undefined || value === null || value === '') return;
       upstreamUrl.searchParams.set(key, String(value));
@@ -3759,7 +3763,7 @@ async function fetchEmbyJson({ candidates, apiKey, path, query }) {
     if (!baseUrl) continue;
     for (let pathIndex = 0; pathIndex < pathCandidates.length; pathIndex += 1) {
       const attemptPath = pathCandidates[pathIndex];
-      const upstreamUrl = new URL(attemptPath, baseUrl);
+      const upstreamUrl = buildAppApiUrl(baseUrl, attemptPath);
       Object.entries(query || {}).forEach(([key, value]) => {
         if (value === undefined || value === null || value === '') return;
         upstreamUrl.searchParams.set(key, String(value));
@@ -4225,7 +4229,7 @@ async function fetchSeerrJson({ candidates, apiKey, path, query }) {
   for (let index = 0; index < candidates.length; index += 1) {
     const baseUrl = candidates[index];
     if (!baseUrl) continue;
-    const upstreamUrl = new URL(path, baseUrl);
+    const upstreamUrl = buildAppApiUrl(baseUrl, path);
     Object.entries(query || {}).forEach(([key, value]) => {
       if (value === undefined || value === null || value === '') return;
       upstreamUrl.searchParams.set(key, String(value));
@@ -4290,7 +4294,7 @@ app.get('/api/pulsarr/stats/:kind', requireUser, async (req, res) => {
   for (let index = 0; index < candidates.length; index += 1) {
     const baseUrl = candidates[index];
     if (!baseUrl) continue;
-    const upstreamUrl = new URL(endpointPath, baseUrl);
+    const upstreamUrl = buildAppApiUrl(baseUrl, endpointPath);
     Object.entries(req.query || {}).forEach(([key, value]) => {
       if (value === undefined || value === null || value === '') return;
       upstreamUrl.searchParams.set(key, String(value));
@@ -4513,7 +4517,7 @@ app.get('/api/pulsarr/tmdb/:kind/:id', requireUser, async (req, res) => {
   for (let index = 0; index < candidates.length; index += 1) {
     const baseUrl = candidates[index];
     if (!baseUrl) continue;
-    const upstreamUrl = new URL(`/v1/tmdb/${kind}/${encodeURIComponent(tmdbId)}`, baseUrl);
+    const upstreamUrl = buildAppApiUrl(baseUrl, `v1/tmdb/${kind}/${encodeURIComponent(tmdbId)}`);
     try {
       const upstreamRes = await fetch(upstreamUrl.toString(), {
         headers: {
@@ -4765,7 +4769,7 @@ app.get('/api/prowlarr/search', requireUser, async (req, res) => {
       const timeout = setTimeout(() => controller.abort(), 6000);
       try {
         if (method === 'GET') {
-          const upstreamUrl = new URL('/api/v1/search', baseUrl);
+          const upstreamUrl = buildAppApiUrl(baseUrl, 'api/v1/search');
           upstreamUrl.searchParams.set('query', query);
           Object.entries(queryParams).forEach(([key, value]) => {
             if (Array.isArray(value)) {
@@ -4782,7 +4786,7 @@ app.get('/api/prowlarr/search', requireUser, async (req, res) => {
             signal: controller.signal,
           });
         }
-        const upstreamUrl = new URL('/api/v1/search', baseUrl);
+        const upstreamUrl = buildAppApiUrl(baseUrl, 'api/v1/search');
         return fetch(upstreamUrl.toString(), {
           method: 'POST',
           headers: {
@@ -4891,10 +4895,10 @@ app.post('/api/prowlarr/download', requireUser, async (req, res) => {
     const baseUrl = candidates[index];
     if (!baseUrl) continue;
     const idValue = searchId || guid;
-    const searchDownloadUrl = new URL(`/api/v1/search/${encodeURIComponent(idValue)}/download`, baseUrl);
+    const searchDownloadUrl = buildAppApiUrl(baseUrl, `api/v1/search/${encodeURIComponent(idValue)}/download`);
     if (downloadClientId) searchDownloadUrl.searchParams.set('downloadClientId', downloadClientId);
-    const releaseDownloadUrl = new URL('/api/v1/release/download', baseUrl);
-    const searchGrabUrl = new URL('/api/v1/search', baseUrl);
+    const releaseDownloadUrl = buildAppApiUrl(baseUrl, 'api/v1/release/download');
+    const searchGrabUrl = buildAppApiUrl(baseUrl, 'api/v1/search');
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 6000);
@@ -5659,7 +5663,7 @@ function buildAppApiUrl(baseUrl, suffixPath) {
 }
 
 async function fetchTransmissionQueue(baseUrl, authHeader) {
-  const rpcUrl = new URL('/transmission/rpc', baseUrl);
+  const rpcUrl = buildAppApiUrl(baseUrl, 'transmission/rpc');
   const payload = {
     method: 'torrent-get',
     arguments: {
@@ -5728,7 +5732,7 @@ async function fetchTransmissionQueue(baseUrl, authHeader) {
 }
 
 async function fetchNzbgetQueue(baseUrl, authHeader) {
-  const rpcUrl = new URL('/jsonrpc', baseUrl);
+  const rpcUrl = buildAppApiUrl(baseUrl, 'jsonrpc');
   const payload = {
     method: 'listgroups',
     params: [0],
@@ -5977,7 +5981,7 @@ app.get('/api/arr/:appId/:version/*', requireUser, async (req, res) => {
   for (let index = 0; index < candidates.length; index += 1) {
     const baseUrl = candidates[index];
     if (!baseUrl) continue;
-    const upstreamUrl = new URL(`/api/${version}/${pathSuffix}`, baseUrl);
+    const upstreamUrl = buildAppApiUrl(baseUrl, `api/${version}/${pathSuffix}`);
     Object.entries(req.query || {}).forEach(([key, value]) => {
       if (value === undefined || value === null || value === '') return;
       upstreamUrl.searchParams.set(key, String(value));
@@ -7227,8 +7231,9 @@ async function resolveDeepLaunchUrl(appItem, req, options = {}) {
       const parsed = new URL(url);
       const origin = parsed.origin;
       const pathName = String(parsed.pathname || '').replace(/\/+$/, '');
+      const apiBase = normalizeBaseUrl(url, { stripWeb: true }) || origin;
       const ratingKey = await resolvePlexRatingKey({
-        baseUrl: origin,
+        baseUrl: apiBase,
         token: plexToken,
         query: effectiveQuery,
         imdbId,
@@ -7236,7 +7241,7 @@ async function resolveDeepLaunchUrl(appItem, req, options = {}) {
       });
       const detailsKey = ratingKey ? '/library/metadata/' + ratingKey : '';
       const machineId = detailsKey
-        ? await resolvePlexMachineIdentifier({ baseUrl: origin, token: plexToken })
+        ? await resolvePlexMachineIdentifier({ baseUrl: apiBase, token: plexToken })
         : '';
       const detailsHash = detailsKey
         ? (machineId
@@ -7253,9 +7258,10 @@ async function resolveDeepLaunchUrl(appItem, req, options = {}) {
           ? (origin + pathName + '/index.html' + detailsHash)
           : (origin + pathName + '/index.html#!/search?query=' + encodeURIComponent(effectiveQuery));
       }
+      const uiBase = apiBase.replace(/\/+$/, '');
       return detailsHash
-        ? (origin + '/web/index.html' + detailsHash)
-        : (origin + '/web/index.html#!/search?query=' + encodeURIComponent(effectiveQuery));
+        ? (uiBase + '/web/index.html' + detailsHash)
+        : (uiBase + '/web/index.html#!/search?query=' + encodeURIComponent(effectiveQuery));
     } catch (err) {
       return launchUrl;
     }
@@ -7276,7 +7282,7 @@ async function resolveTautulliRatingKey({ base, apiKey, query, imdbId, tmdbId, m
     for (let termIndex = 0; termIndex < searchTerms.length; termIndex += 1) {
       const term = String(searchTerms[termIndex] || '').trim();
       if (!term) continue;
-      const url = new URL('/api/v2', base);
+      const url = buildAppApiUrl(base, 'api/v2');
       url.searchParams.set('apikey', apiKey);
       url.searchParams.set('cmd', 'search');
       url.searchParams.set('query', term);
@@ -7328,7 +7334,7 @@ async function resolvePlexRatingKey({ baseUrl, token, query, imdbId, tmdbId }) {
     for (let termIndex = 0; termIndex < searchTerms.length; termIndex += 1) {
       const term = String(searchTerms[termIndex] || '').trim();
       if (!term) continue;
-      const url = new URL('/search', baseUrl);
+      const url = buildAppApiUrl(baseUrl, 'search');
       url.searchParams.set('query', term);
       url.searchParams.set('X-Plex-Token', token);
       const response = await fetch(url.toString(), { headers: { Accept: 'application/xml' } });
@@ -7390,7 +7396,7 @@ function parsePlexSearchNodes(xmlText) {
 async function resolvePlexMachineIdentifier({ baseUrl, token }) {
   if (!baseUrl || !token) return '';
   try {
-    const url = new URL('/identity', baseUrl);
+    const url = buildAppApiUrl(baseUrl, 'identity');
     url.searchParams.set('X-Plex-Token', token);
     const response = await fetch(url.toString(), { headers: { Accept: 'application/xml' } });
     if (!response.ok) return '';
@@ -7402,15 +7408,65 @@ async function resolvePlexMachineIdentifier({ baseUrl, token }) {
   }
 }
 
-function normalizeBaseUrl(value) {
+function normalizeBasePath(value) {
+  let raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      raw = String(new URL(raw).pathname || '').trim();
+    } catch (err) {
+      raw = '';
+    }
+  }
+  if (!raw) return '';
+  let pathValue = raw.replace(/[#?].*$/, '').replace(/\/{2,}/g, '/').trim();
+  if (!pathValue) return '';
+  if (!pathValue.startsWith('/')) pathValue = `/${pathValue}`;
+  pathValue = pathValue.replace(/\/+$/, '');
+  return pathValue === '/' ? '' : pathValue;
+}
+
+function normalizeBaseUrl(value, options = {}) {
+  const stripWeb = Boolean(options?.stripWeb);
   let url = String(value || '').trim();
   if (!url) return '';
   if (!/^https?:\/\//i.test(url)) url = 'http://' + url;
   try {
     const parsed = new URL(url);
-    return parsed.origin;
+    let pathname = String(parsed.pathname || '');
+    if (stripWeb) {
+      pathname = pathname
+        .replace(/\/web\/index\.html$/i, '')
+        .replace(/\/web\/?$/i, '');
+    }
+    pathname = pathname.replace(/\/+$/, '');
+    parsed.pathname = pathname || '/';
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.toString().replace(/\/$/, '');
   } catch (err) {
     return url.replace(/\/+$/, '');
+  }
+}
+
+function applyConfiguredBasePath(baseUrl, basePath) {
+  const normalizedBase = normalizeBaseUrl(baseUrl || '');
+  const normalizedPath = normalizeBasePath(basePath || '');
+  if (!normalizedBase) return '';
+  if (!normalizedPath) return normalizedBase;
+  try {
+    const parsed = new URL(normalizedBase);
+    const currentPath = normalizeBasePath(parsed.pathname || '');
+    if (currentPath && (currentPath === normalizedPath || currentPath.endsWith(normalizedPath))) {
+      return normalizedBase;
+    }
+    const joined = currentPath ? `${currentPath}${normalizedPath}` : normalizedPath;
+    parsed.pathname = joined;
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.toString().replace(/\/$/, '');
+  } catch (err) {
+    return normalizedBase;
   }
 }
 
@@ -7464,16 +7520,17 @@ function getRequestProto(req) {
 function resolvePublicBaseUrl(req) {
   const config = loadConfig();
   const generalSettings = resolveGeneralSettings(config);
+  const configuredBasePath = normalizeBasePath(generalSettings.basePath || '');
   const host = getRequestHost(req);
   if (generalSettings.localUrl && isLocalHost(host)) {
     const configuredLocal = normalizeBaseUrl(generalSettings.localUrl || '');
-    if (configuredLocal) return configuredLocal;
+    if (configuredLocal) return applyConfiguredBasePath(configuredLocal, configuredBasePath);
   }
   const configured = normalizeBaseUrl(generalSettings.remoteUrl || '');
-  if (configured) return configured;
+  if (configured) return applyConfiguredBasePath(configured, configuredBasePath);
   const proto = getRequestProto(req);
-  if (host) return normalizeBaseUrl(`${proto}://${host}`);
-  return normalizeBaseUrl(BASE_URL) || BASE_URL;
+  if (host) return applyConfiguredBasePath(normalizeBaseUrl(`${proto}://${host}`), configuredBasePath);
+  return applyConfiguredBasePath(normalizeBaseUrl(BASE_URL) || BASE_URL, configuredBasePath);
 }
 
 function isLocalHost(host) {
@@ -8882,7 +8939,7 @@ function buildAuthUrl(code, pinId, baseUrl = BASE_URL) {
   const params = new URLSearchParams();
   params.set('clientID', CLIENT_ID);
   params.set('code', code);
-  const callbackUrl = new URL('/oauth/callback', baseUrl);
+  const callbackUrl = buildAppApiUrl(baseUrl, 'oauth/callback');
   if (pinId) callbackUrl.searchParams.set('pinId', String(pinId));
   params.set('forwardUrl', callbackUrl.toString());
   params.set('context[device][product]', PRODUCT);

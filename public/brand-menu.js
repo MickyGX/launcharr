@@ -24,6 +24,9 @@
     bgMotion: 'launcharr-bg-motion',
     maximized: 'launcharr-maximized-window',
   };
+  const mobileMotionQuery = window.matchMedia
+    ? window.matchMedia('(max-width: 980px)')
+    : null;
 
   const wrapper = document.createElement('div');
   const maximizeIconSvg = ''
@@ -52,7 +55,7 @@
     + '      <path fill="currentColor" d="M12 4.2l1.15 2.73 2.73 1.15-2.73 1.15L12 12l-1.15-2.77-2.73-1.15 2.73-1.15L12 4.2z" />'
     + '      <path fill="currentColor" d="M18.5 3.6l.62 1.48 1.48.62-1.48.62-.62 1.48-.62-1.48-1.48-.62 1.48-.62.62-1.48zM5.2 14.5l.7 1.66 1.66.7-1.66.7-.7 1.66-.7-1.66-1.66-.7 1.66-.7.7-1.66zM16.2 14.8l.48 1.12 1.12.48-1.12.48-.48 1.12-.48-1.12-1.12-.48 1.12-.48.48-1.12z" />'
     + '    </svg>'
-    + '    <span class="dash-brand-menu-item-label" data-label="bg-motion">Disable starfield effect</span>'
+    + '    <span class="dash-brand-menu-item-label" data-label="bg-motion">Disable Starfield</span>'
     + '  </button>'
     + '  <button class="dash-brand-menu-item" type="button" data-action="maximize">'
     + '    <span data-icon="maximize"></span>'
@@ -70,8 +73,10 @@
   const maximizeIcon = wrapper.querySelector('[data-icon="maximize"]');
   if (!toggle || !menu || !motionBtn || !maximizeBtn || !motionLabel || !maximizeLabel || !maximizeIcon) return;
 
-  const isMotionEnabled = () => root.dataset.bgMotion !== '0';
+  const isMotionPreferredEnabled = () => root.dataset.bgMotion !== '0';
   const isMaximized = () => root.dataset.maximized === '1';
+  const isMobileView = () => Boolean(mobileMotionQuery && mobileMotionQuery.matches);
+  const isMotionLocked = () => isMaximized() || isMobileView();
   const applyMotion = (enabled) => {
     root.dataset.bgMotion = enabled ? '1' : '0';
     safeStorage.set(storageKeys.bgMotion, enabled ? '1' : '0');
@@ -82,8 +87,15 @@
   };
 
   const updateLabels = () => {
-    motionLabel.textContent = isMotionEnabled() ? 'Disable starfield effect' : 'Enable starfield effect';
-    maximizeLabel.textContent = isMaximized() ? 'Exit maximize view' : 'Maximize window';
+    const motionPreferredEnabled = isMotionPreferredEnabled();
+    const motionLocked = isMotionLocked();
+    motionLabel.textContent = motionPreferredEnabled ? 'Disable Starfield' : 'Enable Starfield';
+    motionBtn.disabled = motionLocked;
+    motionBtn.setAttribute('aria-disabled', motionLocked ? 'true' : 'false');
+    motionBtn.title = motionLocked
+      ? 'Starfield is disabled in mobile and maximized views.'
+      : '';
+    maximizeLabel.textContent = isMaximized() ? 'Minimise window' : 'Maximize window';
     maximizeIcon.innerHTML = isMaximized() ? minimizeIconSvg : maximizeIconSvg;
   };
 
@@ -109,7 +121,8 @@
 
   motionBtn.addEventListener('click', (event) => {
     event.preventDefault();
-    applyMotion(!isMotionEnabled());
+    if (isMotionLocked()) return;
+    applyMotion(!isMotionPreferredEnabled());
     updateLabels();
     closeMenu();
   });
@@ -134,4 +147,13 @@
     if (event.key !== 'Escape') return;
     closeMenu();
   });
+
+  if (mobileMotionQuery) {
+    if (typeof mobileMotionQuery.addEventListener === 'function') {
+      mobileMotionQuery.addEventListener('change', updateLabels);
+    } else if (typeof mobileMotionQuery.addListener === 'function') {
+      mobileMotionQuery.addListener(updateLabels);
+    }
+  }
+  window.addEventListener('resize', updateLabels, { passive: true });
 })();

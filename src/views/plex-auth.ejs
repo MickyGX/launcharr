@@ -37,7 +37,7 @@
     </div>
     <script>
       (async () => {
-        const baseUrl = "<%= baseUrl %>";
+        const callbackBase = "<%= callbackUrl %>";
         const client = <%- JSON.stringify(client) %>;
         const headers = {
           Accept: "application/json",
@@ -76,7 +76,7 @@
         const params = new URLSearchParams();
         params.set("clientID", client.id);
         params.set("code", data.code);
-        const callbackUrl = new URL("/oauth/callback", baseUrl);
+        const callbackUrl = new URL(callbackBase);
         if (data.id) callbackUrl.searchParams.set("pinId", String(data.id));
         params.set("forwardUrl", callbackUrl.toString());
         params.set("context[device][product]", client.product);

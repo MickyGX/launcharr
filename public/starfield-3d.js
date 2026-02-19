@@ -15,6 +15,9 @@
   const prefersReducedMotion = window.matchMedia
     ? window.matchMedia('(prefers-reduced-motion: reduce)')
     : null;
+  const mobileMotionQuery = window.matchMedia
+    ? window.matchMedia('(max-width: 980px)')
+    : null;
 
   let canvas = document.getElementById('dashStarfieldCanvas');
   if (!canvas) {
@@ -121,7 +124,10 @@
     const density = clamp(parseCssNumber('--star-density', 165), 20, 220);
     const speedSec = clamp(parseCssNumber('--star-speed', 45), 8, 60);
     const size = clamp(parseCssNumber('--star-size', 1.2), 0.8, 3);
+    const motionForcedOff = root.dataset.maximized === '1'
+      || Boolean(mobileMotionQuery && mobileMotionQuery.matches);
     const motionAllowed = root.dataset.bgMotion !== '0'
+      && !motionForcedOff
       && !(prefersReducedMotion && prefersReducedMotion.matches);
     const count = densityToCount(density);
 
@@ -216,11 +222,18 @@
 
   mutationObserver.observe(root, {
     attributes: true,
-    attributeFilter: ['data-bg-motion', 'style', 'data-brand-theme'],
+    attributeFilter: ['data-bg-motion', 'data-maximized', 'style', 'data-brand-theme'],
   });
 
   if (prefersReducedMotion) {
     prefersReducedMotion.addEventListener('change', () => readSettings(false));
+  }
+  if (mobileMotionQuery) {
+    if (typeof mobileMotionQuery.addEventListener === 'function') {
+      mobileMotionQuery.addEventListener('change', () => readSettings(false));
+    } else if (typeof mobileMotionQuery.addListener === 'function') {
+      mobileMotionQuery.addListener(() => readSettings(false));
+    }
   }
 
   window.addEventListener('resize', handleResize, { passive: true });
