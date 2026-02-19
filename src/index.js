@@ -130,6 +130,10 @@ const APP_OVERVIEW_ELEMENTS = {
     { id: 'recent-matches', name: 'Recent Matches' },
     { id: 'delivery-queue', name: 'Delivery Queue' },
   ],
+  romm: [
+    { id: 'recently-added', name: 'Recently Added' },
+    { id: 'consoles', name: 'Consoles' },
+  ],
   transmission: [
     { id: 'activity-queue', name: 'Download Queue' },
   ],
@@ -203,6 +207,16 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
   appriseTargets: '',
   appriseTag: '',
 };
+const ALLOWED_BRAND_THEMES = new Set(['custom', 'launcharr', 'rocketship', 'pulsarr', 'plex', 'radarr', 'sonarr', 'lidarr', 'readarr']);
+const DEFAULT_THEME_SETTINGS = {
+  mode: '',
+  brandTheme: 'pulsarr',
+  customColor: '#1cc6c2',
+  sidebarInvert: false,
+  squareCorners: false,
+  bgMotion: true,
+  carouselFreeScroll: false,
+};
 
 const APP_BASE_NAME_MAP = {
   radarr: 'Radarr',
@@ -265,6 +279,104 @@ function resolveNotificationSettings(config) {
     appriseTargets: String(raw.appriseTargets || DEFAULT_NOTIFICATION_SETTINGS.appriseTargets || '').trim(),
     appriseTag: String(raw.appriseTag || DEFAULT_NOTIFICATION_SETTINGS.appriseTag || '').trim(),
   };
+}
+
+function normalizeThemeMode(value, fallback = '') {
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw === 'day' || raw === 'night') return raw;
+  return fallback;
+}
+
+function normalizeThemeBrandTheme(value, fallback = DEFAULT_THEME_SETTINGS.brandTheme) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (ALLOWED_BRAND_THEMES.has(raw)) return raw;
+  return ALLOWED_BRAND_THEMES.has(String(fallback || '').trim().toLowerCase())
+    ? String(fallback || '').trim().toLowerCase()
+    : DEFAULT_THEME_SETTINGS.brandTheme;
+}
+
+function normalizeThemeCustomColor(value, fallback = DEFAULT_THEME_SETTINGS.customColor) {
+  const raw = String(value || '').trim();
+  if (!raw) return String(fallback || DEFAULT_THEME_SETTINGS.customColor).toLowerCase();
+  const normalized = raw.startsWith('#') ? raw : `#${raw}`;
+  return /^#[0-9a-fA-F]{6}$/.test(normalized)
+    ? normalized.toLowerCase()
+    : String(fallback || DEFAULT_THEME_SETTINGS.customColor).toLowerCase();
+}
+
+function normalizeThemeFlag(value, fallback = false) {
+  if (value === undefined || value === null || value === '') return Boolean(fallback);
+  if (typeof value === 'boolean') return value;
+  const raw = String(value).trim().toLowerCase();
+  if (raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on') return true;
+  if (raw === '0' || raw === 'false' || raw === 'no' || raw === 'off') return false;
+  return Boolean(fallback);
+}
+
+function normalizeThemeSettings(settings, fallback = DEFAULT_THEME_SETTINGS) {
+  const source = settings && typeof settings === 'object' ? settings : {};
+  const base = fallback && typeof fallback === 'object'
+    ? {
+      ...DEFAULT_THEME_SETTINGS,
+      ...fallback,
+    }
+    : { ...DEFAULT_THEME_SETTINGS };
+  return {
+    mode: normalizeThemeMode(source.mode, normalizeThemeMode(base.mode, '')),
+    brandTheme: normalizeThemeBrandTheme(source.brandTheme, base.brandTheme),
+    customColor: normalizeThemeCustomColor(source.customColor, base.customColor),
+    sidebarInvert: normalizeThemeFlag(source.sidebarInvert, base.sidebarInvert),
+    squareCorners: normalizeThemeFlag(source.squareCorners, base.squareCorners),
+    bgMotion: normalizeThemeFlag(source.bgMotion, base.bgMotion),
+    carouselFreeScroll: normalizeThemeFlag(source.carouselFreeScroll, base.carouselFreeScroll),
+  };
+}
+
+function resolveThemeDefaults(config) {
+  const raw = config && typeof config.themeDefaults === 'object' ? config.themeDefaults : {};
+  return normalizeThemeSettings(raw, DEFAULT_THEME_SETTINGS);
+}
+
+function resolveUserThemePreferences(config, fallback = DEFAULT_THEME_SETTINGS) {
+  const raw = config && typeof config.userThemePreferences === 'object' ? config.userThemePreferences : {};
+  const normalized = {};
+  Object.entries(raw).forEach(([key, value]) => {
+    const normalizedKey = String(key || '').trim().toLowerCase();
+    if (!normalizedKey) return;
+    normalized[normalizedKey] = normalizeThemeSettings(value, fallback);
+  });
+  return normalized;
+}
+
+function serializeUserThemePreferences(preferences, fallback = DEFAULT_THEME_SETTINGS) {
+  if (!preferences || typeof preferences !== 'object') return {};
+  const normalized = {};
+  Object.entries(preferences).forEach(([key, value]) => {
+    const normalizedKey = String(key || '').trim().toLowerCase();
+    if (!normalizedKey) return;
+    normalized[normalizedKey] = normalizeThemeSettings(value, fallback);
+  });
+  return normalized;
+}
+
+function resolveThemePreferenceKey(user) {
+  const source = String(user?.source || '').trim().toLowerCase() === 'plex' ? 'plex' : 'local';
+  const username = normalizeUserKey(user?.username || '');
+  const email = normalizeUserKey(user?.email || '');
+  const identity = source === 'plex'
+    ? (email || username)
+    : (username || email);
+  if (!identity) return '';
+  return `${source}:${identity}`;
+}
+
+function resolveThemeSettingsForUser(config, user) {
+  const defaults = resolveThemeDefaults(config);
+  const key = resolveThemePreferenceKey(user);
+  if (!key) return defaults;
+  const preferences = resolveUserThemePreferences(config, defaults);
+  const match = preferences[key];
+  return match ? normalizeThemeSettings(match, defaults) : defaults;
 }
 
 function parseAppriseTargets(value) {
@@ -956,6 +1068,11 @@ app.use((req, res, next) => {
   };
   return next();
 });
+app.use((req, res, next) => {
+  const config = loadConfig();
+  res.locals.themeDefaults = resolveThemeSettingsForUser(config, req.session?.user);
+  next();
+});
 
 loadLogsFromDisk(resolveLogSettings(loadConfig()));
 // DEBUG: confirm Plex client id creation on startup.
@@ -1639,6 +1756,8 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
   const notificationSettings = resolveNotificationSettings(config);
   const notificationResult = String(req.query?.notificationResult || '').trim();
   const notificationError = String(req.query?.notificationError || '').trim();
+  const themeDefaultsResult = String(req.query?.themeDefaultsResult || '').trim();
+  const themeDefaultsError = String(req.query?.themeDefaultsError || '').trim();
   const appInstanceResult = String(req.query?.appInstanceResult || '').trim();
   const appInstanceError = String(req.query?.appInstanceError || '').trim();
   const defaultAppResult = String(req.query?.defaultAppResult || '').trim();
@@ -2070,6 +2189,8 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     notificationSettings,
     notificationResult,
     notificationError,
+    themeDefaultsResult,
+    themeDefaultsError,
     appInstanceResult,
     appInstanceError,
     arrCombinedCardResult: String(req.query?.arrCombinedCardResult || '').trim(),
@@ -2096,6 +2217,30 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     role,
     actualRole,
   });
+});
+
+app.post('/settings/theme-defaults', requireSettingsAdmin, (req, res) => {
+  try {
+    const config = loadConfig();
+    const currentDefaults = resolveThemeDefaults(config);
+    const nextDefaults = normalizeThemeSettings({
+      mode: req.body?.theme_mode,
+      brandTheme: req.body?.theme_brand_theme,
+      customColor: req.body?.theme_custom_color,
+      sidebarInvert: req.body?.theme_sidebar_invert,
+      squareCorners: req.body?.theme_square_corners,
+      bgMotion: req.body?.theme_bg_motion,
+      carouselFreeScroll: req.body?.theme_carousel_free_scroll,
+    }, currentDefaults);
+    saveConfig({
+      ...config,
+      themeDefaults: nextDefaults,
+    });
+    return res.redirect('/settings?tab=custom&settingsCustomTab=themes&themeDefaultsResult=saved');
+  } catch (err) {
+    const encoded = encodeURIComponent('Failed to save default theme.');
+    return res.redirect(`/settings?tab=custom&settingsCustomTab=themes&themeDefaultsError=${encoded}`);
+  }
 });
 
 app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
@@ -2518,6 +2663,8 @@ app.get('/user-settings', requireUser, (req, res) => {
   const generalSettings = resolveGeneralSettings(config);
   const profileResult = String(req.query?.profileResult || '').trim();
   const profileError = String(req.query?.profileError || '').trim();
+  const themeResult = String(req.query?.themeResult || '').trim();
+  const themeError = String(req.query?.themeError || '').trim();
   const localUsers = resolveLocalUsers(config);
   const localUserIndex = findLocalUserIndex(localUsers, {
     username: req.session?.user?.username,
@@ -2536,6 +2683,8 @@ app.get('/user-settings', requireUser, (req, res) => {
     localProfile,
     profileResult,
     profileError,
+    themeResult,
+    themeError,
   });
 });
 
@@ -2618,10 +2767,60 @@ app.post('/user-settings/profile', requireUser, (req, res) => {
 
   const nextUsers = [...users];
   nextUsers[index] = nextUser;
-  saveConfig({ ...config, users: serializeLocalUsers(nextUsers) });
+  const userThemePreferences = resolveUserThemePreferences(config, resolveThemeDefaults(config));
+  const previousThemeKey = resolveThemePreferenceKey({
+    source: 'local',
+    username: currentUser.username,
+    email: currentUser.email,
+  });
+  const nextThemeKey = resolveThemePreferenceKey({
+    source: 'local',
+    username: nextUser.username,
+    email: nextUser.email,
+  });
+  if (previousThemeKey && nextThemeKey && previousThemeKey !== nextThemeKey && userThemePreferences[previousThemeKey]) {
+    if (!userThemePreferences[nextThemeKey]) {
+      userThemePreferences[nextThemeKey] = userThemePreferences[previousThemeKey];
+    }
+    delete userThemePreferences[previousThemeKey];
+  }
+  saveConfig({
+    ...config,
+    users: serializeLocalUsers(nextUsers),
+    userThemePreferences: serializeUserThemePreferences(userThemePreferences, resolveThemeDefaults(config)),
+  });
   setSessionUser(req, nextUser, 'local');
 
   return res.redirect('/user-settings?profileResult=saved');
+});
+
+app.post('/user-settings/theme', requireUser, (req, res) => {
+  try {
+    const config = loadConfig();
+    const userKey = resolveThemePreferenceKey(req.session?.user);
+    if (!userKey) {
+      return res.redirect('/user-settings?themeError=Unable+to+resolve+your+theme+profile.');
+    }
+    const defaults = resolveThemeDefaults(config);
+    const userThemePreferences = resolveUserThemePreferences(config, defaults);
+    userThemePreferences[userKey] = normalizeThemeSettings({
+      mode: req.body?.theme_mode,
+      brandTheme: req.body?.theme_brand_theme,
+      customColor: req.body?.theme_custom_color,
+      sidebarInvert: req.body?.theme_sidebar_invert,
+      squareCorners: req.body?.theme_square_corners,
+      bgMotion: req.body?.theme_bg_motion,
+      carouselFreeScroll: req.body?.theme_carousel_free_scroll,
+    }, defaults);
+    saveConfig({
+      ...config,
+      userThemePreferences: serializeUserThemePreferences(userThemePreferences, defaults),
+    });
+    return res.redirect('/user-settings?themeResult=saved');
+  } catch (err) {
+    const encoded = encodeURIComponent('Failed to save your theme preference.');
+    return res.redirect(`/user-settings?themeError=${encoded}`);
+  }
 });
 
 app.post('/settings/local-users', requireSettingsAdmin, (req, res) => {
@@ -5647,6 +5846,741 @@ function mapAutobrrQueueItem(entry, mode = 'recent-matches') {
   };
 }
 
+function normalizeRommMediaKind(value, fallback = 'game') {
+  const text = String(value || '').trim().toLowerCase();
+  if (!text) return fallback;
+  if (text.includes('handheld') || text.includes('portable')) return 'handheld';
+  if (text.includes('console') || text.includes('system') || text.includes('platform')) return 'console';
+  if (text.includes('bios') || text.includes('firmware')) return 'bios';
+  if (text.includes('homebrew')) return 'homebrew';
+  if (text.includes('game') || text.includes('rom')) return 'game';
+  return fallback;
+}
+
+function parseRommTimestamp(value) {
+  if (value === null || value === undefined || value === '') return 0;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return numeric > 1e12 ? numeric : numeric * 1000;
+  }
+  const parsed = Date.parse(String(value || '').trim());
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatRommDateLabel(value) {
+  const timestamp = parseRommTimestamp(value);
+  if (!timestamp) return '';
+  try {
+    return new Date(timestamp).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  } catch (err) {
+    return '';
+  }
+}
+
+function formatRommRelativePill(value) {
+  const timestamp = parseRommTimestamp(value);
+  if (!timestamp) return '';
+  const diffMs = Date.now() - timestamp;
+  const diffMinutes = Math.max(1, Math.round(diffMs / 60000));
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 48) return `${diffHours}h ago`;
+  const diffDays = Math.round(diffHours / 24);
+  return `${diffDays}d ago`;
+}
+
+function resolveRommAssetUrl(baseUrl, candidates = []) {
+  let relativeBase = '';
+  let basePathPrefix = '';
+  try {
+    const normalizedBase = normalizeBaseUrl(baseUrl || '');
+    if (normalizedBase) {
+      const parsedBase = new URL(normalizedBase);
+      if (!String(parsedBase.pathname || '/').endsWith('/')) {
+        parsedBase.pathname = `${parsedBase.pathname}/`;
+      }
+      parsedBase.search = '';
+      parsedBase.hash = '';
+      relativeBase = parsedBase.toString();
+      basePathPrefix = normalizeBasePath(parsedBase.pathname || '');
+    }
+  } catch (err) {
+    relativeBase = '';
+    basePathPrefix = '';
+  }
+
+  for (let index = 0; index < candidates.length; index += 1) {
+    const candidate = String(candidates[index] || '').trim();
+    if (!candidate) continue;
+    if (candidate === '[object Object]') continue;
+    if (/^data:image\//i.test(candidate)) return candidate;
+    if (/^https?:\/\//i.test(candidate)) return candidate;
+    if (/^\/\//.test(candidate)) return `https:${candidate}`;
+
+    const attempts = [candidate];
+    if (
+      candidate.startsWith('/')
+      && basePathPrefix
+      && basePathPrefix !== '/'
+      && candidate !== basePathPrefix
+      && !candidate.startsWith(`${basePathPrefix}/`)
+    ) {
+      attempts.unshift(`${basePathPrefix}${candidate}`);
+    }
+
+    for (let attemptIndex = 0; attemptIndex < attempts.length; attemptIndex += 1) {
+      try {
+        return new URL(attempts[attemptIndex], relativeBase || baseUrl).toString();
+      } catch (err) {
+        continue;
+      }
+    }
+  }
+  return '';
+}
+
+function normalizeRommAssetKey(value) {
+  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function collectRommAssetValues(value, bucket = []) {
+  if (value === null || value === undefined) return bucket;
+  if (typeof value === 'string') {
+    const text = value.trim();
+    if (text) bucket.push(text);
+    return bucket;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectRommAssetValues(entry, bucket));
+    return bucket;
+  }
+  if (typeof value === 'object') {
+    const directKeys = ['url', 'href', 'src', 'path', 'image', 'thumb', 'cover', 'poster', 'icon', 'logo', 'background', 'backdrop', 'banner', 'fanart', 'art', 'artwork'];
+    directKeys.forEach((key) => {
+      if (value[key] !== undefined) collectRommAssetValues(value[key], bucket);
+    });
+  }
+  return bucket;
+}
+
+function normalizeRommPlatformSlug(value) {
+  if (value === null || value === undefined) return '';
+  let raw = String(value).trim().toLowerCase();
+  if (!raw) return '';
+  try {
+    raw = decodeURIComponent(raw);
+  } catch (err) {
+    // Keep original when the value isn't URI-encoded.
+  }
+  raw = raw.replace(/^.*[\\/]/, '').replace(/\.[a-z0-9]{2,6}$/i, '');
+  return raw
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function buildRommPlatformAssetCandidates(entry, title = '') {
+  const source = entry && typeof entry === 'object' ? entry : {};
+  const slugValues = uniqueList([
+    source.slug,
+    source.platformSlug,
+    source.platform_slug,
+    source.consoleSlug,
+    source.console_slug,
+    source.systemSlug,
+    source.system_slug,
+    source.fsSlug,
+    source.fs_slug,
+    source.igdbSlug,
+    source.igdb_slug,
+    source.assets?.slug,
+    source.assets?.platformSlug,
+    source.metadata?.slug,
+    source.metadata?.platformSlug,
+    source.platform?.slug,
+    source.console?.slug,
+    source.system?.slug,
+    title,
+    source.name,
+    source.platformName,
+    source.consoleName,
+    source.systemName,
+  ]);
+  const slugs = uniqueList(slugValues.map((value) => normalizeRommPlatformSlug(value)).filter(Boolean));
+  const extensions = ['ico', 'png', 'svg', 'webp', 'jpg', 'jpeg'];
+  const candidates = [];
+  slugs.forEach((slug) => {
+    extensions.forEach((ext) => {
+      candidates.push(`assets/platforms/${slug}.${ext}`);
+      candidates.push(`/assets/platforms/${slug}.${ext}`);
+    });
+  });
+  return uniqueList(candidates);
+}
+
+function findRommAssetCandidates(entry, options = {}) {
+  const exactKeySet = new Set((Array.isArray(options.exactKeys) ? options.exactKeys : []).map(normalizeRommAssetKey).filter(Boolean));
+  const containsTokens = (Array.isArray(options.containsTokens) ? options.containsTokens : [])
+    .map(normalizeRommAssetKey)
+    .filter(Boolean);
+  const maxDepth = Math.max(1, Math.min(6, parseFiniteNumber(options.maxDepth, 4)));
+  const candidates = [];
+  const seenValues = new Set();
+  const seenObjects = new Set();
+  const queue = [{ value: entry, depth: 0 }];
+
+  const pushCandidate = (rawValue) => {
+    const text = String(rawValue || '').trim();
+    if (!text) return;
+    if (seenValues.has(text)) return;
+    seenValues.add(text);
+    candidates.push(text);
+  };
+
+  while (queue.length) {
+    const { value, depth } = queue.shift();
+    if (!value || typeof value !== 'object') continue;
+    if (seenObjects.has(value)) continue;
+    seenObjects.add(value);
+    if (depth > maxDepth) continue;
+
+    if (Array.isArray(value)) {
+      value.forEach((entryValue) => {
+        if (entryValue && typeof entryValue === 'object') {
+          queue.push({ value: entryValue, depth: depth + 1 });
+        } else {
+          collectRommAssetValues(entryValue).forEach(pushCandidate);
+        }
+      });
+      continue;
+    }
+
+    Object.entries(value).forEach(([rawKey, rawValue]) => {
+      const key = normalizeRommAssetKey(rawKey);
+      const matchesExact = exactKeySet.has(key);
+      const matchesToken = containsTokens.some((token) => key.includes(token));
+      if (matchesExact || matchesToken) {
+        collectRommAssetValues(rawValue).forEach(pushCandidate);
+      }
+      if (rawValue && typeof rawValue === 'object' && depth < maxDepth) {
+        queue.push({ value: rawValue, depth: depth + 1 });
+      }
+    });
+  }
+
+  return candidates;
+}
+
+function isLikelyRommCollection(value) {
+  if (!Array.isArray(value)) return false;
+  if (!value.length) return true;
+  return value.some((entry) => entry && typeof entry === 'object');
+}
+
+function extractRommList(payload, kind = 'recently-added') {
+  const preferredKeys = kind === 'consoles'
+    ? ['platforms', 'consoles', 'systems', 'items', 'results', 'records', 'data']
+    : ['roms', 'games', 'items', 'results', 'records', 'data'];
+
+  const fromContainer = (container) => {
+    if (!container || typeof container !== 'object') return null;
+    for (let index = 0; index < preferredKeys.length; index += 1) {
+      const key = preferredKeys[index];
+      if (isLikelyRommCollection(container[key])) return container[key];
+    }
+    const values = Object.values(container);
+    for (let index = 0; index < values.length; index += 1) {
+      if (isLikelyRommCollection(values[index])) return values[index];
+    }
+    return null;
+  };
+
+  if (isLikelyRommCollection(payload)) return payload;
+  const direct = fromContainer(payload);
+  if (direct) return direct;
+
+  const nestedKeys = ['data', 'result', 'results', 'payload', 'response'];
+  for (let index = 0; index < nestedKeys.length; index += 1) {
+    const nested = payload?.[nestedKeys[index]];
+    if (!nested || typeof nested !== 'object') continue;
+    if (isLikelyRommCollection(nested)) return nested;
+    const nestedCollection = fromContainer(nested);
+    if (nestedCollection) return nestedCollection;
+  }
+
+  const visited = new Set();
+  const queue = [{ value: payload, depth: 0 }];
+  while (queue.length) {
+    const { value, depth } = queue.shift();
+    if (!value || typeof value !== 'object') continue;
+    if (visited.has(value)) continue;
+    visited.add(value);
+    if (isLikelyRommCollection(value)) return value;
+    if (depth >= 3) continue;
+    Object.values(value).forEach((entry) => {
+      if (entry && typeof entry === 'object') queue.push({ value: entry, depth: depth + 1 });
+    });
+  }
+
+  return null;
+}
+
+function parseRommNumericValue(value) {
+  if (value === null || value === undefined || value === '') return 0;
+  const direct = Number(value);
+  if (Number.isFinite(direct)) return Math.max(0, Math.round(direct));
+  if (typeof value !== 'string') return 0;
+  const text = value.trim();
+  if (!text) return 0;
+  const compact = text.replace(/[\s,]+/g, '');
+  if (/^-?\d+(\.\d+)?$/.test(compact)) {
+    const numeric = Number(compact);
+    return Number.isFinite(numeric) ? Math.max(0, Math.round(numeric)) : 0;
+  }
+  const embedded = text.match(/(\d[\d,]*)/);
+  if (!embedded || !embedded[1]) return 0;
+  const parsed = Number(embedded[1].replace(/,/g, ''));
+  return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : 0;
+}
+
+function parseRommCount(value, seen = new Set()) {
+  const numeric = parseRommNumericValue(value);
+  if (numeric > 0) return numeric;
+  if (Array.isArray(value)) return value.length;
+  if (!value || typeof value !== 'object') return 0;
+  if (seen.has(value)) return 0;
+  seen.add(value);
+
+  const preferredCandidates = [
+    value.romCount,
+    value.romsCount,
+    value.rom_count,
+    value.roms_count,
+    value.totalRoms,
+    value.total_roms,
+    value.gameCount,
+    value.gamesCount,
+    value.game_count,
+    value.games_count,
+    value.totalGames,
+    value.total_games,
+    value.count,
+    value.total,
+    value.entries,
+    value.items,
+    value.roms,
+    value.games,
+    value.stats,
+    value.totals,
+    value.summary,
+  ];
+  for (let index = 0; index < preferredCandidates.length; index += 1) {
+    const parsed = parseRommCount(preferredCandidates[index], seen);
+    if (parsed > 0) return parsed;
+  }
+
+  let best = 0;
+  Object.entries(value).forEach(([rawKey, rawValue]) => {
+    const key = normalizeRommAssetKey(rawKey);
+    if (!key) return;
+    const isCountish = key.includes('count')
+      || key.includes('total')
+      || key.startsWith('num')
+      || key.includes('rom')
+      || key.includes('game')
+      || key.includes('entry')
+      || key.includes('item');
+    if (!isCountish) return;
+    const parsed = parseRommCount(rawValue, seen);
+    if (parsed > best) best = parsed;
+  });
+  if (best > 0) return best;
+
+  const nestedContainers = [
+    value.data,
+    value.result,
+    value.results,
+    value.payload,
+    value.response,
+    value.meta,
+    value.metadata,
+    value.pagination,
+    value.page,
+    value.pageInfo,
+  ];
+  for (let index = 0; index < nestedContainers.length; index += 1) {
+    const parsed = parseRommCount(nestedContainers[index], seen);
+    if (parsed > 0) return parsed;
+  }
+
+  return 0;
+}
+
+function pickRommCount(candidates = []) {
+  const list = Array.isArray(candidates) ? candidates : [candidates];
+  let best = 0;
+  for (let index = 0; index < list.length; index += 1) {
+    const parsed = parseRommCount(list[index]);
+    if (parsed > best) best = parsed;
+    if (parsed > 0) return parsed;
+  }
+  return best;
+}
+
+function mapRommRecentlyAddedItem(entry, baseUrl = '') {
+  const kind = normalizeRommMediaKind(
+    pickFirstNonEmpty([entry?.type, entry?.category, entry?.romType, entry?.kind]),
+    'game'
+  );
+  const addedAt = pickFirstNonEmpty([
+    entry?.createdAt,
+    entry?.created_at,
+    entry?.addedAt,
+    entry?.added_at,
+    entry?.releasedAt,
+    entry?.releaseDate,
+    entry?.release_date,
+    entry?.updatedAt,
+    entry?.updated_at,
+  ]);
+  const addedTs = parseRommTimestamp(addedAt);
+  const addedLabel = formatRommDateLabel(addedAt);
+  const addedPill = formatRommRelativePill(addedAt);
+  const region = pickFirstNonEmpty([entry?.region, entry?.releaseRegion, entry?.country, entry?.locale]);
+  const platformName = pickFirstNonEmpty([
+    entry?.platformName,
+    entry?.consoleName,
+    entry?.systemName,
+    entry?.platform?.name,
+    entry?.console?.name,
+    entry?.system?.name,
+    entry?.platform,
+    entry?.console,
+    entry?.system,
+  ]);
+  const addedSummary = [addedLabel ? `Added ${addedLabel}` : '', region].filter(Boolean).join(' • ');
+  const sizeBytes = parseFiniteNumber(
+    entry?.sizeBytes
+      ?? entry?.size_bytes
+      ?? entry?.fileSize
+      ?? entry?.file_size
+      ?? entry?.size,
+    0
+  );
+  const sizeLabel = sizeBytes > 0 ? formatBytesLabel(sizeBytes) : '';
+  const extension = pickFirstNonEmpty([entry?.extension, entry?.fileExtension, entry?.fileType, entry?.format]).toUpperCase();
+  const thumb = resolveRommAssetUrl(baseUrl, [
+    entry?.coverUrl,
+    entry?.coverURL,
+    entry?.cover_url,
+    entry?.coverImage,
+    entry?.cover_image,
+    entry?.cover,
+    entry?.boxArt,
+    entry?.boxart,
+    entry?.posterUrl,
+    entry?.poster_url,
+    entry?.poster,
+    entry?.thumbnail,
+    entry?.thumb,
+    entry?.imageUrl,
+    entry?.image_url,
+    entry?.image,
+    entry?.artwork,
+    entry?.art,
+    entry?.media?.cover,
+    entry?.media?.thumbnail,
+    entry?.media?.image,
+  ]);
+  const art = resolveRommAssetUrl(baseUrl, [
+    entry?.background,
+    entry?.backgroundUrl,
+    entry?.background_url,
+    entry?.backdrop,
+    entry?.backdropUrl,
+    entry?.backdrop_url,
+    entry?.banner,
+    entry?.fanart,
+    entry?.media?.background,
+    entry?.media?.fanart,
+  ]);
+  const overview = pickFirstNonEmpty([
+    entry?.overview,
+    entry?.summary,
+    entry?.description,
+    entry?.synopsis,
+    entry?.plot,
+  ]);
+  const subtitle = platformName || '-';
+  const metaParts = [];
+  if (platformName && addedSummary) metaParts.push(addedSummary);
+  if (!platformName && addedLabel) metaParts.push(`Added ${addedLabel}`);
+  if (!platformName && region) metaParts.push(region);
+  if (sizeLabel) metaParts.push(sizeLabel);
+  if (extension) metaParts.push(extension);
+  return {
+    id: pickFirstNonEmpty([entry?.id, entry?.uuid, entry?.slug, entry?.romId, entry?.gameId, entry?.name, entry?.title]),
+    kind,
+    title: pickFirstNonEmpty([entry?.name, entry?.title, entry?.romName, entry?.gameTitle, entry?.filename, 'Unknown']),
+    subtitle,
+    meta: metaParts.join(' • '),
+    pill: addedPill,
+    user: '',
+    overview,
+    thumb,
+    art,
+    sortTs: addedTs,
+  };
+}
+
+function mapRommConsoleItem(entry, baseUrl = '') {
+  const kind = normalizeRommMediaKind(
+    pickFirstNonEmpty([entry?.type, entry?.category, entry?.platformType, entry?.deviceType]),
+    'console'
+  );
+  const title = pickFirstNonEmpty([entry?.name, entry?.title, entry?.platformName, entry?.consoleName, entry?.systemName, 'Unknown Console']);
+  const romCount = pickRommCount([
+    entry?.romCount,
+    entry?.romsCount,
+    entry?.rom_count,
+    entry?.roms_count,
+    entry?.totalRoms,
+    entry?.total_roms,
+    entry?.stats?.roms,
+    entry?.stats?.romCount,
+    entry?.stats?.rom_count,
+    entry?.totals?.roms,
+    entry?.totals?.romCount,
+    entry?.totals?.rom_count,
+    entry?.roms,
+    entry?.count,
+    entry?.totals,
+    entry?.stats,
+    entry?.gameCount,
+    entry?.gamesCount,
+    entry?.game_count,
+    entry?.games_count,
+    entry?.games,
+  ]);
+  const gameCount = pickRommCount([
+    entry?.gameCount,
+    entry?.gamesCount,
+    entry?.game_count,
+    entry?.games_count,
+    entry?.totalGames,
+    entry?.total_games,
+    entry?.stats?.games,
+    entry?.stats?.gameCount,
+    entry?.stats?.game_count,
+    entry?.totals?.games,
+    entry?.totals?.gameCount,
+    entry?.totals?.game_count,
+    entry?.games,
+  ]);
+  const biosCount = pickRommCount([
+    entry?.biosCount,
+    entry?.bios_count,
+    entry?.stats?.bios,
+    entry?.stats?.biosCount,
+    entry?.stats?.bios_count,
+    entry?.totals?.bios,
+    entry?.totals?.biosCount,
+    entry?.totals?.bios_count,
+    entry?.bios,
+  ]);
+  const saveCount = pickRommCount([
+    entry?.saveCount,
+    entry?.save_count,
+    entry?.savesCount,
+    entry?.saves_count,
+    entry?.stats?.saves,
+    entry?.stats?.saveCount,
+    entry?.stats?.save_count,
+    entry?.totals?.saves,
+    entry?.totals?.saveCount,
+    entry?.totals?.save_count,
+    entry?.saves,
+  ]);
+  const screenshotCount = pickRommCount([
+    entry?.screenshotCount,
+    entry?.screenshot_count,
+    entry?.screenshotsCount,
+    entry?.screenshots_count,
+    entry?.stats?.screenshots,
+    entry?.stats?.screenshotCount,
+    entry?.stats?.screenshot_count,
+    entry?.totals?.screenshots,
+    entry?.totals?.screenshotCount,
+    entry?.totals?.screenshot_count,
+    entry?.screenshots,
+  ]);
+  const generation = pickFirstNonEmpty([entry?.generation, entry?.era, entry?.family, entry?.releaseYear, entry?.year]);
+  const manufacturer = pickFirstNonEmpty([entry?.manufacturer, entry?.vendor, entry?.company]);
+  const statItems = [];
+  const pushStat = (label, rawValue) => {
+    const textLabel = String(label || '').trim();
+    const textValue = String(rawValue || '').trim();
+    if (!textLabel || !textValue) return;
+    if (statItems.some((item) => item.label === textLabel)) return;
+    statItems.push({ label: textLabel, value: textValue });
+  };
+  pushStat('ROMs', romCount > 0 ? romCount.toLocaleString() : '0');
+  if (gameCount > 0 && gameCount !== romCount) pushStat('Games', gameCount.toLocaleString());
+  if (biosCount > 0) pushStat('BIOS', biosCount.toLocaleString());
+  if (saveCount > 0) pushStat('Saves', saveCount.toLocaleString());
+  if (screenshotCount > 0) pushStat('Screenshots', screenshotCount.toLocaleString());
+  if (manufacturer) pushStat('Manufacturer', manufacturer);
+  if (generation) pushStat('Generation', generation);
+  const subDetail = `${romCount.toLocaleString()} ROM${romCount === 1 ? '' : 's'}`;
+  const fallbackPlatformAssets = buildRommPlatformAssetCandidates(entry, title);
+  const thumbCandidates = [
+    entry?.icon,
+    entry?.iconUrl,
+    entry?.icon_url,
+    entry?.iconPath,
+    entry?.icon_path,
+    entry?.iconFile,
+    entry?.icon_file,
+    entry?.logo,
+    entry?.logoUrl,
+    entry?.logo_url,
+    entry?.logoPath,
+    entry?.logo_path,
+    entry?.image,
+    entry?.imageUrl,
+    entry?.image_url,
+    entry?.imagePath,
+    entry?.image_path,
+    entry?.cover,
+    entry?.coverUrl,
+    entry?.cover_url,
+    entry?.coverPath,
+    entry?.cover_path,
+    entry?.coverImage,
+    entry?.cover_image,
+    entry?.boxArt,
+    entry?.box_art,
+    entry?.boxart,
+    entry?.poster,
+    entry?.posterUrl,
+    entry?.poster_url,
+    entry?.artwork,
+    entry?.artworkUrl,
+    entry?.artwork_url,
+    entry?.thumbnail,
+    entry?.thumb,
+    entry?.banner,
+    entry?.asset,
+    entry?.assetUrl,
+    entry?.asset_url,
+    entry?.assets?.icon,
+    entry?.assets?.iconUrl,
+    entry?.assets?.icon_url,
+    entry?.assets?.logo,
+    entry?.assets?.logoUrl,
+    entry?.assets?.logo_url,
+    entry?.assets?.cover,
+    entry?.assets?.coverUrl,
+    entry?.assets?.cover_url,
+    entry?.assets?.boxArt,
+    entry?.assets?.box_art,
+    entry?.assets?.poster,
+    entry?.assets?.thumbnail,
+    entry?.assets?.image,
+    entry?.assets?.artwork,
+    entry?.assets?.banner,
+    entry?.metadata?.icon,
+    entry?.metadata?.logo,
+    entry?.metadata?.cover,
+    entry?.metadata?.boxArt,
+    entry?.metadata?.box_art,
+    entry?.metadata?.poster,
+    entry?.metadata?.thumbnail,
+    entry?.metadata?.image,
+    entry?.metadata?.artwork,
+    entry?.metadata?.banner,
+    entry?.metadata?.iconPath,
+    entry?.metadata?.icon_path,
+    entry?.metadata?.coverPath,
+    entry?.metadata?.cover_path,
+    entry?.roms?.[0]?.cover,
+    entry?.roms?.[0]?.coverUrl,
+    entry?.roms?.[0]?.cover_url,
+    entry?.roms?.[0]?.thumb,
+    entry?.roms?.[0]?.thumbnail,
+    entry?.games?.[0]?.cover,
+    entry?.games?.[0]?.coverUrl,
+    entry?.games?.[0]?.cover_url,
+    entry?.games?.[0]?.thumb,
+    entry?.games?.[0]?.thumbnail,
+    ...fallbackPlatformAssets,
+    ...findRommAssetCandidates(entry, {
+      exactKeys: ['icon', 'icon_path', 'iconpath', 'logo', 'image', 'image_path', 'imagepath', 'cover', 'cover_url', 'coverurl', 'cover_path', 'coverpath', 'box_art', 'boxart', 'poster', 'thumbnail', 'thumb', 'artwork', 'custom_cover', 'customcover', 'screenshot', 'screenshots'],
+      containsTokens: ['cover', 'thumb', 'poster', 'logo', 'icon', 'image', 'boxart', 'artwork', 'screenshot', 'asset'],
+      maxDepth: 5,
+    }),
+  ];
+  const thumb = resolveRommAssetUrl(baseUrl, thumbCandidates);
+  const artCandidates = [
+    entry?.background,
+    entry?.backgroundUrl,
+    entry?.background_url,
+    entry?.banner,
+    entry?.fanart,
+    entry?.backdrop,
+    entry?.backdropUrl,
+    entry?.backdrop_url,
+    entry?.wallpaper,
+    entry?.hero,
+    entry?.assets?.background,
+    entry?.assets?.backdrop,
+    entry?.assets?.banner,
+    entry?.assets?.fanart,
+    entry?.assets?.wallpaper,
+    entry?.metadata?.background,
+    entry?.metadata?.backdrop,
+    entry?.metadata?.banner,
+    entry?.metadata?.fanart,
+    entry?.metadata?.wallpaper,
+    ...findRommAssetCandidates(entry, {
+      exactKeys: ['background', 'background_url', 'backgroundurl', 'backdrop', 'backdrop_url', 'backdropurl', 'banner', 'fanart', 'wallpaper', 'hero'],
+      containsTokens: ['background', 'backdrop', 'banner', 'fanart', 'wallpaper', 'hero'],
+      maxDepth: 5,
+    }),
+  ];
+  const art = resolveRommAssetUrl(baseUrl, artCandidates);
+  const resolvedThumb = thumb || art;
+  const resolvedArt = art || thumb;
+  const existingOverview = pickFirstNonEmpty([
+    entry?.overview,
+    entry?.summary,
+    entry?.description,
+    entry?.notes,
+  ]);
+  const generatedOverview = statItems.length
+    ? `Library summary: ${statItems.map((item) => `${item.label}: ${item.value}`).join(' • ')}.`
+    : '';
+  const overview = existingOverview || generatedOverview;
+  return {
+    id: pickFirstNonEmpty([entry?.id, entry?.uuid, entry?.slug, entry?.platformId, entry?.consoleId, entry?.name]),
+    kind,
+    title,
+    subtitle: subDetail,
+    meta: [manufacturer, generation].filter(Boolean).join(' • '),
+    pill: generation || '',
+    user: '',
+    overview,
+    romCount,
+    stats: statItems,
+    thumb: resolvedThumb,
+    art: resolvedArt,
+    sortTs: romCount,
+  };
+}
+
 app.get('/api/jackett/search/filters', requireUser, async (req, res) => {
   const config = loadConfig();
   const apps = config.apps || [];
@@ -5976,6 +6910,121 @@ app.get('/api/autobrr/:kind', requireUser, async (req, res) => {
   }
 
   return res.status(502).json({ error: lastError || 'Failed to fetch Autobrr data.' });
+});
+
+app.get('/api/romm/:kind', requireUser, async (req, res) => {
+  const kind = String(req.params.kind || '').trim().toLowerCase();
+  if (!['recently-added', 'consoles'].includes(kind)) {
+    return res.status(400).json({ error: 'Unsupported Romm endpoint.' });
+  }
+
+  const config = loadConfig();
+  const apps = config.apps || [];
+  const rommApp = apps.find((appItem) => normalizeAppId(appItem?.id) === 'romm');
+  if (!rommApp) return res.status(404).json({ error: 'Romm app is not configured.' });
+  if (!canAccessDashboardApp(config, rommApp, getEffectiveRole(req))) {
+    return res.status(403).json({ error: 'Romm dashboard access denied.' });
+  }
+
+  const candidates = resolveAppApiCandidates(rommApp, req);
+  if (!candidates.length) return res.status(400).json({ error: 'Missing Romm URL.' });
+
+  const apiKey = String(rommApp.apiKey || '').trim();
+  const authHeader = buildBasicAuthHeader(rommApp.username || '', rommApp.password || '');
+  const headers = {
+    Accept: 'application/json',
+  };
+  if (apiKey) {
+    headers['X-API-Key'] = apiKey;
+    headers['X-API-KEY'] = apiKey;
+    if (!authHeader) headers.Authorization = /^bearer\s+/i.test(apiKey) ? apiKey : `Bearer ${apiKey}`;
+  }
+  if (authHeader) headers.Authorization = authHeader;
+
+  const endpointPlans = kind === 'consoles'
+    ? [
+      { path: 'api/platforms' },
+      { path: 'api/v1/platforms' },
+      { path: 'api/consoles' },
+      { path: 'api/v1/consoles' },
+      { path: 'api/systems' },
+      { path: 'api/v1/systems' },
+    ]
+    : [
+      { path: 'api/roms/recent', query: { limit: '200' } },
+      { path: 'api/roms/recently-added', query: { limit: '200' } },
+      { path: 'api/roms', query: { sort: 'created_at', order: 'desc', limit: '200' } },
+      { path: 'api/v1/roms', query: { sort: 'created_at', order: 'desc', limit: '200' } },
+      { path: 'api/games/recent', query: { limit: '200' } },
+      { path: 'api/v1/games/recent', query: { limit: '200' } },
+    ];
+
+  let lastError = '';
+  for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex += 1) {
+    const baseUrl = candidates[candidateIndex];
+    if (!baseUrl) continue;
+    for (let planIndex = 0; planIndex < endpointPlans.length; planIndex += 1) {
+      const endpoint = endpointPlans[planIndex];
+      try {
+        const url = buildAppApiUrl(baseUrl, endpoint.path);
+        Object.entries(endpoint.query || {}).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) {
+            url.searchParams.set(key, String(value));
+          }
+        });
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+        let response;
+        try {
+          response = await fetch(url.toString(), {
+            headers,
+            signal: controller.signal,
+          });
+        } finally {
+          clearTimeout(timeout);
+        }
+        const text = await response.text();
+        if (!response.ok) {
+          lastError = `Romm request failed (${response.status}) via ${baseUrl}.`;
+          continue;
+        }
+        const payload = text ? JSON.parse(text) : {};
+        const list = extractRommList(payload, kind);
+        if (!Array.isArray(list)) {
+          lastError = `Unexpected Romm response format via ${baseUrl}.`;
+          continue;
+        }
+        const mapper = kind === 'consoles' ? mapRommConsoleItem : mapRommRecentlyAddedItem;
+        const mapped = list
+          .map((entry) => mapper(entry, baseUrl))
+          .filter((item) => Boolean(item?.title));
+        mapped.sort((leftItem, rightItem) => {
+          const leftSort = parseFiniteNumber(leftItem?.sortTs, 0);
+          const rightSort = parseFiniteNumber(rightItem?.sortTs, 0);
+          if (rightSort !== leftSort) return rightSort - leftSort;
+          return String(leftItem?.title || '').localeCompare(String(rightItem?.title || ''));
+        });
+        const requestedLimitRaw = String(req.query?.limit || '').trim().toLowerCase();
+        const defaultLimit = kind === 'consoles' ? 500 : 200;
+        const maxCap = kind === 'consoles' ? 5000 : 1000;
+        let itemLimit = defaultLimit;
+        if (requestedLimitRaw === 'all') {
+          itemLimit = maxCap;
+        } else if (requestedLimitRaw) {
+          const parsedLimit = Number(requestedLimitRaw);
+          if (Number.isFinite(parsedLimit) && parsedLimit > 0) {
+            itemLimit = Math.min(maxCap, Math.max(1, Math.round(parsedLimit)));
+          }
+        }
+        const items = mapped.slice(0, itemLimit);
+        return res.json({ items });
+      } catch (err) {
+        lastError = safeMessage(err) || `Failed to reach Romm via ${baseUrl}.`;
+      }
+    }
+  }
+
+  return res.status(502).json({ error: lastError || 'Failed to fetch Romm data.' });
 });
 
 function buildBasicAuthHeader(username, password) {

@@ -1066,5 +1066,56 @@
       }
     ],
     "plexToken": ""
+  },
+  {
+    "id": "romm",
+    "name": "Romm",
+    "icon": "/icons/romm.svg",
+    "url": "http://localhost:8080",
+    "description": "Retro game library manager",
+    "category": "Games",
+    "roles": [
+      "admin",
+      "user"
+    ],
+    "apiKey": "",
+    "username": "",
+    "password": "",
+    "menu": {
+      "overview": {
+        "user": true,
+        "admin": true
+      },
+      "launch": {
+        "user": true,
+        "admin": true
+      },
+      "settings": {
+        "user": false,
+        "admin": true
+      }
+    },
+    "order": 1,
+    "favourite": false,
+    "launchMode": "iframe",
+    "localUrl": "http://localhost:8080",
+    "remoteUrl": "",
+    "overviewElements": [
+      {
+        "id": "recently-added",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "order": 1
+      },
+      {
+        "id": "consoles",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "order": 2
+      }
+    ],
+    "plexToken": ""
   }
 ]

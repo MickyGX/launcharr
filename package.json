@@ -1,6 +1,6 @@
 {
   "name": "launcharr",
-  "version": "0.2.28",
+  "version": "0.2.29",
   "description": "Homepage and central hub for Arr suite apps with Plex SSO",
   "main": "src/index.js",
   "type": "module",

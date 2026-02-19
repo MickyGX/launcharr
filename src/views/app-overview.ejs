@@ -9,18 +9,30 @@
       try {
         var stored = localStorage.getItem("launcharr-theme");
         var prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
-        var mode = stored || (prefersLight ? "day" : "night");
-        var brandTheme = localStorage.getItem("launcharr-brand-theme") || "pulsarr";
+        var themeDefaults = <%- JSON.stringify(themeDefaults || {}) %>;
+        var modeFromDefaults = (themeDefaults && (themeDefaults.mode === "day" || themeDefaults.mode === "night")) ? themeDefaults.mode : "";
+        var mode = stored || modeFromDefaults || (prefersLight ? "day" : "night");
+        var defaultBrandTheme = String(themeDefaults && themeDefaults.brandTheme || "").trim().toLowerCase();
+        var isAllowedBrandTheme = /^(custom|launcharr|rocketship|pulsarr|plex|radarr|sonarr|lidarr|readarr)$/.test(defaultBrandTheme);
+        var brandTheme = localStorage.getItem("launcharr-brand-theme") || (isAllowedBrandTheme ? defaultBrandTheme : "pulsarr");
         document.documentElement.dataset.theme = mode;
         document.documentElement.dataset.brandTheme = brandTheme;
-        var sidebarInvert = localStorage.getItem("launcharr-sidebar-invert") === "1";
-        var squareCorners = localStorage.getItem("launcharr-square-corners") === "1";
+        var parseStoredBool = function(key, fallback) {
+          var raw = localStorage.getItem(key);
+          if (raw === null || raw === undefined) return Boolean(fallback);
+          return raw === "1" || raw === "true";
+        };
+        var sidebarInvert = parseStoredBool("launcharr-sidebar-invert", themeDefaults && themeDefaults.sidebarInvert === true);
+        var squareCorners = parseStoredBool("launcharr-square-corners", themeDefaults && themeDefaults.squareCorners === true);
         var bgMotionStored = localStorage.getItem("launcharr-bg-motion");
-        var bgMotion = bgMotionStored === null ? true : bgMotionStored === "1";
+        var bgMotionDefault = themeDefaults && themeDefaults.bgMotion === undefined ? true : (themeDefaults && themeDefaults.bgMotion === true);
+        var bgMotion = bgMotionStored === null ? bgMotionDefault : (bgMotionStored === "1" || bgMotionStored === "true");
+        var carouselFreeScroll = parseStoredBool("launcharr-carousel-free-scroll", themeDefaults && themeDefaults.carouselFreeScroll === true);
         var maximizedWindow = localStorage.getItem("launcharr-maximized-window") === "1";
         document.documentElement.dataset.sidebarInvert = sidebarInvert ? "1" : "0";
         document.documentElement.dataset.squareCorners = squareCorners ? "1" : "0";
         document.documentElement.dataset.bgMotion = bgMotion ? "1" : "0";
+        document.documentElement.dataset.carouselFreeScroll = carouselFreeScroll ? "1" : "0";
         document.documentElement.dataset.maximized = maximizedWindow ? "1" : "0";
         var starDensity = 165;
         var starSpeed = 45;
@@ -36,7 +48,7 @@
         }
         document.documentElement.dataset.embedded = embedded ? "1" : "0";
         if (brandTheme === "custom") {
-          var customHex = localStorage.getItem("launcharr-custom-color") || "#1cc6c2";
+          var customHex = localStorage.getItem("launcharr-custom-color") || String(themeDefaults && themeDefaults.customColor || "#1cc6c2");
           var normalizedHex = /^#?[0-9a-fA-F]{6}$/.test(customHex) ? (customHex.charAt(0) === "#" ? customHex : "#" + customHex) : "#1cc6c2";
           var r = parseInt(normalizedHex.slice(1, 3), 16);
           var g = parseInt(normalizedHex.slice(3, 5), 16);
@@ -1248,6 +1260,101 @@
         </div>
       <% } %>
 
+      <% if (appBaseId === 'romm') { %>
+        <%
+          const overviewItems = Array.isArray(overviewElements) ? overviewElements : [];
+          const overviewById = new Map(overviewItems.map((item) => [item.id, item]));
+          const recentlyAddedSettings = overviewById.get('recently-added') || { enable: true, order: 1 };
+          const consolesSettings = overviewById.get('consoles') || { enable: true, order: 2 };
+          const appPrefix = app.id;
+          const orderedRommSections = [
+            { id: 'recently-added', settings: recentlyAddedSettings },
+            { id: 'consoles', settings: consolesSettings },
+          ]
+            .filter((item) => item.settings?.enable !== false)
+            .sort((a, b) => {
+              const favouriteDelta = (b.settings?.favourite ? 1 : 0) - (a.settings?.favourite ? 1 : 0);
+              if (favouriteDelta !== 0) return favouriteDelta;
+              const orderDelta = (a.settings?.order || 0) - (b.settings?.order || 0);
+              if (orderDelta !== 0) return orderDelta;
+              return a.id.localeCompare(b.id);
+            });
+        %>
+        <div class="plex-overview">
+          <% orderedRommSections.forEach((section) => { %>
+            <%
+              const isRecentlyAdded = section.id === 'recently-added';
+              const controlPrefix = `${appPrefix}${isRecentlyAdded ? 'RecentlyAdded' : 'Consoles'}`;
+            %>
+            <section class="plex-module plex-module--no-subtitle" id="<%= appPrefix %>-<%= section.id %>">
+              <div class="plex-topbar">
+                <div class="plex-title-wrap">
+                  <div class="plex-title">
+                    <img class="plex-logo" src="<%= resolveAppIconPath(app) %>" alt="<%= app.name %>" loading="eager" onerror="this.src='/icons/app.svg'" />
+                    <span><%= isRecentlyAdded ? 'Recently Added' : 'Consoles' %></span>
+                  </div>
+                  <div class="plex-subtitle"></div>
+                </div>
+                <div class="plex-spacer"></div>
+                <div class="plex-controls-right">
+                  <div class="plex-select plex-icon plex-filter-media" title="Type">
+                    <% if (isRecentlyAdded) { %>
+                      <select id="<%= controlPrefix %>TypeFilter" aria-label="Rom type">
+                        <option value="all" selected>All</option>
+                        <option value="game">Games</option>
+                        <option value="bios">BIOS</option>
+                        <option value="homebrew">Homebrew</option>
+                      </select>
+                    <% } else { %>
+                      <select id="<%= controlPrefix %>TypeFilter" aria-label="Console type">
+                        <option value="all" selected>All</option>
+                        <option value="console">Consoles</option>
+                        <option value="handheld">Handhelds</option>
+                      </select>
+                    <% } %>
+                  </div>
+                  <div class="plex-select plex-xsmall" title="Limit">
+                    <select id="<%= controlPrefix %>LimitSelect" aria-label="Limit">
+                      <option value="10">10</option>
+                      <option value="20" selected>20</option>
+                      <option value="50">50</option>
+                      <% if (!isRecentlyAdded) { %>
+                        <option value="all">All</option>
+                      <% } %>
+                    </select>
+                  </div>
+                  <% if (!isRecentlyAdded) { %>
+                    <div class="plex-select plex-xsmall" title="Sort">
+                      <select id="<%= controlPrefix %>SortFilter" aria-label="Sort">
+                        <option value="roms-desc" selected>Most ROMs</option>
+                        <option value="a-z">A to Z</option>
+                        <option value="z-a">Z to A</option>
+                        <option value="roms-asc">Least ROMs</option>
+                      </select>
+                    </div>
+                  <% } %>
+                  <button class="plex-iconbtn" id="<%= controlPrefix %>PrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
+                  <button class="plex-iconbtn" id="<%= controlPrefix %>NextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
+                  <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="<%= appPrefix %>-<%= section.id %>" data-collapse-global="true">
+                    <div class="plex-doublechev">
+                      <div class="plex-chev plex-up"></div>
+                      <div class="plex-chev plex-down"></div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+              <div class="plex-panel">
+                <div id="<%= controlPrefix %>Viewport" class="plex-carousel-viewport">
+                  <div id="<%= controlPrefix %>Track" class="plex-carousel-track">
+                    <div class="plex-empty">Loading…</div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          <% }) %>
+        </div>
+      <% } %>
+
       <% if (['pulsarr', 'seerr'].includes(appBaseId)) { %>
         <%
           const requestAppId = app.id;
@@ -1502,7 +1609,7 @@
         </div>
       <% } %>
 
-      <% if (appBaseId !== 'plex' && appBaseId !== 'jellyfin' && appBaseId !== 'emby' && appBaseId !== 'tautulli' && !isArrAppId(app.id) && !['pulsarr', 'seerr', 'prowlarr', 'jackett', 'bazarr', 'autobrr', 'transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(appBaseId)) { %>
+      <% if (appBaseId !== 'plex' && appBaseId !== 'jellyfin' && appBaseId !== 'emby' && appBaseId !== 'tautulli' && !isArrAppId(app.id) && !['pulsarr', 'seerr', 'prowlarr', 'jackett', 'bazarr', 'autobrr', 'romm', 'transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(appBaseId)) { %>
         <div class="dash-panel overview-panel">
           <div class="panel-header">
             <h2>App Overview</h2>
@@ -2085,18 +2192,58 @@
     </script>
     <script src="/indexer-search.js?v=<%= assetVersion %>"></script>
   <% } %>
+  <% if (appBaseId === 'romm') { %>
+    <%
+      const rommDisplaySettings = (Array.isArray(overviewElements) ? overviewElements : []).reduce((acc, item) => {
+        if (!item?.id) return acc;
+        acc[item.id] = {
+          showSubtitle: item.showSubtitle !== false,
+          showMeta: item.showMeta !== false,
+          showPill: item.showPill !== false,
+          showTypeIcon: item.showTypeIcon !== false,
+          showViewIcon: item.showViewIcon !== false,
+          showUsername: item.showUsername !== false,
+        };
+        return acc;
+      }, {});
+      const rommOverviewConfigs = [
+        {
+          appId: app.id,
+          appName: app.name || 'Romm',
+          sectionId: 'recently-added',
+          controlPrefix: `${app.id}RecentlyAdded`,
+          endpoint: '/api/romm/recently-added',
+          displaySettings: rommDisplaySettings['recently-added'] || {},
+        },
+        {
+          appId: app.id,
+          appName: app.name || 'Romm',
+          sectionId: 'consoles',
+          controlPrefix: `${app.id}Consoles`,
+          endpoint: '/api/romm/consoles?limit=all',
+          displaySettings: rommDisplaySettings.consoles || {},
+        },
+      ];
+    %>
+    <script>
+      window.ROMM_OVERVIEW_CONFIGS = <%- JSON.stringify(rommOverviewConfigs) %>;
+    </script>
+    <script src="/romm-overview.js?v=<%= assetVersion %>"></script>
+  <% } %>
   <% if (['bazarr', 'autobrr'].includes(appBaseId)) { %>
     <%
-      const queueCardConfigs = appBaseId === 'bazarr'
-        ? [{
+      let queueCardConfigs = [];
+      if (appBaseId === 'bazarr') {
+        queueCardConfigs = [{
           moduleId: `${app.id}-subtitle-queue`,
           bodyId: `${app.id}SubtitleQueueBody`,
           typeFilterId: `${app.id}SubtitleQueueTypeFilter`,
           statusFilterId: `${app.id}SubtitleQueueStatusFilter`,
           endpoint: '/api/bazarr/subtitle-queue',
           appName: app.name || 'Bazarr',
-        }]
-        : [
+        }];
+      } else if (appBaseId === 'autobrr') {
+        queueCardConfigs = [
           {
             moduleId: `${app.id}-recent-matches`,
             bodyId: `${app.id}RecentMatchesBody`,
@@ -2114,6 +2261,7 @@
             appName: app.name || 'Autobrr',
           },
         ];
+      }
     %>
     <script>
       window.QUEUE_CARD_CONFIGS = <%- JSON.stringify(queueCardConfigs) %>;

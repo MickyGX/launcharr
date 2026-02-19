@@ -9,18 +9,30 @@
       try {
         var stored = localStorage.getItem("launcharr-theme");
         var prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
-        var mode = stored || (prefersLight ? "day" : "night");
-        var brandTheme = localStorage.getItem("launcharr-brand-theme") || "pulsarr";
+        var themeDefaults = <%- JSON.stringify(themeDefaults || {}) %>;
+        var modeFromDefaults = (themeDefaults && (themeDefaults.mode === "day" || themeDefaults.mode === "night")) ? themeDefaults.mode : "";
+        var mode = stored || modeFromDefaults || (prefersLight ? "day" : "night");
+        var defaultBrandTheme = String(themeDefaults && themeDefaults.brandTheme || "").trim().toLowerCase();
+        var isAllowedBrandTheme = /^(custom|launcharr|rocketship|pulsarr|plex|radarr|sonarr|lidarr|readarr)$/.test(defaultBrandTheme);
+        var brandTheme = localStorage.getItem("launcharr-brand-theme") || (isAllowedBrandTheme ? defaultBrandTheme : "pulsarr");
         document.documentElement.dataset.theme = mode;
         document.documentElement.dataset.brandTheme = brandTheme;
-        var sidebarInvert = localStorage.getItem("launcharr-sidebar-invert") === "1";
-        var squareCorners = localStorage.getItem("launcharr-square-corners") === "1";
+        var parseStoredBool = function(key, fallback) {
+          var raw = localStorage.getItem(key);
+          if (raw === null || raw === undefined) return Boolean(fallback);
+          return raw === "1" || raw === "true";
+        };
+        var sidebarInvert = parseStoredBool("launcharr-sidebar-invert", themeDefaults && themeDefaults.sidebarInvert === true);
+        var squareCorners = parseStoredBool("launcharr-square-corners", themeDefaults && themeDefaults.squareCorners === true);
         var bgMotionStored = localStorage.getItem("launcharr-bg-motion");
-        var bgMotion = bgMotionStored === null ? true : bgMotionStored === "1";
+        var bgMotionDefault = themeDefaults && themeDefaults.bgMotion === undefined ? true : (themeDefaults && themeDefaults.bgMotion === true);
+        var bgMotion = bgMotionStored === null ? bgMotionDefault : (bgMotionStored === "1" || bgMotionStored === "true");
+        var carouselFreeScroll = parseStoredBool("launcharr-carousel-free-scroll", themeDefaults && themeDefaults.carouselFreeScroll === true);
         var maximizedWindow = localStorage.getItem("launcharr-maximized-window") === "1";
         document.documentElement.dataset.sidebarInvert = sidebarInvert ? "1" : "0";
         document.documentElement.dataset.squareCorners = squareCorners ? "1" : "0";
         document.documentElement.dataset.bgMotion = bgMotion ? "1" : "0";
+        document.documentElement.dataset.carouselFreeScroll = carouselFreeScroll ? "1" : "0";
         document.documentElement.dataset.maximized = maximizedWindow ? "1" : "0";
         var starDensity = 165;
         var starSpeed = 45;
@@ -36,7 +48,7 @@
         }
         document.documentElement.dataset.embedded = embedded ? "1" : "0";
         if (brandTheme === "custom") {
-          var customHex = localStorage.getItem("launcharr-custom-color") || "#1cc6c2";
+          var customHex = localStorage.getItem("launcharr-custom-color") || String(themeDefaults && themeDefaults.customColor || "#1cc6c2");
           var normalizedHex = /^#?[0-9a-fA-F]{6}$/.test(customHex) ? (customHex.charAt(0) === "#" ? customHex : "#" + customHex) : "#1cc6c2";
           var r = parseInt(normalizedHex.slice(1, 3), 16);
           var g = parseInt(normalizedHex.slice(3, 5), 16);
@@ -1570,6 +1582,27 @@
                   </span>
                 </label>
               </div>
+              <%
+                const themeDefaultsResultMap = {
+                  saved: 'Default theme saved.',
+                };
+                const themeDefaultsNote = themeDefaultsError
+                  ? themeDefaultsError
+                  : (themeDefaultsResultMap[themeDefaultsResult] || '');
+              %>
+              <form method="post" action="/settings/theme-defaults" class="settings-card-actions" id="themeDefaultForm">
+                <input type="hidden" name="theme_mode" id="themeDefaultMode" />
+                <input type="hidden" name="theme_brand_theme" id="themeDefaultBrandTheme" />
+                <input type="hidden" name="theme_custom_color" id="themeDefaultCustomColor" />
+                <input type="hidden" name="theme_sidebar_invert" id="themeDefaultSidebarInvert" />
+                <input type="hidden" name="theme_square_corners" id="themeDefaultSquareCorners" />
+                <input type="hidden" name="theme_bg_motion" id="themeDefaultBgMotion" />
+                <input type="hidden" name="theme_carousel_free_scroll" id="themeDefaultCarouselFreeScroll" />
+                <button class="primary-button" type="submit">Save current theme as default</button>
+              </form>
+              <% if (themeDefaultsNote) { %>
+                <span class="settings-users-note<%= themeDefaultsError ? ' settings-users-note--error' : '' %>"><%= themeDefaultsNote %></span>
+              <% } %>
             </div>
           </div>
       </div>
@@ -2439,13 +2472,26 @@
     const themeSquareCornersToggle = document.getElementById('themeSquareCorners');
     const themeBgMotionToggle = document.getElementById('themeBgMotion');
     const themeCarouselFreeScrollToggle = document.getElementById('themeCarouselFreeScroll');
+    const themeDefaultForm = document.getElementById('themeDefaultForm');
+    const themeDefaultModeInput = document.getElementById('themeDefaultMode');
+    const themeDefaultBrandThemeInput = document.getElementById('themeDefaultBrandTheme');
+    const themeDefaultCustomColorInput = document.getElementById('themeDefaultCustomColor');
+    const themeDefaultSidebarInvertInput = document.getElementById('themeDefaultSidebarInvert');
+    const themeDefaultSquareCornersInput = document.getElementById('themeDefaultSquareCorners');
+    const themeDefaultBgMotionInput = document.getElementById('themeDefaultBgMotion');
+    const themeDefaultCarouselFreeScrollInput = document.getElementById('themeDefaultCarouselFreeScroll');
     const allowedBrandThemes = new Set(['custom', 'launcharr', 'rocketship', 'pulsarr', 'plex', 'radarr', 'sonarr', 'lidarr', 'readarr']);
     const customColorStorageKey = 'launcharr-custom-color';
+    const serverThemeDefaults = <%- JSON.stringify(themeDefaults || {}) %>;
     const themeOptionStorageKeys = {
       sidebarInvert: 'launcharr-sidebar-invert',
       squareCorners: 'launcharr-square-corners',
       bgMotion: 'launcharr-bg-motion',
       carouselFreeScroll: 'launcharr-carousel-free-scroll',
+    };
+    const resolveBrandTheme = (value) => {
+      const raw = String(value || '').trim().toLowerCase();
+      return allowedBrandThemes.has(raw) ? raw : 'pulsarr';
     };
     const parseStoredBool = (key, defaultValue = false) => {
       const raw = safeStorage.get(key);
@@ -2475,6 +2521,7 @@
       if (themeSquareCornersToggle) themeSquareCornersToggle.checked = squareCorners;
       if (themeBgMotionToggle) themeBgMotionToggle.checked = bgMotion;
       if (themeCarouselFreeScrollToggle) themeCarouselFreeScrollToggle.checked = carouselFreeScroll;
+      syncThemeDefaultForm();
     };
     const syncThemeOptionsFromInputs = () => {
       applyThemeOptions({
@@ -2542,7 +2589,7 @@
       document.documentElement.dataset.brandTheme = normalized;
       safeStorage.set('launcharr-brand-theme', normalized);
       if (normalized === 'custom') {
-        const savedCustomHex = parseHexColor(safeStorage.get(customColorStorageKey));
+        const savedCustomHex = parseHexColor(safeStorage.get(customColorStorageKey) || serverThemeDefaults.customColor || '#1cc6c2');
         const appliedHex = applyCustomColor(savedCustomHex);
         if (customThemeColorInput) customThemeColorInput.value = appliedHex;
       } else {
@@ -2553,12 +2600,37 @@
         btn.classList.toggle('is-active', isActive);
         btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
       });
+      syncThemeDefaultForm();
+    };
+    const syncThemeDefaultForm = () => {
+      if (!themeDefaultForm) return;
+      if (themeDefaultModeInput) {
+        themeDefaultModeInput.value = document.documentElement.dataset.theme === 'day' ? 'day' : 'night';
+      }
+      if (themeDefaultBrandThemeInput) {
+        themeDefaultBrandThemeInput.value = resolveBrandTheme(document.documentElement.dataset.brandTheme || serverThemeDefaults.brandTheme);
+      }
+      if (themeDefaultCustomColorInput) {
+        themeDefaultCustomColorInput.value = parseHexColor(safeStorage.get(customColorStorageKey) || serverThemeDefaults.customColor || '#1cc6c2');
+      }
+      if (themeDefaultSidebarInvertInput) {
+        themeDefaultSidebarInvertInput.value = themeSidebarInvertToggle?.checked ? '1' : '0';
+      }
+      if (themeDefaultSquareCornersInput) {
+        themeDefaultSquareCornersInput.value = themeSquareCornersToggle?.checked ? '1' : '0';
+      }
+      if (themeDefaultBgMotionInput) {
+        themeDefaultBgMotionInput.value = themeBgMotionToggle?.checked ? '1' : '0';
+      }
+      if (themeDefaultCarouselFreeScrollInput) {
+        themeDefaultCarouselFreeScrollInput.value = themeCarouselFreeScrollToggle?.checked ? '1' : '0';
+      }
     };
     const initialThemeOptions = {
-      sidebarInvert: parseStoredBool(themeOptionStorageKeys.sidebarInvert, false),
-      squareCorners: parseStoredBool(themeOptionStorageKeys.squareCorners, false),
-      bgMotion: parseStoredBool(themeOptionStorageKeys.bgMotion, true),
-      carouselFreeScroll: parseStoredBool(themeOptionStorageKeys.carouselFreeScroll, false),
+      sidebarInvert: parseStoredBool(themeOptionStorageKeys.sidebarInvert, serverThemeDefaults.sidebarInvert === true),
+      squareCorners: parseStoredBool(themeOptionStorageKeys.squareCorners, serverThemeDefaults.squareCorners === true),
+      bgMotion: parseStoredBool(themeOptionStorageKeys.bgMotion, serverThemeDefaults.bgMotion === undefined ? true : serverThemeDefaults.bgMotion === true),
+      carouselFreeScroll: parseStoredBool(themeOptionStorageKeys.carouselFreeScroll, serverThemeDefaults.carouselFreeScroll === true),
     };
     applyThemeOptions(initialThemeOptions);
     themeSidebarInvertToggle?.addEventListener('change', syncThemeOptionsFromInputs);
@@ -2566,11 +2638,12 @@
     themeBgMotionToggle?.addEventListener('change', syncThemeOptionsFromInputs);
     themeCarouselFreeScrollToggle?.addEventListener('change', syncThemeOptionsFromInputs);
     if (themePresetButtons.length) {
-      const initialCustomHex = parseHexColor(safeStorage.get(customColorStorageKey));
+      const initialCustomHex = parseHexColor(safeStorage.get(customColorStorageKey) || serverThemeDefaults.customColor || '#1cc6c2');
       if (customThemeColorInput) customThemeColorInput.value = initialCustomHex;
       if (customThemeChip) customThemeChip.style.setProperty('--theme-color', initialCustomHex);
       const storedBrandTheme = safeStorage.get('launcharr-brand-theme');
-      applyBrandTheme(allowedBrandThemes.has(storedBrandTheme) ? storedBrandTheme : 'pulsarr');
+      const fallbackBrandTheme = resolveBrandTheme(serverThemeDefaults.brandTheme);
+      applyBrandTheme(allowedBrandThemes.has(storedBrandTheme) ? storedBrandTheme : fallbackBrandTheme);
       themePresetButtons.forEach((btn) => {
         btn.addEventListener('click', () => applyBrandTheme(btn.dataset.brandTheme));
       });
@@ -2580,6 +2653,10 @@
         applyBrandTheme('custom');
       });
     }
+    syncThemeDefaultForm();
+    themeDefaultForm?.addEventListener('submit', () => {
+      syncThemeDefaultForm();
+    });
 
     initIconUploadForms();
 

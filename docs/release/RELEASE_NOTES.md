@@ -1,4 +1,12 @@
-# Release Notes (v0.1.0 -> v0.2.28)
+# Release Notes (v0.1.0 -> v0.2.29)
+
+## v0.2.29 (2026-02-19)
+
+- Added Romm built-in integration modules for `Recently Added` and `Consoles` with Plex-style carousel cards and detail popups.
+- Added console sorting/limit controls (`Most ROMs`, `A to Z`, `Z to A`, `Least ROMs`, `All`) and expanded backend support for full console fetch limits.
+- Improved Romm console asset and metadata mapping (artwork fallback, ROM/stat parsing, and popup summaries when overview text is missing).
+- Added theme persistence controls for both admin defaults (`Settings -> Custom -> Themes`) and per-user profile preferences.
+- Removed Romm API-key field from app settings UI for default Romm setup flow.
 
 ## v0.2.28 (2026-02-19)
 
@@ -177,7 +185,7 @@
 - Fixed empty-state behavior for active stream modules to align card output across Plex/Jellyfin/Emby and combined views.
 
 
-This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.28`.
+This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.29`.
 
 ## v0.2.5 (2026-02-15)
 

@@ -9,18 +9,30 @@
       try {
         var stored = localStorage.getItem("launcharr-theme");
         var prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
-        var mode = stored || (prefersLight ? "day" : "night");
-        var brandTheme = localStorage.getItem("launcharr-brand-theme") || "pulsarr";
+        var themeDefaults = <%- JSON.stringify(themeDefaults || {}) %>;
+        var modeFromDefaults = (themeDefaults && (themeDefaults.mode === "day" || themeDefaults.mode === "night")) ? themeDefaults.mode : "";
+        var mode = stored || modeFromDefaults || (prefersLight ? "day" : "night");
+        var defaultBrandTheme = String(themeDefaults && themeDefaults.brandTheme || "").trim().toLowerCase();
+        var isAllowedBrandTheme = /^(custom|launcharr|rocketship|pulsarr|plex|radarr|sonarr|lidarr|readarr)$/.test(defaultBrandTheme);
+        var brandTheme = localStorage.getItem("launcharr-brand-theme") || (isAllowedBrandTheme ? defaultBrandTheme : "pulsarr");
         document.documentElement.dataset.theme = mode;
         document.documentElement.dataset.brandTheme = brandTheme;
-        var sidebarInvert = localStorage.getItem("launcharr-sidebar-invert") === "1";
-        var squareCorners = localStorage.getItem("launcharr-square-corners") === "1";
+        var parseStoredBool = function(key, fallback) {
+          var raw = localStorage.getItem(key);
+          if (raw === null || raw === undefined) return Boolean(fallback);
+          return raw === "1" || raw === "true";
+        };
+        var sidebarInvert = parseStoredBool("launcharr-sidebar-invert", themeDefaults && themeDefaults.sidebarInvert === true);
+        var squareCorners = parseStoredBool("launcharr-square-corners", themeDefaults && themeDefaults.squareCorners === true);
         var bgMotionStored = localStorage.getItem("launcharr-bg-motion");
-        var bgMotion = bgMotionStored === null ? true : bgMotionStored === "1";
+        var bgMotionDefault = themeDefaults && themeDefaults.bgMotion === undefined ? true : (themeDefaults && themeDefaults.bgMotion === true);
+        var bgMotion = bgMotionStored === null ? bgMotionDefault : (bgMotionStored === "1" || bgMotionStored === "true");
+        var carouselFreeScroll = parseStoredBool("launcharr-carousel-free-scroll", themeDefaults && themeDefaults.carouselFreeScroll === true);
         var maximizedWindow = localStorage.getItem("launcharr-maximized-window") === "1";
         document.documentElement.dataset.sidebarInvert = sidebarInvert ? "1" : "0";
         document.documentElement.dataset.squareCorners = squareCorners ? "1" : "0";
         document.documentElement.dataset.bgMotion = bgMotion ? "1" : "0";
+        document.documentElement.dataset.carouselFreeScroll = carouselFreeScroll ? "1" : "0";
         document.documentElement.dataset.maximized = maximizedWindow ? "1" : "0";
         var starDensity = 165;
         var starSpeed = 45;
@@ -36,7 +48,7 @@
         }
         document.documentElement.dataset.embedded = embedded ? "1" : "0";
         if (brandTheme === "custom") {
-          var customHex = localStorage.getItem("launcharr-custom-color") || "#1cc6c2";
+          var customHex = localStorage.getItem("launcharr-custom-color") || String(themeDefaults && themeDefaults.customColor || "#1cc6c2");
           var normalizedHex = /^#?[0-9a-fA-F]{6}$/.test(customHex) ? (customHex.charAt(0) === "#" ? customHex : "#" + customHex) : "#1cc6c2";
           var r = parseInt(normalizedHex.slice(1, 3), 16);
           var g = parseInt(normalizedHex.slice(3, 5), 16);
@@ -381,7 +393,7 @@
               <div class="plex-settings-note">Tip: Keep this key private.</div>
             </div>
           <% } %>
-          <% if (['nzbget', 'transmission', 'qbittorrent', 'sabnzbd'].includes(appBaseId)) { %>
+          <% if (['nzbget', 'transmission', 'qbittorrent', 'sabnzbd', 'romm'].includes(appBaseId)) { %>
             <div class="settings-card plex-settings-card">
               <div class="settings-card-title"><%= app.name %> Access</div>
               <div class="settings-card-sub">Credentials for local or remote access.</div>

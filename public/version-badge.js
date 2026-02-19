@@ -25,7 +25,14 @@
 
   const stored = localStorage.getItem('launcharr-theme');
   const prefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
-  applyTheme(stored || (prefersLight ? 'day' : 'night'));
+  const bootstrapped = document.documentElement?.dataset?.theme;
+  const initial = stored
+    || (bootstrapped === 'day' || bootstrapped === 'night' ? bootstrapped : '')
+    || (prefersLight ? 'day' : 'night');
+  applyTheme(initial);
+  if (!stored && (initial === 'day' || initial === 'night')) {
+    localStorage.setItem('launcharr-theme', initial);
+  }
 
   toggle.addEventListener('click', () => {
     const next = document.documentElement.dataset.theme === 'day' ? 'night' : 'day';
