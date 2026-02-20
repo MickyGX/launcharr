@@ -43,3 +43,6 @@ private/
 
 # Local maintenance binaries
 bfg.jar
+
+config/config.quickstart-backup.json
+launcharr-test-build.tar

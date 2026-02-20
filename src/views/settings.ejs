@@ -3540,15 +3540,16 @@
 
           const dataRows = () => Array.from(dashboardTable.children)
             .filter((node) => node.classList && node.classList.contains('settings-row--draggable'));
+          const getDashboardRowOrderInput = (row) => row?.querySelector('input.settings-order-input[name^="dashboard_"][name$="_order"]');
           const getRowOrder = (row) => {
-            const input = row?.querySelector('.settings-order-input');
+            const input = getDashboardRowOrderInput(row);
             const value = Number(input?.value);
             return Number.isFinite(value) ? value : 0;
           };
           const updateOrders = () => {
             const rows = dataRows();
             rows.forEach((row, index) => {
-              const input = row.querySelector('.settings-order-input');
+              const input = getDashboardRowOrderInput(row);
               if (input) input.value = index + 1;
             });
           };

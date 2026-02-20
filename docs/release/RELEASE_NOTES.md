@@ -1,4 +1,9 @@
-# Release Notes (v0.1.0 -> v0.2.31)
+# Release Notes (v0.1.0 -> v0.2.32)
+
+## v0.2.32 (2026-02-20)
+
+- Fixed dashboard manager drag-order persistence for `Tautulli -> Watch Statistics` cards.
+- Updated dashboard settings row-order assignment so dashboard row drag/save targets dashboard order fields only (avoiding nested watch-card order collisions).
 
 ## v0.2.31 (2026-02-20)
 
@@ -205,7 +210,7 @@
 - Fixed empty-state behavior for active stream modules to align card output across Plex/Jellyfin/Emby and combined views.
 
 
-This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.31`.
+This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.32`.
 
 ## v0.2.5 (2026-02-15)
 
