@@ -182,7 +182,9 @@
 
     function computeLayout() {
       const viewportWidth = viewport.clientWidth;
-      cardWidth = cssNum('--plex-cardW', 203);
+      const firstCard = track.querySelector('.plex-card') || viewport.querySelector('.plex-card');
+      const measuredWidth = firstCard ? Math.round(firstCard.getBoundingClientRect().width) : 0;
+      cardWidth = measuredWidth > 0 ? measuredWidth : cssNum('--plex-cardW', 203);
       gap = cssNum('--plex-gap', 24);
       if (viewportWidth <= 0) return;
       visibleCount = Math.max(1, Math.floor((viewportWidth + gap) / (cardWidth + gap)));

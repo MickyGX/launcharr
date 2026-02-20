@@ -293,15 +293,9 @@
         "id": "watch-stats",
         "enable": true,
         "dashboard": true,
+        "tautulliStatsView": "list",
         "favourite": false,
         "order": 1
-      },
-      {
-        "id": "watch-stats-wheel",
-        "enable": true,
-        "dashboard": true,
-        "favourite": false,
-        "order": 2
       }
     ],
     "launchMode": "iframe"
@@ -656,7 +650,7 @@
     "name": "Pulsarr",
     "url": "http://localhost:3030",
     "description": "Requests and watchlists",
-    "category": "Arr Suite",
+    "category": "Requesters",
     "roles": [
       "hidden"
     ],
@@ -717,7 +711,7 @@
     "name": "Seerr",
     "url": "http://localhost:5055",
     "description": "Overseerr/Jellyseerr requests",
-    "category": "Arr Suite",
+    "category": "Requesters",
     "roles": [
       "hidden"
     ],

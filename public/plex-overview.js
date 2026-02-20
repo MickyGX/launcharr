@@ -382,7 +382,9 @@
     }
 
     function computeCarouselLayout() {
-      const cardW = cssNum('--plex-cardW', 203);
+      const firstCard = track.querySelector('.plex-card') || viewport.querySelector('.plex-card');
+      const measuredWidth = firstCard ? Math.round(firstCard.getBoundingClientRect().width) : 0;
+      const cardW = measuredWidth > 0 ? measuredWidth : cssNum('--plex-cardW', 203);
       const gap = cssNum('--plex-gap', 24);
       stepPx = cardW + gap;
 

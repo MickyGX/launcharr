@@ -15,6 +15,7 @@ COPY . .
 RUN mkdir -p /app/data /app/config /app/public/icons/custom && chown -R node:node /app
 RUN cp /app/config/default-apps.json /app/default-apps.json
 RUN cp /app/config/default-categories.json /app/default-categories.json
+RUN cp /app/config/config.example.json /app/config.example.json
 RUN chmod 644 /app/default-apps.json /app/default-categories.json /app/config/default-apps.json /app/config/default-categories.json
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh

@@ -24,6 +24,10 @@ const SESSION_SECRET = process.env.SESSION_SECRET || 'change-me';
 const LOCAL_AUTH_MIN_PASSWORD = 6;
 const CONFIG_PATH = process.env.CONFIG_PATH || path.join(__dirname, '..', 'config', 'config.json');
 const APP_VERSION = process.env.APP_VERSION || loadPackageVersion();
+const RELEASE_NOTES_BASE_URL = 'https://github.com/MickyGX/launcharr/releases/tag/';
+const RELEASE_NOTES_DIR = path.join(__dirname, '..', 'docs', 'release', 'releases');
+const RELEASE_HIGHLIGHT_SECTIONS = ['Added', 'Changed', 'Fixed'];
+const RELEASE_HIGHLIGHT_LIMIT = 6;
 const DEFAULT_APPS_PATH = process.env.DEFAULT_APPS_PATH || path.join(__dirname, '..', 'default-apps.json');
 const DEFAULT_CATEGORIES_PATH = process.env.DEFAULT_CATEGORIES_PATH || path.join(__dirname, '..', 'config', 'default-categories.json');
 const BUNDLED_DEFAULT_APPS_PATH = path.join(__dirname, '..', 'default-apps.json');
@@ -31,6 +35,7 @@ const SOURCE_DEFAULT_APPS_PATH = path.join(__dirname, '..', 'config', 'default-a
 const BUNDLED_DEFAULT_CATEGORIES_PATH = path.join(__dirname, '..', 'default-categories.json');
 const SOURCE_DEFAULT_CATEGORIES_PATH = path.join(__dirname, '..', 'config', 'default-categories.json');
 const CONFIG_EXAMPLE_PATH = process.env.CONFIG_EXAMPLE_PATH || path.join(__dirname, '..', 'config', 'config.example.json');
+const BUNDLED_CONFIG_EXAMPLE_PATH = path.join(__dirname, '..', 'config.example.json');
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const ICONS_DIR = path.join(PUBLIC_DIR, 'icons');
@@ -46,7 +51,7 @@ const MEDIA_APP_IDS = ['plex', 'jellyfin', 'emby'];
 const LEGACY_MULTI_INSTANCE_APP_IDS = ['radarr', 'sonarr', 'bazarr', 'transmission'];
 const DEFAULT_MAX_MULTI_INSTANCES_PER_APP = 5;
 const DEFAULT_INSTANCE_NAME_PLACEHOLDER = 'Instance (e.g. Main)';
-const DEFAULT_CATEGORY_ORDER = ['Admin', 'Media', 'Manager', 'Games', 'Arr Suite', 'Indexers', 'Downloaders', 'Tools'];
+const DEFAULT_CATEGORY_ORDER = ['Admin', 'Media', 'Requesters', 'Manager', 'Games', 'Arr Suite', 'Indexers', 'Downloaders', 'Tools'];
 const DEFAULT_CATEGORY_ICON = '/icons/category.svg';
 const ARR_COMBINE_SECTIONS = [
   { key: 'downloadingSoon', elementId: 'downloading-soon' },
@@ -63,10 +68,19 @@ const ARR_COMBINED_SECTION_PREFIX = {
 const DOWNLOADER_COMBINE_SECTIONS = [
   { key: 'activityQueue', elementId: 'activity-queue' },
 ];
+const DOWNLOADER_COMBINED_SECTION_PREFIX = {
+  activityQueue: 'downloaderscombinedqueue',
+};
 const MEDIA_COMBINE_SECTIONS = [
   { key: 'active', elementId: 'active' },
   { key: 'recent', elementId: 'recent' },
 ];
+const MEDIA_COMBINED_SECTION_PREFIX = {
+  active: 'mediacombinedactive',
+  recent: 'mediacombinedrecent',
+};
+const ENABLE_ARR_UNIFIED_CARDS = true;
+const ENABLE_DOWNLOADER_UNIFIED_CARDS = true;
 const APP_OVERVIEW_ELEMENTS = {
   plex: [
     { id: 'active', name: 'Active Streams' },
@@ -83,7 +97,6 @@ const APP_OVERVIEW_ELEMENTS = {
   ],
   tautulli: [
     { id: 'watch-stats', name: 'Watch Statistics' },
-    { id: 'watch-stats-wheel', name: 'Watch Statistics Wheel' },
   ],
   sonarr: [
     { id: 'downloading-soon', name: 'Downloading Soon' },
@@ -173,6 +186,9 @@ const DEFAULT_LOG_SETTINGS = {
   maxEntries: 250,
   maxDays: 7,
   visibleRows: 10,
+};
+const DEFAULT_ONBOARDING_SETTINGS = {
+  quickStartPending: false,
 };
 
 const VERSION_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -952,6 +968,26 @@ function resolveLogSettings(config) {
   };
 }
 
+function resolveOnboardingSettings(config) {
+  const raw = config && typeof config.onboarding === 'object' ? config.onboarding : {};
+  return {
+    quickStartPending: raw.quickStartPending === undefined
+      ? DEFAULT_ONBOARDING_SETTINGS.quickStartPending
+      : Boolean(raw.quickStartPending),
+  };
+}
+
+function hasActiveOnboardingApps(config) {
+  const apps = Array.isArray(config?.apps) ? config.apps : [];
+  return apps.some((appItem) => !appItem?.removed);
+}
+
+function shouldShowQuickStartOnboarding(config) {
+  const onboarding = resolveOnboardingSettings(config);
+  if (!onboarding.quickStartPending) return false;
+  return !hasActiveOnboardingApps(config);
+}
+
 function applyLogRetention(entries, settings) {
   const maxEntries = settings?.maxEntries || DEFAULT_LOG_SETTINGS.maxEntries;
   const maxDays = settings?.maxDays || DEFAULT_LOG_SETTINGS.maxDays;
@@ -1354,8 +1390,10 @@ app.get('/dashboard', requireUser, (req, res) => {
   const navCategories = buildNavCategories(navApps, categoryEntries, role);
   const rankCategory = buildCategoryRank(categoryOrder);
 
-  const dashboardAccessibleApps = apps.filter((appItem) => canAccessDashboardApp(config, appItem, role));
+  const dashboardAccessibleApps = apps.filter((appItem) => !appItem?.removed && canAccessDashboardApp(config, appItem, role));
   const arrDashboardCombinedCards = resolveArrDashboardCombinedCards(config, dashboardAccessibleApps);
+  const downloaderDashboardCards = resolveDownloaderDashboardCards(config, dashboardAccessibleApps);
+  const mediaDashboardCards = resolveMediaDashboardCards(config, dashboardAccessibleApps);
   const arrDashboardAppIds = dashboardAccessibleApps
     .filter((appItem) => isAppInSet(appItem.id, ARR_APP_IDS))
     .map((appItem) => appItem.id);
@@ -1367,9 +1405,19 @@ app.get('/dashboard', requireUser, (req, res) => {
   const downloaderDashboardAppIds = dashboardAccessibleApps
     .filter((appItem) => isAppInSet(appItem.id, DOWNLOADER_APP_IDS))
     .map((appItem) => appItem.id);
+  const downloaderDashboardAppLookup = new Map(
+    dashboardAccessibleApps
+      .filter((appItem) => isAppInSet(appItem.id, DOWNLOADER_APP_IDS))
+      .map((appItem) => [normalizeAppId(appItem.id), appItem])
+  );
   const mediaDashboardAppIds = dashboardAccessibleApps
     .filter((appItem) => isAppInSet(appItem.id, MEDIA_APP_IDS))
     .map((appItem) => appItem.id);
+  const mediaDashboardAppLookup = new Map(
+    dashboardAccessibleApps
+      .filter((appItem) => isAppInSet(appItem.id, MEDIA_APP_IDS))
+      .map((appItem) => [normalizeAppId(appItem.id), appItem])
+  );
   const appById = new Map(dashboardAccessibleApps.map((appItem) => [appItem.id, appItem]));
   const elementsByAppId = new Map(
     dashboardAccessibleApps.map((appItem) => [appItem.id, mergeOverviewElementSettings(appItem)])
@@ -1499,13 +1547,20 @@ app.get('/dashboard', requireUser, (req, res) => {
     if (!combinedApps.length) return;
 
     const leader = combinedApps[0];
+    const combinedAppIds = combinedApps.map((item) => normalizeAppId(item.app.id)).filter(Boolean);
+    const meta = buildDownloaderCombinedDisplayMeta(downloaderDashboardAppLookup, section.key, combinedAppIds);
     const combinedEntry = {
       ...leader,
       downloaderCombined: {
         sectionKey: section.key,
         elementId: section.elementId,
-        appIds: combinedApps.map((item) => item.app.id),
-        appNames: combinedApps.map((item) => item.app.name),
+        appIds: meta.appIds,
+        appNames: meta.appNames,
+        displayName: meta.displayName,
+        iconPath: meta.iconPath,
+        custom: false,
+        cardId: '',
+        moduleKey: DOWNLOADER_COMBINED_SECTION_PREFIX[section.key] || `downloaderscombined-${section.key}`,
       },
       arrCombined: null,
       mediaCombined: null,
@@ -1514,6 +1569,38 @@ app.get('/dashboard', requireUser, (req, res) => {
       downloaderDashboardAppIds.includes(item.app.id) && item.element.id === section.elementId
     );
     dashboardModules.splice(insertIndex === -1 ? dashboardModules.length : insertIndex, 0, combinedEntry);
+  });
+  downloaderDashboardCards.forEach((card, index) => {
+    const section = getDownloaderCombineSection(card.sectionKey);
+    if (!section) return;
+    const customToken = normalizeCombinedCardToken(card.id) || `card-${index + 1}`;
+    const combinedKey = `combined:downloadercustom:${customToken}`;
+    if (dashboardRemovedElements[combinedKey]) return;
+    const combinedSettings = dashboardCombinedSettings[combinedKey];
+    if (!canAccessCombinedDashboardVisibility(combinedSettings, role, 'user')) return;
+    const sectionModules = buildSectionModules(card.appIds, section.elementId);
+    if (!sectionModules.length) return;
+    const leader = sectionModules[0];
+    const orderedAppIds = [...new Set(sectionModules.map((item) => normalizeAppId(item.app.id)).filter(Boolean))];
+    const meta = buildDownloaderCombinedDisplayMeta(downloaderDashboardAppLookup, card.sectionKey, orderedAppIds);
+    if (!meta.appIds.length) return;
+    const modulePrefixBase = DOWNLOADER_COMBINED_SECTION_PREFIX[card.sectionKey] || `downloaderscombined-${card.sectionKey}`;
+    dashboardModules.push({
+      ...leader,
+      downloaderCombined: {
+        sectionKey: card.sectionKey,
+        elementId: section.elementId,
+        appIds: meta.appIds,
+        appNames: meta.appNames,
+        displayName: meta.displayName,
+        iconPath: meta.iconPath,
+        custom: true,
+        cardId: customToken,
+        moduleKey: `${modulePrefixBase}-${customToken}`,
+      },
+      arrCombined: null,
+      mediaCombined: null,
+    });
   });
 
   MEDIA_COMBINE_SECTIONS.forEach((section) => {
@@ -1529,13 +1616,20 @@ app.get('/dashboard', requireUser, (req, res) => {
     if (!combinedApps.length) return;
 
     const leader = combinedApps[0];
+    const combinedAppIds = combinedApps.map((item) => normalizeAppId(item.app.id)).filter(Boolean);
+    const meta = buildMediaCombinedDisplayMeta(mediaDashboardAppLookup, section.key, combinedAppIds);
     const combinedEntry = {
       ...leader,
       mediaCombined: {
         sectionKey: section.key,
         elementId: section.elementId,
-        appIds: combinedApps.map((item) => item.app.id),
-        appNames: combinedApps.map((item) => item.app.name),
+        appIds: meta.appIds,
+        appNames: meta.appNames,
+        displayName: meta.displayName,
+        iconPath: meta.iconPath,
+        custom: false,
+        cardId: '',
+        moduleKey: MEDIA_COMBINED_SECTION_PREFIX[section.key] || `mediacombined-${section.key}`,
       },
       arrCombined: null,
       downloaderCombined: null,
@@ -1545,14 +1639,52 @@ app.get('/dashboard', requireUser, (req, res) => {
     );
     dashboardModules.splice(insertIndex === -1 ? dashboardModules.length : insertIndex, 0, combinedEntry);
   });
+  mediaDashboardCards.forEach((card, index) => {
+    const section = getMediaCombineSection(card.sectionKey);
+    if (!section) return;
+    const customToken = normalizeCombinedCardToken(card.id) || `card-${index + 1}`;
+    const combinedKey = `combined:mediacustom:${customToken}`;
+    if (dashboardRemovedElements[combinedKey]) return;
+    const combinedSettings = dashboardCombinedSettings[combinedKey];
+    if (!canAccessCombinedDashboardVisibility(combinedSettings, role, 'user')) return;
+    const sectionModules = buildSectionModules(card.appIds, section.elementId);
+    if (!sectionModules.length) return;
+    const leader = sectionModules[0];
+    const orderedAppIds = [...new Set(sectionModules.map((item) => normalizeAppId(item.app.id)).filter(Boolean))];
+    const meta = buildMediaCombinedDisplayMeta(mediaDashboardAppLookup, card.sectionKey, orderedAppIds);
+    if (!meta.appIds.length) return;
+    const modulePrefixBase = MEDIA_COMBINED_SECTION_PREFIX[card.sectionKey] || `mediacombined-${card.sectionKey}`;
+    dashboardModules.push({
+      ...leader,
+      mediaCombined: {
+        sectionKey: card.sectionKey,
+        elementId: section.elementId,
+        appIds: meta.appIds,
+        appNames: meta.appNames,
+        displayName: meta.displayName,
+        iconPath: meta.iconPath,
+        custom: true,
+        cardId: customToken,
+        moduleKey: `${modulePrefixBase}-${customToken}`,
+      },
+      arrCombined: null,
+      downloaderCombined: null,
+    });
+  });
 
   const getCombinedOrderKey = (item) => {
     if (item?.arrCombined) {
       if (item.arrCombined.custom) return `combined:arrcustom:${item.arrCombined.cardId}`;
       return `combined:arr:${item.arrCombined.sectionKey}`;
     }
-    if (item?.downloaderCombined) return `combined:downloader:${item.downloaderCombined.sectionKey}`;
-    if (item?.mediaCombined) return `combined:media:${item.mediaCombined.sectionKey}`;
+    if (item?.downloaderCombined) {
+      if (item.downloaderCombined.custom) return `combined:downloadercustom:${item.downloaderCombined.cardId}`;
+      return `combined:downloader:${item.downloaderCombined.sectionKey}`;
+    }
+    if (item?.mediaCombined) {
+      if (item.mediaCombined.custom) return `combined:mediacustom:${item.mediaCombined.cardId}`;
+      return `combined:media:${item.mediaCombined.sectionKey}`;
+    }
     return '';
   };
   const getDashboardOrder = (item) => {
@@ -1567,6 +1699,10 @@ app.get('/dashboard', requireUser, (req, res) => {
   dashboardModules.sort((a, b) => {
     const orderDelta = getDashboardOrder(a) - getDashboardOrder(b);
     if (orderDelta !== 0) return orderDelta;
+    const appOrderDelta = (Number(a.app?.order) || 0) - (Number(b.app?.order) || 0);
+    if (appOrderDelta !== 0) return appOrderDelta;
+    const appNameDelta = String(a.app?.name || '').localeCompare(String(b.app?.name || ''));
+    if (appNameDelta !== 0) return appNameDelta;
     return String(a.element?.name || '').localeCompare(String(b.element?.name || ''));
   });
 
@@ -1813,6 +1949,8 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
   const multiInstanceMaxMap = getMultiInstanceMaxMap(settingsAppsWithIcons);
   const multiInstancePlaceholderMap = getMultiInstancePlaceholderMap(settingsAppsWithIcons);
   const arrDashboardCombinedCards = resolveArrDashboardCombinedCards(config, dashboardSettingsApps);
+  const downloaderDashboardCards = resolveDownloaderDashboardCards(config, dashboardSettingsApps);
+  const mediaDashboardCards = resolveMediaDashboardCards(config, dashboardSettingsApps);
   const arrSettingsAppIds = dashboardSettingsApps
     .filter((appItem) => isAppInSet(appItem.id, ARR_APP_IDS))
     .map((appItem) => appItem.id);
@@ -1824,9 +1962,19 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
   const downloaderSettingsAppIds = dashboardSettingsApps
     .filter((appItem) => isAppInSet(appItem.id, DOWNLOADER_APP_IDS))
     .map((appItem) => appItem.id);
+  const downloaderAppLookup = new Map(
+    dashboardSettingsApps
+      .filter((appItem) => isAppInSet(appItem.id, DOWNLOADER_APP_IDS))
+      .map((appItem) => [normalizeAppId(appItem.id), appItem])
+  );
   const mediaSettingsAppIds = dashboardSettingsApps
     .filter((appItem) => isAppInSet(appItem.id, MEDIA_APP_IDS))
     .map((appItem) => appItem.id);
+  const mediaAppLookup = new Map(
+    dashboardSettingsApps
+      .filter((appItem) => isAppInSet(appItem.id, MEDIA_APP_IDS))
+      .map((appItem) => [normalizeAppId(appItem.id), appItem])
+  );
   const multiInstanceCountsByBase = dashboardSettingsApps.reduce((acc, appItem) => {
     const baseId = getAppBaseId(appItem?.id);
     if (!supportsAppInstances(baseId)) return acc;
@@ -1914,6 +2062,30 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
         });
         return;
       }
+      if (combinedType === 'downloader') {
+        const meta = buildDownloaderCombinedDisplayMeta(downloaderAppLookup, section.key, combinedAppIds);
+        updated.push({
+          ...leaderItem,
+          displayName: meta.displayName,
+          iconPath: meta.iconPath,
+          combined: true,
+          combinedType,
+          combinedSection: section.key,
+          combinedApps: meta.appIds,
+          downloaderCombined: {
+            sectionKey: section.key,
+            elementId: section.elementId,
+            appIds: meta.appIds,
+            appNames: meta.appNames,
+            displayName: meta.displayName,
+            iconPath: meta.iconPath,
+            custom: false,
+            cardId: '',
+            moduleKey: DOWNLOADER_COMBINED_SECTION_PREFIX[section.key] || `downloaderscombined-${section.key}`,
+          },
+        });
+        return;
+      }
       const combinedName = `${labelPrefix} ${leaderItem.element?.name || section.elementId}`;
       updated.push({
         ...leaderItem,
@@ -1981,7 +2153,47 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     iconPath: '/icons/download.svg',
     combinedType: 'downloader',
   });
-  const combinedDashboardElements = applyCombinedDashboardElements(downloaderCombinedElements, {
+  const downloaderCombinedElementsWithCustom = downloaderCombinedElements.map((item) => ({ ...item }));
+  downloaderDashboardCards.forEach((card, cardIndex) => {
+    const section = getDownloaderCombineSection(card.sectionKey);
+    if (!section) return;
+    const sectionItems = baseDashboardElements.filter((item) =>
+      item.element?.id === section.elementId
+      && isAppInSet(item.appId, DOWNLOADER_APP_IDS)
+    );
+    if (!sectionItems.length) return;
+    const sourceItems = sectionItems.filter((item) =>
+      item.element?.id === section.elementId
+      && Array.isArray(card.appIds)
+      && card.appIds.includes(normalizeAppId(item.appId))
+    );
+    const orderedAppIds = [...new Set(sourceItems.map((item) => normalizeAppId(item.appId)).filter(Boolean))];
+    const meta = buildDownloaderCombinedDisplayMeta(downloaderAppLookup, card.sectionKey, orderedAppIds);
+    const leaderItem = sourceItems[0] || sectionItems[0];
+    const customToken = normalizeCombinedCardToken(card.id) || `card-${cardIndex + 1}`;
+    const modulePrefixBase = DOWNLOADER_COMBINED_SECTION_PREFIX[card.sectionKey] || `downloaderscombined-${card.sectionKey}`;
+    downloaderCombinedElementsWithCustom.push({
+      ...leaderItem,
+      displayName: meta.displayName,
+      iconPath: meta.iconPath,
+      combined: true,
+      combinedType: 'downloadercustom',
+      combinedSection: customToken,
+      combinedApps: meta.appIds,
+      downloaderCombined: {
+        sectionKey: card.sectionKey,
+        elementId: section.elementId,
+        appIds: meta.appIds,
+        appNames: meta.appNames,
+        displayName: meta.displayName,
+        iconPath: meta.iconPath,
+        custom: true,
+        cardId: customToken,
+        moduleKey: `${modulePrefixBase}-${customToken}`,
+      },
+    });
+  });
+  const combinedDashboardElements = applyCombinedDashboardElements(downloaderCombinedElementsWithCustom, {
     appIds: mediaSettingsAppIds,
     sections: MEDIA_COMBINE_SECTIONS,
     combineMap: mediaDashboardCombine,
@@ -1993,12 +2205,56 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     },
     combinedType: 'media',
   });
+  const combinedDashboardElementsWithMediaCustom = combinedDashboardElements.map((item) => ({ ...item }));
+  mediaDashboardCards.forEach((card, cardIndex) => {
+    const section = getMediaCombineSection(card.sectionKey);
+    if (!section) return;
+    const sectionItems = baseDashboardElements.filter((item) =>
+      item.element?.id === section.elementId
+      && isAppInSet(item.appId, MEDIA_APP_IDS)
+    );
+    if (!sectionItems.length) return;
+    const sourceItems = sectionItems.filter((item) =>
+      item.element?.id === section.elementId
+      && Array.isArray(card.appIds)
+      && card.appIds.includes(normalizeAppId(item.appId))
+    );
+    const orderedAppIds = [...new Set(sourceItems.map((item) => normalizeAppId(item.appId)).filter(Boolean))];
+    const meta = buildMediaCombinedDisplayMeta(mediaAppLookup, card.sectionKey, orderedAppIds);
+    const leaderItem = sourceItems[0] || sectionItems[0];
+    const customToken = normalizeCombinedCardToken(card.id) || `card-${cardIndex + 1}`;
+    const modulePrefixBase = MEDIA_COMBINED_SECTION_PREFIX[card.sectionKey] || `mediacombined-${card.sectionKey}`;
+    combinedDashboardElementsWithMediaCustom.push({
+      ...leaderItem,
+      displayName: meta.displayName,
+      iconPath: meta.iconPath,
+      combined: true,
+      combinedType: 'mediacustom',
+      combinedSection: customToken,
+      combinedApps: meta.appIds,
+      mediaCombined: {
+        sectionKey: card.sectionKey,
+        elementId: section.elementId,
+        appIds: meta.appIds,
+        appNames: meta.appNames,
+        displayName: meta.displayName,
+        iconPath: meta.iconPath,
+        custom: true,
+        cardId: customToken,
+        moduleKey: `${modulePrefixBase}-${customToken}`,
+      },
+    });
+  });
 
   const getCombinedOrderKey = (item) => {
     if (!item || !item.combined) return '';
     if (item.combinedType === 'arrcustom') {
       const customId = String(item.combinedSection || item.arrCombined?.cardId || '').trim();
       return customId ? `combined:arrcustom:${customId}` : '';
+    }
+    if (item.combinedType === 'downloadercustom') {
+      const customId = String(item.combinedSection || item.downloaderCombined?.cardId || '').trim();
+      return customId ? `combined:downloadercustom:${customId}` : '';
     }
     const section = item.combinedSection || item.element?.id || 'unknown';
     return `combined:${item.combinedType || 'mixed'}:${section}`;
@@ -2022,6 +2278,10 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
         const customId = String(item.arrCombined?.cardId || item.combinedSection || '').trim();
         return customId ? `combined:arrcustom:${customId}` : '';
       }
+      if (item.combinedType === 'downloadercustom') {
+        const customId = String(item.downloaderCombined?.cardId || item.combinedSection || '').trim();
+        return customId ? `combined:downloadercustom:${customId}` : '';
+      }
       const section = String(item.combinedSection || item.element?.id || '').trim();
       return section ? `combined:${item.combinedType || 'mixed'}:${section}` : '';
     }
@@ -2030,94 +2290,252 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     if (!appId || !elementId) return '';
     return `app:${appId}:${elementId}`;
   };
-  const dashboardElementsWithKeys = combinedDashboardElements.map((item) => ({
+  const dashboardElementsWithKeys = combinedDashboardElementsWithMediaCustom.map((item) => ({
     ...item,
     dashboardElementKey: getDashboardElementKey(item),
   }));
-  const getDashboardAddGroupLabel = (item) => {
-    const baseId = getAppBaseId(item?.appId);
-    const baseTitle = getBaseAppTitle(baseId);
-    const rawName = String(item?.appName || '').trim();
-    if (!supportsAppInstances(baseId)) {
-      return rawName || baseTitle || 'Apps';
-    }
-    if (!rawName) return baseTitle || 'Apps';
-    const rawLower = rawName.toLowerCase();
-    const baseLower = String(baseTitle || '').trim().toLowerCase();
-    if (!baseLower) return rawName || 'Apps';
-    if (rawLower === baseLower || rawLower.startsWith(`${baseLower} `)) return rawName;
-    return `${baseTitle} ${rawName}`.trim();
+  const resolveDashboardAddCategory = (value, fallback = 'Tools') => {
+    const normalized = normalizeCategoryName(value || fallback);
+    return normalized || normalizeCategoryName(fallback) || 'Tools';
   };
-  const dashboardRemovedAddOptions = dashboardElementsWithKeys
-    .filter((item) => item.dashboardElementKey && !item.combined && Boolean(dashboardRemovedElements[item.dashboardElementKey]))
+  const resolveSetCategory = (baseIds, fallback) => {
+    const match = settingsAppsWithIcons.find((appItem) => (
+      !appItem?.removed
+      && isAppInSet(appItem?.id, baseIds)
+      && String(appItem?.category || '').trim()
+    ));
+    return resolveDashboardAddCategory(match?.category, fallback);
+  };
+  const arrCategoryGroup = resolveSetCategory(ARR_APP_IDS, 'Arr Suite');
+  const mediaCategoryGroup = resolveSetCategory(MEDIA_APP_IDS, 'Media');
+  const downloaderCategoryGroup = resolveSetCategory(DOWNLOADER_APP_IDS, 'Downloaders');
+  const appNameById = new Map(
+    settingsAppsWithIcons
+      .map((appItem) => {
+        const id = normalizeAppId(appItem?.id);
+        if (!id) return null;
+        const fallbackName = getBaseAppTitle(getAppBaseId(id));
+        const name = String(appItem?.name || '').trim() || fallbackName;
+        return [id, name];
+      })
+      .filter(Boolean)
+  );
+  const hasAppBasePrefix = (appId, baseIds) => {
+    const normalizedAppId = normalizeAppId(appId);
+    if (!normalizedAppId || !Array.isArray(baseIds) || !baseIds.length) return false;
+    return baseIds.some((baseIdRaw) => {
+      const baseId = normalizeAppId(baseIdRaw);
+      if (!baseId) return false;
+      return normalizedAppId === baseId || normalizedAppId.startsWith(`${baseId}-`);
+    });
+  };
+  const allArrAddSourceIds = [...new Set(
+    settingsAppsWithIcons
+      .filter((appItem) => !appItem?.removed && isAppInSet(appItem?.id, ARR_APP_IDS))
+      .map((appItem) => normalizeAppId(appItem?.id))
+      .filter(Boolean)
+  )];
+  const allMediaAddSourceIds = [...new Set(
+    settingsAppsWithIcons
+      .filter((appItem) => !appItem?.removed && isAppInSet(appItem?.id, MEDIA_APP_IDS))
+      .map((appItem) => normalizeAppId(appItem?.id))
+      .filter(Boolean)
+  )];
+  const allDownloaderAddSourceIds = [...new Set(
+    settingsAppsWithIcons
+      .filter((appItem) => !appItem?.removed && isAppInSet(appItem?.id, DOWNLOADER_APP_IDS))
+      .map((appItem) => normalizeAppId(appItem?.id))
+      .filter(Boolean)
+  )];
+  const sameIdSet = (left, right) => {
+    const leftSet = [...new Set((Array.isArray(left) ? left : []).map((entry) => normalizeAppId(entry)).filter(Boolean))].sort();
+    const rightSet = [...new Set((Array.isArray(right) ? right : []).map((entry) => normalizeAppId(entry)).filter(Boolean))].sort();
+    if (leftSet.length !== rightSet.length) return false;
+    return leftSet.every((value, index) => value === rightSet[index]);
+  };
+  const dashboardBaseAddOptions = dashboardElementsWithKeys
+    .filter((item) => item?.dashboardElementKey)
     .map((item) => {
-      const groupLabel = getDashboardAddGroupLabel(item);
+      const optionKey = String(item?.dashboardElementKey || '').trim();
+      const appKeyMatch = optionKey.match(/^app:([^:]+):(.+)$/);
+      const keyAppId = appKeyMatch ? normalizeAppId(appKeyMatch[1]) : '';
+      const keyElementId = appKeyMatch ? String(appKeyMatch[2] || '').trim() : '';
+      const resolvedAppId = normalizeAppId(item?.appId || keyAppId);
+      const resolvedElementId = String(item?.element?.id || keyElementId).trim().replace(/,+$/, '');
+      const appLabel = String(item.appName || '').trim();
+      const baseName = String(item.displayName || item.element?.name || 'Dashboard card').trim() || 'Dashboard card';
+      const combinedType = String(item?.combinedType || '').trim();
+      const isUnifiedCombinedCard = Boolean(item?.combined);
+      const isUnifiedCustomCard = Boolean(
+        isUnifiedCombinedCard
+        && ['arrcustom', 'downloadercustom', 'mediacustom'].includes(combinedType)
+      );
+      const combinedSourceNames = isUnifiedCustomCard
+        ? [...new Set(
+          (Array.isArray(item?.combinedApps) ? item.combinedApps : [])
+            .map((appId) => normalizeAppId(appId))
+            .filter(Boolean)
+            .map((appId) => appNameById.get(appId) || getBaseAppTitle(getAppBaseId(appId)))
+            .map((name) => String(name || '').trim())
+            .filter(Boolean)
+        )]
+        : [];
+      const unifiedBaseName = isUnifiedCustomCard && !/^new\s+/i.test(baseName)
+        ? `New ${baseName}`
+        : baseName;
+      const optionBaseName = (isUnifiedCustomCard && combinedSourceNames.length)
+        ? `${unifiedBaseName} (${combinedSourceNames.join(' + ')})`
+        : unifiedBaseName;
+      const prefixedName = (
+        !isUnifiedCombinedCard
+        && appLabel
+        && !optionBaseName.toLowerCase().startsWith(appLabel.toLowerCase())
+      )
+        ? `${appLabel} ${optionBaseName}`.trim()
+        : optionBaseName;
+      const isOnDashboard = !dashboardRemovedElements[item.dashboardElementKey];
+      const sourceSectionKey = String(
+        item?.arrCombined?.sectionKey
+        || item?.downloaderCombined?.sectionKey
+        || item?.mediaCombined?.sectionKey
+        || ''
+      ).trim();
+      const sourceAppIds = [...new Set(
+        (Array.isArray(item?.combinedApps) ? item.combinedApps : [])
+          .map((appId) => normalizeAppId(appId))
+          .filter(Boolean)
+      )];
+      const isRemovedCustomCard = Boolean(
+        isUnifiedCustomCard
+        && dashboardRemovedElements[item.dashboardElementKey]
+      );
+      const hideInAddPicker = Boolean(
+        isRemovedCustomCard
+        || (
+          isUnifiedCustomCard
+          && (
+          (combinedType === 'arrcustom' && sourceSectionKey && sameIdSet(sourceAppIds, allArrAddSourceIds))
+          || (combinedType === 'mediacustom' && sourceSectionKey && sameIdSet(sourceAppIds, allMediaAddSourceIds))
+          || (combinedType === 'downloadercustom' && sourceSectionKey && sameIdSet(sourceAppIds, allDownloaderAddSourceIds))
+          )
+        )
+      );
+      const isDeprecatedLegacyCombined = Boolean(
+        item?.combined
+        && ['arr', 'downloader', 'media'].includes(String(item?.combinedType || '').trim())
+      );
+      const isDeprecatedAppCard = Boolean(
+        !item?.combined
+        && optionKey.startsWith('app:')
+        && resolvedAppId
+        && resolvedElementId
+        && (
+          (
+            (isAppInSet(resolvedAppId, ARR_APP_IDS) || hasAppBasePrefix(resolvedAppId, ARR_APP_IDS))
+            && ARR_COMBINE_SECTIONS.some((section) => section.elementId === resolvedElementId)
+          )
+          || (
+            (isAppInSet(resolvedAppId, DOWNLOADER_APP_IDS) || hasAppBasePrefix(resolvedAppId, DOWNLOADER_APP_IDS))
+            && DOWNLOADER_COMBINE_SECTIONS.some((section) => section.elementId === resolvedElementId)
+          )
+          || (
+            (isAppInSet(resolvedAppId, MEDIA_APP_IDS) || hasAppBasePrefix(resolvedAppId, MEDIA_APP_IDS))
+            && MEDIA_COMBINE_SECTIONS.some((section) => section.elementId === resolvedElementId)
+          )
+        )
+      );
+      const deprecated = isDeprecatedLegacyCombined || isDeprecatedAppCard;
       return {
-        key: item.dashboardElementKey,
-        group: groupLabel,
-        appName: groupLabel,
-        name: String(item.displayName || item.element?.name || 'Dashboard item').trim() || 'Dashboard item',
-        icon: String(item.iconPath || resolvePersistedAppIconPath({ id: item.appId }) || '/icons/app.svg').trim() || '/icons/app.svg',
+        key: optionKey,
+        group: resolveDashboardAddCategory(item.category, 'Tools'),
+        name: prefixedName,
+        icon: String(item.iconPath || resolvePersistedAppIconPath({ id: resolvedAppId || item.appId }) || '/icons/app.svg').trim() || '/icons/app.svg',
+        disabled: isOnDashboard,
+        deprecated,
+        hideInAddPicker,
       };
-    })
-    .sort((a, b) => {
-      const groupDelta = String(a.group || '').localeCompare(String(b.group || ''));
-      if (groupDelta !== 0) return groupDelta;
-      const appDelta = String(a.appName || '').localeCompare(String(b.appName || ''));
-      if (appDelta !== 0) return appDelta;
-      return String(a.name || '').localeCompare(String(b.name || ''));
     });
-  const hasArrSources = settingsAppsWithIcons.some((appItem) => !appItem?.removed && isAppInSet(appItem.id, ARR_APP_IDS));
-  const dashboardCombinedAddOptions = hasArrSources
-    ? ARR_COMBINE_SECTIONS.map((section) => ({
-      key: `new:arr:${section.key}`,
-      group: 'Create ARR Combined',
-      name: `Combined ${getArrCombineSectionLabel(section.key)}`,
-      icon: getArrCombineSectionIconPath(section.key),
-    }))
-    : [];
-  ARR_COMBINE_SECTIONS.forEach((section) => {
-    const key = `combined:arr:${section.key}`;
-    if (!dashboardRemovedElements[key]) return;
-    dashboardCombinedAddOptions.push({
-      key,
-      group: 'Re-add ARR Combined',
-      name: `Combined ${getArrCombineSectionLabel(section.key)}`,
-      icon: getArrCombineSectionIconPath(section.key),
+  const dashboardCardStateByKey = new Map(
+    dashboardBaseAddOptions
+      .map((entry) => {
+        const key = String(entry?.key || '').trim();
+        if (!key) return null;
+        const deprecated = Boolean(entry?.deprecated);
+        return [key, { deprecated, current: !deprecated }];
+      })
+      .filter(Boolean)
+  );
+  const hasMediaSources = settingsAppsWithIcons.some((appItem) => !appItem?.removed && isAppInSet(appItem.id, MEDIA_APP_IDS));
+  const dashboardAvailableBaseAddOptions = dashboardBaseAddOptions.filter((entry) => !entry?.disabled && !entry?.deprecated && !entry?.hideInAddPicker);
+  const dashboardDeprecatedAddOptions = [];
+  const dashboardUnifiedAddOptions = [...dashboardAvailableBaseAddOptions];
+  const dashboardCombinedAddOptions = [...dashboardUnifiedAddOptions];
+  const pushDashboardCombinedAddOption = (entry) => {
+    dashboardUnifiedAddOptions.push(entry);
+    dashboardCombinedAddOptions.push(entry);
+  };
+  if (ENABLE_ARR_UNIFIED_CARDS && settingsAppsWithIcons.some((appItem) => !appItem?.removed && isAppInSet(appItem.id, ARR_APP_IDS))) {
+    ARR_COMBINE_SECTIONS.forEach((section) => {
+      pushDashboardCombinedAddOption({
+        key: `new:arr:${section.key}`,
+        group: arrCategoryGroup,
+        name: `New ${getArrCombineSectionLabel(section.key)}`,
+        icon: getArrCombineSectionIconPath(section.key),
+        disabled: false,
+        deprecated: false,
+      });
     });
-  });
-  DOWNLOADER_COMBINE_SECTIONS.forEach((section) => {
-    const key = `combined:downloader:${section.key}`;
-    if (!dashboardRemovedElements[key]) return;
-    dashboardCombinedAddOptions.push({
-      key,
-      group: 'Re-add Downloader Combined',
-      name: 'Combined Download Queue',
-      icon: '/icons/download.svg',
+  }
+  if (hasMediaSources) {
+    MEDIA_COMBINE_SECTIONS.forEach((section) => {
+      pushDashboardCombinedAddOption({
+        key: `new:media:${section.key}`,
+        group: mediaCategoryGroup,
+        name: `New ${getMediaCombineSectionLabel(section.key)}`,
+        icon: getMediaCombineSectionIconPath(section.key),
+        disabled: false,
+        deprecated: false,
+      });
     });
-  });
-  MEDIA_COMBINE_SECTIONS.forEach((section) => {
-    const key = `combined:media:${section.key}`;
-    if (!dashboardRemovedElements[key]) return;
-    const sectionLabel = section.key === 'recent' ? 'Recently Added' : 'Active Streams';
-    const iconPath = section.key === 'recent' ? '/icons/recently-added.svg' : '/icons/media-play.svg';
-    dashboardCombinedAddOptions.push({
-      key,
-      group: 'Re-add Media Combined',
-      name: `Combined ${sectionLabel}`,
-      icon: iconPath,
+  }
+  if (ENABLE_DOWNLOADER_UNIFIED_CARDS && settingsAppsWithIcons.some((appItem) => !appItem?.removed && isAppInSet(appItem.id, DOWNLOADER_APP_IDS))) {
+    DOWNLOADER_COMBINE_SECTIONS.forEach((section) => {
+      pushDashboardCombinedAddOption({
+        key: `new:downloader:${section.key}`,
+        group: downloaderCategoryGroup,
+        name: `New ${getDownloaderCombineSectionLabel(section.key)}`,
+        icon: getDownloaderCombineSectionIconPath(section.key),
+        disabled: false,
+        deprecated: false,
+      });
     });
-  });
-  dashboardCombinedAddOptions.sort((a, b) => {
+  }
+  const sortDashboardAddOptions = (a, b) => {
+    const categoryDelta = rankCategory(a.group) - rankCategory(b.group);
+    if (categoryDelta !== 0) return categoryDelta;
     const groupDelta = String(a.group || '').localeCompare(String(b.group || ''));
     if (groupDelta !== 0) return groupDelta;
     return String(a.name || '').localeCompare(String(b.name || ''));
-  });
+  };
+  dashboardDeprecatedAddOptions.sort(sortDashboardAddOptions);
+  dashboardCombinedAddOptions.sort(sortDashboardAddOptions);
+  dashboardUnifiedAddOptions.sort(sortDashboardAddOptions);
   const dashboardElements = dashboardElementsWithKeys
+    .map((item) => {
+      const key = String(item?.dashboardElementKey || '').trim();
+      const state = key ? dashboardCardStateByKey.get(key) : null;
+      return {
+        ...item,
+        dashboardIsDeprecated: Boolean(state?.deprecated),
+        dashboardIsCurrent: Boolean(state?.current),
+      };
+    })
     .filter((item) => !item.dashboardElementKey || !dashboardRemovedElements[item.dashboardElementKey])
     .sort((a, b) => {
     const orderDelta = getDashboardOrder(a) - getDashboardOrder(b);
     if (orderDelta !== 0) return orderDelta;
+    const appOrderDelta = (Number(a.appOrder) || 0) - (Number(b.appOrder) || 0);
+    if (appOrderDelta !== 0) return appOrderDelta;
     const appNameDelta = String(a.appName || '').localeCompare(String(b.appName || ''));
     if (appNameDelta !== 0) return appNameDelta;
     return String(a.element.name || '').localeCompare(String(b.element.name || ''));
@@ -2128,14 +2546,28 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     .map((appItem) => {
       const id = normalizeAppId(appItem?.id);
       if (!id) return null;
+      const parsedOrder = Number(appItem?.order);
       return {
         id,
         name: String(appItem?.name || '').trim() || getBaseAppTitle(getAppBaseId(id)),
         icon: resolvePersistedAppIconPath({ ...appItem, id }),
         category: String(appItem?.category || '').trim() || 'Tools',
+        order: Number.isFinite(parsedOrder) ? parsedOrder : Number.MAX_SAFE_INTEGER,
       };
     })
-    .filter(Boolean);
+    .filter(Boolean)
+    .sort((a, b) => {
+      const categoryDelta = rankCategory(a.category) - rankCategory(b.category);
+      if (categoryDelta !== 0) return categoryDelta;
+      const groupDelta = String(a.category || '').localeCompare(String(b.category || ''));
+      if (groupDelta !== 0) return groupDelta;
+      const leftOrder = Number(a?.order);
+      const rightOrder = Number(b?.order);
+      const orderDelta = (Number.isFinite(leftOrder) ? leftOrder : Number.MAX_SAFE_INTEGER)
+        - (Number.isFinite(rightOrder) ? rightOrder : Number.MAX_SAFE_INTEGER);
+      if (orderDelta !== 0) return orderDelta;
+      return String(a.name || '').localeCompare(String(b.name || ''));
+    });
   const defaultCategoryCatalog = loadDefaultCategories()
     .map((entry) => {
       const name = normalizeCategoryName(entry?.name);
@@ -2197,10 +2629,13 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     arrCombinedCardResult: String(req.query?.arrCombinedCardResult || '').trim(),
     arrCombinedCardError: String(req.query?.arrCombinedCardError || '').trim(),
     arrDashboardCombinedCards,
+    downloaderDashboardCards,
+    mediaDashboardCards,
+    dashboardAddOptions: dashboardUnifiedAddOptions,
+    dashboardDeprecatedAddOptions,
     dashboardCombinedAddOptions,
     dashboardElementResult: String(req.query?.dashboardElementResult || '').trim(),
     dashboardElementError: String(req.query?.dashboardElementError || '').trim(),
-    dashboardRemovedAddOptions,
     defaultAppCatalog,
     defaultCategoryCatalog,
     defaultAppResult,
@@ -2342,8 +2777,48 @@ app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
       dashboard: visibilityRole !== 'disabled',
     };
   });
+  Object.keys(req.body || {}).forEach((key) => {
+    const match = key.match(/^dashboard_combined_downloadercustom_(.+)_present$/);
+    if (!match) return;
+    const customToken = normalizeCombinedCardToken(match[1] || '');
+    if (!customToken) return;
+    const mapKey = `combined:downloadercustom:${customToken}`;
+    const existing = existingDashboardCombinedSettings[mapKey] || {};
+    const visibilityRole = normalizeVisibilityRole(
+      req.body[`dashboard_combined_downloadercustom_${customToken}_visibility_role`],
+      resolveCombinedDashboardVisibilityRole(existing, 'user')
+    );
+    dashboardCombinedSettings[mapKey] = {
+      ...existing,
+      visibilityRole,
+      enable: visibilityRole !== 'disabled',
+      dashboard: visibilityRole !== 'disabled',
+    };
+  });
+  Object.keys(req.body || {}).forEach((key) => {
+    const match = key.match(/^dashboard_combined_mediacustom_(.+)_present$/);
+    if (!match) return;
+    const customToken = normalizeCombinedCardToken(match[1] || '');
+    if (!customToken) return;
+    const mapKey = `combined:mediacustom:${customToken}`;
+    const existing = existingDashboardCombinedSettings[mapKey] || {};
+    const visibilityRole = normalizeVisibilityRole(
+      req.body[`dashboard_combined_mediacustom_${customToken}_visibility_role`],
+      resolveCombinedDashboardVisibilityRole(existing, 'user')
+    );
+    dashboardCombinedSettings[mapKey] = {
+      ...existing,
+      visibilityRole,
+      enable: visibilityRole !== 'disabled',
+      dashboard: visibilityRole !== 'disabled',
+    };
+  });
   Object.entries(existingDashboardCombinedSettings).forEach(([mapKey, value]) => {
-    if (!String(mapKey || '').startsWith('combined:arrcustom:')) return;
+    if (
+      !String(mapKey || '').startsWith('combined:arrcustom:')
+      && !String(mapKey || '').startsWith('combined:downloadercustom:')
+      && !String(mapKey || '').startsWith('combined:mediacustom:')
+    ) return;
     if (!dashboardRemovedElements[mapKey]) return;
     if (dashboardCombinedSettings[mapKey]) return;
     dashboardCombinedSettings[mapKey] = value;
@@ -2355,6 +2830,97 @@ app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
       ? buildTautulliCardsFromDashboardRequest(appItem, req.body)
       : appItem.tautulliCards,
   }));
+  const combinedOverviewScopes = [
+    { prefix: 'arr', appIds: ARR_APP_IDS, sections: ARR_COMBINE_SECTIONS, getSection: getArrCombineSection },
+    { prefix: 'downloader', appIds: DOWNLOADER_APP_IDS, sections: DOWNLOADER_COMBINE_SECTIONS, getSection: getDownloaderCombineSection },
+    { prefix: 'media', appIds: MEDIA_APP_IDS, sections: MEDIA_COMBINE_SECTIONS, getSection: getMediaCombineSection },
+  ];
+  const currentCombinedOverviewRoleByKey = new Map();
+  apps.forEach((appItem) => {
+    const normalizedAppId = normalizeAppId(appItem?.id);
+    if (!normalizedAppId) return;
+    const overviewElements = mergeOverviewElementSettings(appItem);
+    combinedOverviewScopes.forEach((scope) => {
+      if (!isAppInSet(normalizedAppId, scope.appIds)) return;
+      scope.sections.forEach((section) => {
+        const sectionElement = overviewElements.find((element) => element.id === section.elementId);
+        const overviewVisibilityRole = normalizeVisibilityRole(
+          sectionElement?.overviewVisibilityRole,
+          (sectionElement && sectionElement.enable === false) ? 'disabled' : 'user'
+        );
+        currentCombinedOverviewRoleByKey.set(`${scope.prefix}:${section.key}:${normalizedAppId}`, overviewVisibilityRole);
+      });
+    });
+  });
+  const combinedOverviewRoleUpdates = new Map();
+  Object.keys(req.body || {}).forEach((key) => {
+    combinedOverviewScopes.forEach((scope) => {
+      const match = key.match(new RegExp(`^${scope.prefix}_app_state_present__(.+?)__(.+?)__(.+)$`));
+      if (!match) return;
+      const token = String(match[1] || '').trim();
+      const sectionKey = String(match[2] || '').trim();
+      const rawAppId = String(match[3] || '').trim();
+      const normalizedAppId = normalizeAppId(rawAppId);
+      if (!token || !sectionKey || !normalizedAppId) return;
+      if (!isAppInSet(normalizedAppId, scope.appIds)) return;
+      const section = scope.getSection(sectionKey);
+      if (!section) return;
+      const overviewRoleField = `${scope.prefix}_app_overview_role__${token}__${sectionKey}__${rawAppId}`;
+      const updateKey = `${scope.prefix}:${section.key}:${normalizedAppId}`;
+      const currentOverviewRole = currentCombinedOverviewRoleByKey.get(updateKey) || 'user';
+      const nextUpdate = {
+        appId: normalizedAppId,
+        elementId: section.elementId,
+        overviewVisibilityRole: normalizeVisibilityRole(req.body[overviewRoleField], currentOverviewRole),
+      };
+      const existingUpdate = combinedOverviewRoleUpdates.get(updateKey);
+      if (!existingUpdate) {
+        combinedOverviewRoleUpdates.set(updateKey, nextUpdate);
+        return;
+      }
+      const existingDiffers = existingUpdate.overviewVisibilityRole !== currentOverviewRole;
+      const nextDiffers = nextUpdate.overviewVisibilityRole !== currentOverviewRole;
+      if (!existingDiffers && nextDiffers) {
+        combinedOverviewRoleUpdates.set(updateKey, nextUpdate);
+        return;
+      }
+      if (existingDiffers === nextDiffers) {
+        combinedOverviewRoleUpdates.set(updateKey, nextUpdate);
+      }
+    });
+  });
+  if (combinedOverviewRoleUpdates.size) {
+    const combinedUpdatesByAppId = new Map();
+    combinedOverviewRoleUpdates.forEach((update) => {
+      const appUpdates = combinedUpdatesByAppId.get(update.appId) || [];
+      appUpdates.push(update);
+      combinedUpdatesByAppId.set(update.appId, appUpdates);
+    });
+    for (let appIndex = 0; appIndex < apps.length; appIndex += 1) {
+      const appItem = apps[appIndex];
+      const normalizedAppId = normalizeAppId(appItem?.id);
+      if (!normalizedAppId) continue;
+      const appUpdates = combinedUpdatesByAppId.get(normalizedAppId);
+      if (!appUpdates || !appUpdates.length) continue;
+      const nextOverviewElements = mergeOverviewElementSettings(appItem).map((element) => {
+        const elementUpdate = appUpdates.find((update) => update.elementId === element.id);
+        if (!elementUpdate) return element;
+        const overviewVisibilityRole = normalizeVisibilityRole(
+          elementUpdate.overviewVisibilityRole,
+          element.enable === false ? 'disabled' : 'user'
+        );
+        return {
+          ...element,
+          enable: overviewVisibilityRole !== 'disabled',
+          overviewVisibilityRole,
+        };
+      });
+      apps[appIndex] = {
+        ...appItem,
+        overviewElements: nextOverviewElements,
+      };
+    }
+  }
   const arrDashboardCombine = resolveArrDashboardCombineSettings(config, apps);
   ARR_COMBINE_SECTIONS.forEach((section) => {
     const mapKey = `combined:arr:${section.key}`;
@@ -2392,6 +2958,19 @@ app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
         downloaderDashboardCombine[section.key][appItem.id] = Boolean(req.body[field]);
       });
   });
+  const downloaderSelectableAppIds = apps
+    .filter((appItem) => !appItem?.removed && isAppInSet(appItem.id, DOWNLOADER_APP_IDS))
+    .map((appItem) => normalizeAppId(appItem.id))
+    .filter(Boolean);
+  const downloaderDashboardCards = resolveDownloaderDashboardCards(config, apps).map((card) => {
+    const cardKey = `combined:downloadercustom:${card.id}`;
+    if (dashboardRemovedElements[cardKey]) return card;
+    const selected = downloaderSelectableAppIds.filter((appId) => Boolean(req.body[`downloadercustom_combine_${card.id}_${appId}`]));
+    return {
+      ...card,
+      appIds: selected,
+    };
+  });
   const mediaDashboardCombine = resolveMediaDashboardCombineSettings(config, apps);
   MEDIA_COMBINE_SECTIONS.forEach((section) => {
     const mapKey = `combined:media:${section.key}`;
@@ -2403,6 +2982,19 @@ app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
         const field = `media_combine_${section.key}_${appItem.id}`;
         mediaDashboardCombine[section.key][appItem.id] = Boolean(req.body[field]);
       });
+  });
+  const mediaSelectableAppIds = apps
+    .filter((appItem) => !appItem?.removed && isAppInSet(appItem.id, MEDIA_APP_IDS))
+    .map((appItem) => normalizeAppId(appItem.id))
+    .filter(Boolean);
+  const mediaDashboardCards = resolveMediaDashboardCards(config, apps).map((card) => {
+    const cardKey = `combined:mediacustom:${card.id}`;
+    if (dashboardRemovedElements[cardKey]) return card;
+    const selected = mediaSelectableAppIds.filter((appId) => Boolean(req.body[`mediacustom_combine_${card.id}_${appId}`]));
+    return {
+      ...card,
+      appIds: selected,
+    };
   });
   const arrCombinedQueueDisplay = resolveCombinedQueueDisplaySettings(config, 'arrCombinedQueueDisplay');
   arrCombinedQueueDisplay.queueShowDetail = Boolean(req.body.arr_combined_queue_col_detail);
@@ -2437,6 +3029,8 @@ app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
     arrCombinedQueueDisplay,
     downloaderCombinedQueueDisplay,
     arrDashboardCombinedCards,
+    downloaderDashboardCards,
+    mediaDashboardCards,
     dashboardCombinedOrder,
     dashboardCombinedSettings,
   });
@@ -2449,6 +3043,45 @@ app.post('/settings/dashboard-elements/remove', requireSettingsAdmin, (req, res)
   if (!key) {
     return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&dashboardElementError=Missing+dashboard+item+key.');
   }
+
+  const customCombinedMatch = key.match(/^combined:(arrcustom|downloadercustom|mediacustom):(.+)$/);
+  if (customCombinedMatch) {
+    const customType = String(customCombinedMatch[1] || '').trim();
+    const customToken = normalizeCombinedCardToken(customCombinedMatch[2] || '');
+    if (!customToken) {
+      return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&dashboardElementError=Invalid+custom+dashboard+card+id.');
+    }
+    const listField = customType === 'arrcustom'
+      ? 'arrDashboardCombinedCards'
+      : (customType === 'downloadercustom' ? 'downloaderDashboardCards' : 'mediaDashboardCards');
+    const customKey = `combined:${customType}:${customToken}`;
+    const existingCards = Array.isArray(config?.[listField]) ? config[listField] : [];
+    const nextCards = existingCards.filter((card) => normalizeCombinedCardToken(card?.id || '') !== customToken);
+    const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
+      ? { ...config.dashboardRemovedElements }
+      : {};
+    const dashboardCombinedSettings = (config && typeof config.dashboardCombinedSettings === 'object' && config.dashboardCombinedSettings)
+      ? { ...config.dashboardCombinedSettings }
+      : {};
+    const dashboardCombinedOrder = (config && typeof config.dashboardCombinedOrder === 'object' && config.dashboardCombinedOrder)
+      ? { ...config.dashboardCombinedOrder }
+      : {};
+    delete dashboardRemovedElements[key];
+    delete dashboardRemovedElements[customKey];
+    delete dashboardCombinedSettings[key];
+    delete dashboardCombinedSettings[customKey];
+    delete dashboardCombinedOrder[key];
+    delete dashboardCombinedOrder[customKey];
+    saveConfig({
+      ...config,
+      [listField]: nextCards,
+      dashboardRemovedElements,
+      dashboardCombinedSettings,
+      dashboardCombinedOrder,
+    });
+    return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&dashboardElementResult=removed');
+  }
+
   const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
     ? { ...config.dashboardRemovedElements }
     : {};
@@ -2460,36 +3093,211 @@ app.post('/settings/dashboard-elements/remove', requireSettingsAdmin, (req, res)
   return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&dashboardElementResult=removed');
 });
 
-app.post('/settings/dashboard-elements/add', requireSettingsAdmin, (req, res) => {
-  const config = loadConfig();
-  const key = String(req.body?.dashboard_element_key || req.body?.key || '').trim();
-  if (!key) {
-    return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&dashboardElementError=Select+a+dashboard+item+to+add.');
-  }
-  const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
-    ? { ...config.dashboardRemovedElements }
-    : {};
-  delete dashboardRemovedElements[key];
-  saveConfig({
-    ...config,
-    dashboardRemovedElements,
-  });
-  return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&dashboardElementResult=added');
-});
+const DASHBOARD_SETTINGS_REDIRECT = '/settings?tab=custom&settingsCustomTab=dashboard';
 
-app.post('/settings/dashboard-combined/add', requireSettingsAdmin, (req, res) => {
+function redirectDashboardAddError(res, message) {
+  return res.redirect(`${DASHBOARD_SETTINGS_REDIRECT}&dashboardElementError=${encodeURIComponent(message)}`);
+}
+
+function redirectDashboardAddResult(res, result = 'added') {
+  return res.redirect(`${DASHBOARD_SETTINGS_REDIRECT}&dashboardElementResult=${encodeURIComponent(result)}`);
+}
+
+function resolveNextDashboardOrder(config) {
+  const apps = Array.isArray(config?.apps) ? config.apps : [];
+  const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
+    ? config.dashboardRemovedElements
+    : {};
+  const dashboardCombinedOrder = (config && typeof config.dashboardCombinedOrder === 'object' && config.dashboardCombinedOrder)
+    ? config.dashboardCombinedOrder
+    : {};
+  let maxOrder = 0;
+
+  const updateMaxOrder = (value) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return;
+    if (parsed > maxOrder) maxOrder = parsed;
+  };
+
+  apps
+    .filter((appItem) => !appItem?.removed)
+    .forEach((appItem) => {
+      const appId = String(appItem?.id || '').trim();
+      if (!appId) return;
+      const overviewElements = mergeOverviewElementSettings(appItem);
+      overviewElements.forEach((element) => {
+        const elementId = String(element?.id || '').trim();
+        if (!elementId) return;
+        if (dashboardRemovedElements[`app:${appId}:${elementId}`]) return;
+        updateMaxOrder(element?.order);
+      });
+    });
+
+  Object.entries(dashboardCombinedOrder).forEach(([combinedKey, orderValue]) => {
+    if (dashboardRemovedElements[combinedKey]) return;
+    updateMaxOrder(orderValue);
+  });
+
+  return maxOrder + 1;
+}
+
+function handleDashboardAddRequest(req, res) {
   const config = loadConfig();
-  const key = String(req.body?.dashboard_combined_key || req.body?.key || '').trim();
+  const apps = Array.isArray(config.apps) ? config.apps : [];
+  const normalizeSubmittedValues = (value) => {
+    if (Array.isArray(value)) {
+      return value.flatMap((entry) => normalizeSubmittedValues(entry));
+    }
+    const text = String(value || '').trim();
+    if (!text) return [];
+    return text
+      .split(',')
+      .map((entry) => String(entry || '').trim())
+      .filter(Boolean);
+  };
+  const submittedKeys = [
+    ...normalizeSubmittedValues(req.body?.dashboard_add_key_current),
+    ...normalizeSubmittedValues(req.body?.dashboard_add_key_deprecated),
+    ...normalizeSubmittedValues(req.body?.dashboard_add_key),
+    ...normalizeSubmittedValues(req.body?.dashboard_element_key),
+    ...normalizeSubmittedValues(req.body?.dashboard_combined_key),
+    ...normalizeSubmittedValues(req.body?.key),
+  ];
+  const key = submittedKeys.find((entry) => /^(app:|new:|combined:)/.test(entry)) || submittedKeys[0] || '';
   if (!key) {
-    return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&arrCombinedCardError=Select+a+combined+card+to+add.');
+    return redirectDashboardAddError(res, 'Select a dashboard card to add.');
   }
+
+  const deprecatedDescriptor = resolveDeprecatedDashboardCardDescriptor(key);
+  if (deprecatedDescriptor) {
+    const draftDashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
+      ? { ...config.dashboardRemovedElements }
+      : {};
+    delete draftDashboardRemovedElements[key];
+    const draftConfig = {
+      ...config,
+      dashboardRemovedElements: draftDashboardRemovedElements,
+    };
+    const nextOrder = resolveNextDashboardOrder(config);
+
+    if (deprecatedDescriptor.kind === 'app') {
+      draftConfig.apps = apps.map((appItem) => {
+        if (normalizeAppId(appItem?.id) !== deprecatedDescriptor.appId) return appItem;
+        const existingOverview = Array.isArray(appItem?.overviewElements) ? appItem.overviewElements : [];
+        const nextOverview = existingOverview.map((entry) => ({ ...(entry || {}) }));
+        const existingIndex = nextOverview.findIndex((entry) => String(entry?.id || '').trim() === deprecatedDescriptor.elementId);
+        if (existingIndex >= 0) {
+          nextOverview[existingIndex] = {
+            ...nextOverview[existingIndex],
+            id: deprecatedDescriptor.elementId,
+            dashboard: true,
+            dashboardVisibilityRole: normalizeVisibilityRole(nextOverview[existingIndex]?.dashboardVisibilityRole, 'user') === 'disabled'
+              ? 'user'
+              : normalizeVisibilityRole(nextOverview[existingIndex]?.dashboardVisibilityRole, 'user'),
+            order: nextOrder,
+          };
+        } else {
+          nextOverview.push({
+            id: deprecatedDescriptor.elementId,
+            dashboard: true,
+            dashboardVisibilityRole: 'user',
+            order: nextOrder,
+          });
+        }
+        return {
+          ...appItem,
+          overviewElements: nextOverview,
+        };
+      });
+    } else if (deprecatedDescriptor.kind === 'combined') {
+      const existingCombinedSettings = (config && typeof config.dashboardCombinedSettings === 'object' && config.dashboardCombinedSettings)
+        ? { ...config.dashboardCombinedSettings }
+        : {};
+      const existingSetting = existingCombinedSettings[key] && typeof existingCombinedSettings[key] === 'object'
+        ? existingCombinedSettings[key]
+        : {};
+      const visibilityRole = resolveCombinedDashboardVisibilityRole(existingSetting, 'user') === 'disabled'
+        ? 'user'
+        : resolveCombinedDashboardVisibilityRole(existingSetting, 'user');
+      existingCombinedSettings[key] = {
+        ...existingSetting,
+        visibilityRole,
+        enable: visibilityRole !== 'disabled',
+        dashboard: visibilityRole !== 'disabled',
+      };
+      draftConfig.dashboardCombinedSettings = existingCombinedSettings;
+      const existingCombinedOrder = (config && typeof config.dashboardCombinedOrder === 'object' && config.dashboardCombinedOrder)
+        ? { ...config.dashboardCombinedOrder }
+        : {};
+      if (!Number.isFinite(Number(existingCombinedOrder[key]))) {
+        existingCombinedOrder[key] = nextOrder;
+      }
+      draftConfig.dashboardCombinedOrder = existingCombinedOrder;
+    }
+
+    const migration = migrateDeprecatedDashboardCards(draftConfig);
+    if (migration.changed) {
+      saveConfig(migration.config);
+      return redirectDashboardAddResult(res, 'added');
+    }
+  }
+
+  if (key.startsWith('app:')) {
+    const appMatch = key.match(/^app:([^:]+):(.+)$/);
+    if (!appMatch) {
+      return redirectDashboardAddError(res, 'Invalid app card selection.');
+    }
+    const selectedAppId = String(appMatch[1] || '').trim();
+    const selectedElementId = String(appMatch[2] || '').trim();
+    if (!selectedAppId || !selectedElementId) {
+      return redirectDashboardAddError(res, 'Invalid app card selection.');
+    }
+    const nextDashboardOrder = resolveNextDashboardOrder(config);
+    const nextApps = apps.map((appItem) => {
+      if (String(appItem?.id || '').trim() !== selectedAppId) return appItem;
+      const existingOverview = Array.isArray(appItem?.overviewElements) ? appItem.overviewElements : [];
+      const nextOverview = existingOverview.map((entry) => ({ ...(entry || {}) }));
+      const existingIndex = nextOverview.findIndex((entry) => String(entry?.id || '').trim() === selectedElementId);
+      if (existingIndex >= 0) {
+        nextOverview[existingIndex] = {
+          ...nextOverview[existingIndex],
+          id: selectedElementId,
+          dashboard: true,
+          order: nextDashboardOrder,
+        };
+      } else {
+        nextOverview.push({
+          id: selectedElementId,
+          dashboard: true,
+          order: nextDashboardOrder,
+        });
+      }
+      return {
+        ...appItem,
+        overviewElements: nextOverview,
+      };
+    });
+    const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
+      ? { ...config.dashboardRemovedElements }
+      : {};
+    delete dashboardRemovedElements[key];
+    saveConfig({
+      ...config,
+      apps: nextApps,
+      dashboardRemovedElements,
+    });
+    return redirectDashboardAddResult(res, 'added');
+  }
+
   const newArrMatch = key.match(/^new:arr:(.+)$/);
   if (newArrMatch) {
+    if (!ENABLE_ARR_UNIFIED_CARDS) {
+      return redirectDashboardAddError(res, 'ARR unified cards are currently disabled.');
+    }
     const sectionKey = String(newArrMatch[1] || '').trim();
     if (!getArrCombineSection(sectionKey)) {
-      return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&arrCombinedCardError=Invalid+combined+section+selected.');
+      return redirectDashboardAddError(res, 'Invalid combined section selected.');
     }
-    const apps = Array.isArray(config.apps) ? config.apps : [];
     const allowedAppIds = [
       ...new Set(
         apps
@@ -2499,7 +3307,7 @@ app.post('/settings/dashboard-combined/add', requireSettingsAdmin, (req, res) =>
       ),
     ];
     if (!allowedAppIds.length) {
-      return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&arrCombinedCardError=No+ARR+sources+available+to+build+a+dashboard+card.');
+      return redirectDashboardAddError(res, 'No ARR sources available to build a dashboard card.');
     }
     const existingCards = resolveArrDashboardCombinedCards(config, apps);
     const cardId = normalizeCombinedCardToken(buildCombinedCardId());
@@ -2520,13 +3328,7 @@ app.post('/settings/dashboard-combined/add', requireSettingsAdmin, (req, res) =>
     const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
       ? { ...config.dashboardRemovedElements }
       : {};
-    const maxOrder = Math.max(
-      0,
-      ...Object.values(existingCombinedOrder)
-        .map((value) => Number(value))
-        .filter((value) => Number.isFinite(value))
-    );
-    existingCombinedOrder[combinedKey] = maxOrder + 1;
+    existingCombinedOrder[combinedKey] = resolveNextDashboardOrder(config);
     delete dashboardRemovedElements[combinedKey];
 
     saveConfig({
@@ -2536,28 +3338,158 @@ app.post('/settings/dashboard-combined/add', requireSettingsAdmin, (req, res) =>
       dashboardCombinedOrder: existingCombinedOrder,
       dashboardRemovedElements,
     });
-    return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&arrCombinedCardResult=added');
+    return redirectDashboardAddResult(res, 'added');
   }
+
+  const newMediaMatch = key.match(/^new:media:(.+)$/);
+  if (newMediaMatch) {
+    const sectionKey = String(newMediaMatch[1] || '').trim();
+    if (!getMediaCombineSection(sectionKey)) {
+      return redirectDashboardAddError(res, 'Invalid combined section selected.');
+    }
+    const allowedAppIds = [
+      ...new Set(
+        apps
+          .filter((appItem) => !appItem?.removed && isAppInSet(appItem?.id, MEDIA_APP_IDS))
+          .map((appItem) => normalizeAppId(appItem?.id))
+          .filter(Boolean)
+      ),
+    ];
+    if (!allowedAppIds.length) {
+      return redirectDashboardAddError(res, 'No media sources available to build a dashboard card.');
+    }
+    const existingCards = resolveMediaDashboardCards(config, apps);
+    const cardId = normalizeCombinedCardToken(buildCombinedCardId());
+    const nextCards = [...existingCards, {
+      id: cardId,
+      sectionKey,
+      appIds: allowedAppIds,
+    }];
+    const combinedKey = `combined:mediacustom:${cardId}`;
+    const existingCombinedSettings = (config && typeof config.dashboardCombinedSettings === 'object' && config.dashboardCombinedSettings)
+      ? { ...config.dashboardCombinedSettings }
+      : {};
+    existingCombinedSettings[combinedKey] = { enable: true, dashboard: true, visibilityRole: 'user' };
+    const existingCombinedOrder = (config && typeof config.dashboardCombinedOrder === 'object' && config.dashboardCombinedOrder)
+      ? { ...config.dashboardCombinedOrder }
+      : {};
+    const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
+      ? { ...config.dashboardRemovedElements }
+      : {};
+    existingCombinedOrder[combinedKey] = resolveNextDashboardOrder(config);
+    delete dashboardRemovedElements[combinedKey];
+
+    saveConfig({
+      ...config,
+      mediaDashboardCards: nextCards,
+      dashboardCombinedSettings: existingCombinedSettings,
+      dashboardCombinedOrder: existingCombinedOrder,
+      dashboardRemovedElements,
+    });
+    return redirectDashboardAddResult(res, 'added');
+  }
+
+  const newDownloaderMatch = key.match(/^new:downloader:(.+)$/);
+  if (newDownloaderMatch) {
+    if (!ENABLE_DOWNLOADER_UNIFIED_CARDS) {
+      return redirectDashboardAddError(res, 'Downloader unified cards are currently disabled.');
+    }
+    const sectionKey = String(newDownloaderMatch[1] || '').trim();
+    if (!getDownloaderCombineSection(sectionKey)) {
+      return redirectDashboardAddError(res, 'Invalid combined section selected.');
+    }
+    const allowedAppIds = [
+      ...new Set(
+        apps
+          .filter((appItem) => !appItem?.removed && isAppInSet(appItem?.id, DOWNLOADER_APP_IDS))
+          .map((appItem) => normalizeAppId(appItem?.id))
+          .filter(Boolean)
+      ),
+    ];
+    if (!allowedAppIds.length) {
+      return redirectDashboardAddError(res, 'No downloader sources available to build a dashboard card.');
+    }
+    const existingCards = resolveDownloaderDashboardCards(config, apps);
+    const cardId = normalizeCombinedCardToken(buildCombinedCardId());
+    const nextCards = [...existingCards, {
+      id: cardId,
+      sectionKey,
+      appIds: allowedAppIds,
+    }];
+    const combinedKey = `combined:downloadercustom:${cardId}`;
+    const existingCombinedSettings = (config && typeof config.dashboardCombinedSettings === 'object' && config.dashboardCombinedSettings)
+      ? { ...config.dashboardCombinedSettings }
+      : {};
+    existingCombinedSettings[combinedKey] = { enable: true, dashboard: true, visibilityRole: 'user' };
+    const existingCombinedOrder = (config && typeof config.dashboardCombinedOrder === 'object' && config.dashboardCombinedOrder)
+      ? { ...config.dashboardCombinedOrder }
+      : {};
+    const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
+      ? { ...config.dashboardRemovedElements }
+      : {};
+    existingCombinedOrder[combinedKey] = resolveNextDashboardOrder(config);
+    delete dashboardRemovedElements[combinedKey];
+
+    saveConfig({
+      ...config,
+      downloaderDashboardCards: nextCards,
+      dashboardCombinedSettings: existingCombinedSettings,
+      dashboardCombinedOrder: existingCombinedOrder,
+      dashboardRemovedElements,
+    });
+    return redirectDashboardAddResult(res, 'added');
+  }
+
+  const arrCustomAddKeys = resolveArrDashboardCombinedCards(config, apps).map((card, index) => {
+    const customToken = normalizeCombinedCardToken(card?.id || '') || `card-${index + 1}`;
+    return `combined:arrcustom:${customToken}`;
+  });
+  const downloaderCustomAddKeys = resolveDownloaderDashboardCards(config, apps).map((card, index) => {
+    const customToken = normalizeCombinedCardToken(card?.id || '') || `card-${index + 1}`;
+    return `combined:downloadercustom:${customToken}`;
+  });
+  const mediaCustomAddKeys = resolveMediaDashboardCards(config, apps).map((card, index) => {
+    const customToken = normalizeCombinedCardToken(card?.id || '') || `card-${index + 1}`;
+    return `combined:mediacustom:${customToken}`;
+  });
   const allowedKeys = new Set([
     ...ARR_COMBINE_SECTIONS.map((section) => `combined:arr:${section.key}`),
     ...DOWNLOADER_COMBINE_SECTIONS.map((section) => `combined:downloader:${section.key}`),
     ...MEDIA_COMBINE_SECTIONS.map((section) => `combined:media:${section.key}`),
+    ...arrCustomAddKeys,
+    ...downloaderCustomAddKeys,
+    ...mediaCustomAddKeys,
   ]);
   if (!allowedKeys.has(key)) {
-    return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&arrCombinedCardError=Invalid+combined+card+selection.');
+    return redirectDashboardAddError(res, 'Invalid combined card selection.');
   }
+
   const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
     ? { ...config.dashboardRemovedElements }
     : {};
+  const existingCombinedOrder = (config && typeof config.dashboardCombinedOrder === 'object' && config.dashboardCombinedOrder)
+    ? { ...config.dashboardCombinedOrder }
+    : {};
+  existingCombinedOrder[key] = resolveNextDashboardOrder(config);
   delete dashboardRemovedElements[key];
   saveConfig({
     ...config,
+    dashboardCombinedOrder: existingCombinedOrder,
     dashboardRemovedElements,
   });
-  return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&arrCombinedCardResult=added');
-});
+  return redirectDashboardAddResult(res, 'added');
+}
+
+app.post('/settings/dashboard/add', requireSettingsAdmin, handleDashboardAddRequest);
+
+app.post('/settings/dashboard-elements/add', requireSettingsAdmin, handleDashboardAddRequest);
+
+app.post('/settings/dashboard-combined/add', requireSettingsAdmin, handleDashboardAddRequest);
 
 app.post('/settings/dashboard-combined/arr/add', requireSettingsAdmin, (req, res) => {
+  if (!ENABLE_ARR_UNIFIED_CARDS) {
+    return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&arrCombinedCardError=ARR+unified+cards+are+currently+disabled.');
+  }
   const config = loadConfig();
   const apps = Array.isArray(config.apps) ? config.apps : [];
   const sectionKey = String(req.body?.arr_combined_section || req.body?.section || '').trim();
@@ -2596,13 +3528,7 @@ app.post('/settings/dashboard-combined/arr/add', requireSettingsAdmin, (req, res
   const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
     ? { ...config.dashboardRemovedElements }
     : {};
-  const maxOrder = Math.max(
-    0,
-    ...Object.values(existingCombinedOrder)
-      .map((value) => Number(value))
-      .filter((value) => Number.isFinite(value))
-  );
-  existingCombinedOrder[combinedKey] = maxOrder + 1;
+  existingCombinedOrder[combinedKey] = resolveNextDashboardOrder(config);
   delete dashboardRemovedElements[combinedKey];
 
   saveConfig({
@@ -2616,6 +3542,9 @@ app.post('/settings/dashboard-combined/arr/add', requireSettingsAdmin, (req, res
 });
 
 app.post('/settings/dashboard-combined/arr/delete', requireSettingsAdmin, (req, res) => {
+  if (!ENABLE_ARR_UNIFIED_CARDS) {
+    return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&arrCombinedCardError=ARR+unified+cards+are+currently+disabled.');
+  }
   const config = loadConfig();
   const apps = Array.isArray(config.apps) ? config.apps : [];
   const cardId = normalizeCombinedCardToken(req.body?.id || '');
@@ -3186,8 +4115,54 @@ app.post('/settings/apps/instances/add', requireSettingsAdmin, (req, res) => {
     order: maxOrder + 1,
     favourite: false,
   };
+  if (Array.isArray(newApp.overviewElements) && newApp.overviewElements.length) {
+    const activeAppsMaxOverviewOrder = Math.max(
+      0,
+      ...apps
+        .filter((appItem) => !appItem?.removed)
+        .flatMap((appItem) =>
+          mergeOverviewElementSettings(appItem).map((entry) => Number(entry?.order))
+        )
+        .filter((value) => Number.isFinite(value))
+    );
+    const orderedOverviewElements = [...newApp.overviewElements]
+      .map((entry) => ({ ...(entry || {}) }))
+      .sort((left, right) => {
+        const leftOrder = Number(left?.order);
+        const rightOrder = Number(right?.order);
+        if (Number.isFinite(leftOrder) && Number.isFinite(rightOrder)) return leftOrder - rightOrder;
+        if (Number.isFinite(leftOrder)) return -1;
+        if (Number.isFinite(rightOrder)) return 1;
+        return String(left?.id || '').localeCompare(String(right?.id || ''));
+      })
+      .map((entry, index) => ({
+        ...entry,
+        order: activeAppsMaxOverviewOrder + index + 1,
+      }));
+    newApp.overviewElements = orderedOverviewElements;
+  }
 
-  saveConfig({ ...config, apps: [...apps, newApp] });
+  const deprecatedElementIdSet = new Set(resolveDeprecatedDashboardElementIdsForApp(nextId));
+  if (deprecatedElementIdSet.size && Array.isArray(newApp.overviewElements)) {
+    newApp.overviewElements = newApp.overviewElements.map((entry) => {
+      const elementId = String(entry?.id || '').trim();
+      if (!deprecatedElementIdSet.has(elementId)) return entry;
+      return {
+        ...(entry || {}),
+        id: elementId,
+        dashboard: false,
+        dashboardVisibilityRole: 'disabled',
+      };
+    });
+  }
+  const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
+    ? { ...config.dashboardRemovedElements }
+    : {};
+  deprecatedElementIdSet.forEach((elementId) => {
+    dashboardRemovedElements[`app:${nextId}:${elementId}`] = true;
+  });
+
+  saveConfig({ ...config, apps: [...apps, newApp], dashboardRemovedElements });
   const appParam = encodeURIComponent(nextId);
   return res.redirect(`/settings?tab=app&app=${appParam}&appInstanceResult=added`);
 });
@@ -3334,13 +4309,59 @@ app.post('/settings/default-apps/add', requireSettingsAdmin, (req, res) => {
       ? recoveredOverviewElements
       : buildDisabledOverviewElements(nextAppSeed),
   };
+  const shouldAppendOverviewOrders = Boolean((existingIndex === -1 || current?.removed) && !removedStateBackup);
+  if (shouldAppendOverviewOrders && Array.isArray(nextApp.overviewElements) && nextApp.overviewElements.length) {
+    const activeAppsMaxOverviewOrder = Math.max(
+      0,
+      ...apps
+        .filter((appItem) => !appItem?.removed && normalizeAppId(appItem?.id) !== defaultAppId)
+        .flatMap((appItem) =>
+          mergeOverviewElementSettings(appItem).map((entry) => Number(entry?.order))
+        )
+        .filter((value) => Number.isFinite(value))
+    );
+    const orderedOverviewElements = [...nextApp.overviewElements]
+      .map((entry) => ({ ...(entry || {}) }))
+      .sort((left, right) => {
+        const leftOrder = Number(left?.order);
+        const rightOrder = Number(right?.order);
+        if (Number.isFinite(leftOrder) && Number.isFinite(rightOrder)) return leftOrder - rightOrder;
+        if (Number.isFinite(leftOrder)) return -1;
+        if (Number.isFinite(rightOrder)) return 1;
+        return String(left?.id || '').localeCompare(String(right?.id || ''));
+      })
+      .map((entry, index) => ({
+        ...entry,
+        order: activeAppsMaxOverviewOrder + index + 1,
+      }));
+    nextApp.overviewElements = orderedOverviewElements;
+  }
   delete nextApp.favorite;
   delete nextApp.removedStateBackup;
+  const deprecatedElementIdSet = new Set(resolveDeprecatedDashboardElementIdsForApp(defaultAppId));
+  if (deprecatedElementIdSet.size && Array.isArray(nextApp.overviewElements)) {
+    nextApp.overviewElements = nextApp.overviewElements.map((entry) => {
+      const elementId = String(entry?.id || '').trim();
+      if (!deprecatedElementIdSet.has(elementId)) return entry;
+      return {
+        ...(entry || {}),
+        id: elementId,
+        dashboard: false,
+        dashboardVisibilityRole: 'disabled',
+      };
+    });
+  }
+  const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
+    ? { ...config.dashboardRemovedElements }
+    : {};
+  deprecatedElementIdSet.forEach((elementId) => {
+    dashboardRemovedElements[`app:${defaultAppId}:${elementId}`] = true;
+  });
 
   if (existingIndex >= 0) {
     const nextApps = [...apps];
     nextApps[existingIndex] = nextApp;
-    saveConfig({ ...config, apps: nextApps });
+    saveConfig({ ...config, apps: nextApps, dashboardRemovedElements });
   } else {
     const category = String(nextApp.category || 'Tools').trim() || 'Tools';
     const maxOrder = Math.max(
@@ -3349,7 +4370,7 @@ app.post('/settings/default-apps/add', requireSettingsAdmin, (req, res) => {
         .filter((appItem) => String(appItem?.category || '').trim().toLowerCase() === category.toLowerCase())
         .map((appItem) => Number(appItem?.order) || 0)
     );
-    saveConfig({ ...config, apps: [...apps, { ...nextApp, order: maxOrder + 1 }] });
+    saveConfig({ ...config, apps: [...apps, { ...nextApp, order: maxOrder + 1 }], dashboardRemovedElements });
   }
 
   return res.redirect('/settings?tab=custom&defaultAppResult=added');
@@ -3976,11 +4997,60 @@ app.get('/api/plex/machine', requireAdmin, async (req, res) => {
   return res.status(502).json({ error: lastError || 'Failed to reach Plex.' });
 });
 
+app.get('/api/onboarding/quick-start', requireSettingsAdmin, (req, res) => {
+  const config = loadConfig();
+  const onboarding = resolveOnboardingSettings(config);
+  const hasActiveApps = hasActiveOnboardingApps(config);
+  if (onboarding.quickStartPending && hasActiveApps) {
+    const source = (config && typeof config.onboarding === 'object') ? config.onboarding : {};
+    saveConfig({
+      ...config,
+      onboarding: {
+        ...source,
+        quickStartPending: false,
+      },
+    });
+    return res.json({ show: false, steps: [], actions: {} });
+  }
+  const show = shouldShowQuickStartOnboarding(config);
+  return res.json({
+    show,
+    steps: [
+      'Go to Settings -> Custom -> Sidebar and restore the default apps you want to use.',
+      'Go to Settings -> Apps, configure each app URL/API details, and save.',
+      'Go to Settings -> Custom -> Dashboard, add the cards you want for Dashboard and Overview, set role visibility, and adjust order as needed.',
+      'Open Dashboard or Overview to review the layout and fine-tune anything you want to change.',
+    ],
+    actions: {
+      sidebar: '/settings?tab=custom&settingsCustomTab=sidebar',
+    },
+  });
+});
+
+app.post('/api/onboarding/quick-start/dismiss', requireSettingsAdmin, (req, res) => {
+  const config = loadConfig();
+  const onboarding = resolveOnboardingSettings(config);
+  if (!onboarding.quickStartPending) {
+    return res.json({ ok: true, show: false });
+  }
+  const source = (config && typeof config.onboarding === 'object') ? config.onboarding : {};
+  saveConfig({
+    ...config,
+    onboarding: {
+      ...source,
+      quickStartPending: false,
+    },
+  });
+  return res.json({ ok: true, show: false });
+});
+
 app.get('/api/version', requireUser, async (_req, res) => {
   const current = normalizeVersionTag(APP_VERSION || '');
+  const releaseNotesUrl = buildReleaseNotesUrl(current);
+  const highlights = loadReleaseHighlights(current);
   const now = Date.now();
   if (versionCache.payload && (now - versionCache.fetchedAt) < VERSION_CACHE_TTL_MS) {
-    return res.json({ ...versionCache.payload, current });
+    return res.json({ ...versionCache.payload, current, releaseNotesUrl, highlights });
   }
   try {
     const latest = await fetchLatestDockerTag();
@@ -3988,11 +5058,19 @@ app.get('/api/version', requireUser, async (_req, res) => {
       current,
       latest,
       upToDate: Boolean(current && latest && current === latest),
+      releaseNotesUrl,
+      highlights,
     };
     versionCache = { fetchedAt: now, payload };
     return res.json(payload);
   } catch (err) {
-    const payload = { current, latest: '', upToDate: true };
+    const payload = {
+      current,
+      latest: '',
+      upToDate: true,
+      releaseNotesUrl,
+      highlights,
+    };
     versionCache = { fetchedAt: now, payload };
     return res.json(payload);
   }
@@ -5852,7 +6930,10 @@ function parseRommTimestamp(value) {
   if (value === null || value === undefined || value === '') return 0;
   const numeric = Number(value);
   if (Number.isFinite(numeric) && numeric > 0) {
-    return numeric > 1e12 ? numeric : numeric * 1000;
+    if (numeric > 1e17) return Math.round(numeric / 1e6); // nanoseconds
+    if (numeric > 1e14) return Math.round(numeric / 1e3); // microseconds
+    if (numeric > 1e11) return Math.round(numeric); // milliseconds
+    return Math.round(numeric * 1000); // seconds
   }
   const parsed = Date.parse(String(value || '').trim());
   return Number.isFinite(parsed) ? parsed : 0;
@@ -6074,7 +7155,7 @@ function isLikelyRommCollection(value) {
 function extractRommList(payload, kind = 'recently-added') {
   const preferredKeys = kind === 'consoles'
     ? ['platforms', 'consoles', 'systems', 'items', 'results', 'records', 'data']
-    : ['roms', 'games', 'items', 'results', 'records', 'data'];
+    : ['games', 'roms', 'items', 'results', 'records', 'data'];
 
   const fromContainer = (container) => {
     if (!container || typeof container !== 'object') return null;
@@ -6222,88 +7303,460 @@ function pickRommCount(candidates = []) {
 }
 
 function mapRommRecentlyAddedItem(entry, baseUrl = '') {
+  const source = entry && typeof entry === 'object' ? entry : {};
+  const game = source?.game || source?.gameInfo || source?.gameData || source?.games?.[0] || null;
+  const rom = source?.rom || source?.romInfo || source?.romData || source?.roms?.[0] || null;
   const kind = normalizeRommMediaKind(
-    pickFirstNonEmpty([entry?.type, entry?.category, entry?.romType, entry?.kind]),
+    pickFirstNonEmpty([
+      source?.type,
+      source?.category,
+      source?.romType,
+      source?.kind,
+      game?.type,
+      game?.category,
+      game?.kind,
+      rom?.type,
+      rom?.category,
+      rom?.kind,
+    ]),
     'game'
   );
   const addedAt = pickFirstNonEmpty([
-    entry?.createdAt,
-    entry?.created_at,
-    entry?.addedAt,
-    entry?.added_at,
-    entry?.releasedAt,
-    entry?.releaseDate,
-    entry?.release_date,
-    entry?.updatedAt,
-    entry?.updated_at,
+    source?.addedAt,
+    source?.added_at,
+    source?.createdAt,
+    source?.created_at,
+    source?.created,
+    source?.createdOn,
+    source?.created_on,
+    source?.added,
+    source?.addedOn,
+    source?.added_on,
+    source?.importedAt,
+    source?.imported_at,
+    source?.imported,
+    source?.importedOn,
+    source?.imported_on,
+    source?.insertedAt,
+    source?.inserted_at,
+    source?.inserted,
+    source?.insertedOn,
+    source?.inserted_on,
+    source?.timestamp,
+    source?.timeAdded,
+    source?.time_added,
+    source?.sortTs,
+    source?.sort_ts,
+    source?.sortValue,
+    source?.sort_value,
+    game?.addedAt,
+    game?.added_at,
+    game?.createdAt,
+    game?.created_at,
+    game?.created,
+    game?.createdOn,
+    game?.created_on,
+    game?.added,
+    game?.addedOn,
+    game?.added_on,
+    game?.importedAt,
+    game?.imported_at,
+    game?.imported,
+    game?.importedOn,
+    game?.imported_on,
+    game?.insertedAt,
+    game?.inserted_at,
+    game?.inserted,
+    game?.insertedOn,
+    game?.inserted_on,
+    game?.timestamp,
+    game?.timeAdded,
+    game?.time_added,
+    game?.sortTs,
+    game?.sort_ts,
+    game?.sortValue,
+    game?.sort_value,
+    rom?.addedAt,
+    rom?.added_at,
+    rom?.createdAt,
+    rom?.created_at,
+    rom?.created,
+    rom?.createdOn,
+    rom?.created_on,
+    rom?.added,
+    rom?.addedOn,
+    rom?.added_on,
+    rom?.importedAt,
+    rom?.imported_at,
+    rom?.imported,
+    rom?.importedOn,
+    rom?.imported_on,
+    rom?.insertedAt,
+    rom?.inserted_at,
+    rom?.inserted,
+    rom?.insertedOn,
+    rom?.inserted_on,
+    rom?.timestamp,
+    rom?.timeAdded,
+    rom?.time_added,
+    rom?.sortTs,
+    rom?.sort_ts,
+    rom?.sortValue,
+    rom?.sort_value,
+    source?.updatedAt,
+    source?.updated_at,
+    source?.modifiedAt,
+    source?.modified_at,
+    source?.lastModified,
+    source?.last_modified,
+    game?.updatedAt,
+    game?.updated_at,
+    rom?.updatedAt,
+    rom?.updated_at,
+    source?.releasedAt,
+    source?.releaseDate,
+    source?.release_date,
+    game?.releasedAt,
+    game?.releaseDate,
+    game?.release_date,
+    rom?.releasedAt,
+    rom?.releaseDate,
+    rom?.release_date,
   ]);
   const addedTs = parseRommTimestamp(addedAt);
   const addedLabel = formatRommDateLabel(addedAt);
   const addedPill = formatRommRelativePill(addedAt);
-  const region = pickFirstNonEmpty([entry?.region, entry?.releaseRegion, entry?.country, entry?.locale]);
+  const region = pickFirstNonEmpty([
+    source?.region,
+    source?.releaseRegion,
+    source?.country,
+    source?.locale,
+    game?.region,
+    game?.releaseRegion,
+    game?.country,
+    game?.locale,
+    rom?.region,
+    rom?.releaseRegion,
+    rom?.country,
+    rom?.locale,
+  ]);
   const platformName = pickFirstNonEmpty([
-    entry?.platformName,
-    entry?.consoleName,
-    entry?.systemName,
-    entry?.platform?.name,
-    entry?.console?.name,
-    entry?.system?.name,
-    entry?.platform,
-    entry?.console,
-    entry?.system,
+    source?.platformName,
+    source?.platform_name,
+    source?.consoleName,
+    source?.systemName,
+    source?.platform?.name,
+    source?.console?.name,
+    source?.system?.name,
+    source?.platform,
+    source?.console,
+    source?.system,
+    game?.platformName,
+    game?.platform_name,
+    game?.consoleName,
+    game?.systemName,
+    game?.platform?.name,
+    game?.console?.name,
+    game?.system?.name,
+    game?.platform,
+    game?.console,
+    game?.system,
+    rom?.platformName,
+    rom?.platform_name,
+    rom?.consoleName,
+    rom?.systemName,
+    rom?.platform?.name,
+    rom?.console?.name,
+    rom?.system?.name,
+    rom?.platform,
+    rom?.console,
+    rom?.system,
   ]);
   const addedSummary = [addedLabel ? `Added ${addedLabel}` : '', region].filter(Boolean).join(' • ');
   const sizeBytes = parseFiniteNumber(
-    entry?.sizeBytes
-      ?? entry?.size_bytes
-      ?? entry?.fileSize
-      ?? entry?.file_size
-      ?? entry?.size,
+    source?.sizeBytes
+      ?? source?.size_bytes
+      ?? source?.fileSize
+      ?? source?.file_size
+      ?? source?.size
+      ?? game?.sizeBytes
+      ?? game?.size_bytes
+      ?? game?.fileSize
+      ?? game?.file_size
+      ?? game?.size
+      ?? rom?.sizeBytes
+      ?? rom?.size_bytes
+      ?? rom?.fileSize
+      ?? rom?.file_size
+      ?? rom?.size,
     0
   );
   const sizeLabel = sizeBytes > 0 ? formatBytesLabel(sizeBytes) : '';
-  const extension = pickFirstNonEmpty([entry?.extension, entry?.fileExtension, entry?.fileType, entry?.format]).toUpperCase();
-  const thumb = resolveRommAssetUrl(baseUrl, [
-    entry?.coverUrl,
-    entry?.coverURL,
-    entry?.cover_url,
-    entry?.coverImage,
-    entry?.cover_image,
-    entry?.cover,
-    entry?.boxArt,
-    entry?.boxart,
-    entry?.posterUrl,
-    entry?.poster_url,
-    entry?.poster,
-    entry?.thumbnail,
-    entry?.thumb,
-    entry?.imageUrl,
-    entry?.image_url,
-    entry?.image,
-    entry?.artwork,
-    entry?.art,
-    entry?.media?.cover,
-    entry?.media?.thumbnail,
-    entry?.media?.image,
-  ]);
-  const art = resolveRommAssetUrl(baseUrl, [
-    entry?.background,
-    entry?.backgroundUrl,
-    entry?.background_url,
-    entry?.backdrop,
-    entry?.backdropUrl,
-    entry?.backdrop_url,
-    entry?.banner,
-    entry?.fanart,
-    entry?.media?.background,
-    entry?.media?.fanart,
-  ]);
+  const extension = pickFirstNonEmpty([
+    source?.extension,
+    source?.fileExtension,
+    source?.fileType,
+    source?.format,
+    game?.extension,
+    game?.fileExtension,
+    game?.fileType,
+    game?.format,
+    rom?.extension,
+    rom?.fileExtension,
+    rom?.fileType,
+    rom?.format,
+  ]).toUpperCase();
+  const preferredThumbCandidates = [
+    source?.url_cover,
+    source?.path_cover_small,
+    source?.path_cover_large,
+    source?.path_cover,
+    game?.coverUrl,
+    game?.coverURL,
+    game?.cover_url,
+    game?.url_cover,
+    game?.path_cover_small,
+    game?.path_cover_large,
+    game?.path_cover,
+    game?.coverImage,
+    game?.cover_image,
+    game?.cover,
+    game?.boxArt,
+    game?.boxart,
+    game?.posterUrl,
+    game?.poster_url,
+    game?.poster,
+    game?.thumbnail,
+    game?.thumb,
+    rom?.coverUrl,
+    rom?.coverURL,
+    rom?.cover_url,
+    rom?.url_cover,
+    rom?.path_cover_small,
+    rom?.path_cover_large,
+    rom?.path_cover,
+    rom?.coverImage,
+    rom?.cover_image,
+    rom?.cover,
+    rom?.boxArt,
+    rom?.boxart,
+    rom?.posterUrl,
+    rom?.poster_url,
+    rom?.poster,
+    rom?.thumbnail,
+    rom?.thumb,
+    source?.coverUrl,
+    source?.coverURL,
+    source?.cover_url,
+    source?.coverImage,
+    source?.cover_image,
+    source?.cover,
+    source?.boxArt,
+    source?.boxart,
+    source?.posterUrl,
+    source?.poster_url,
+    source?.poster,
+    source?.thumbnail,
+    source?.thumb,
+    source?.metadatum?.url_cover,
+    source?.metadatum?.path_cover_small,
+    source?.metadatum?.path_cover_large,
+    source?.metadatum?.path_cover,
+  ];
+  const thumbCandidates = [
+    source?.url_cover,
+    source?.path_cover_small,
+    source?.path_cover_large,
+    source?.path_cover,
+    source?.coverUrl,
+    source?.coverURL,
+    source?.cover_url,
+    source?.coverImage,
+    source?.cover_image,
+    source?.cover,
+    source?.boxArt,
+    source?.boxart,
+    source?.posterUrl,
+    source?.poster_url,
+    source?.poster,
+    source?.thumbnail,
+    source?.thumb,
+    source?.media?.cover,
+    source?.assets?.cover,
+    source?.assets?.boxArt,
+    source?.assets?.box_art,
+    source?.assets?.poster,
+    source?.metadata?.cover,
+    source?.metadata?.boxArt,
+    source?.metadata?.box_art,
+    source?.metadata?.poster,
+    source?.metadatum?.url_cover,
+    source?.metadatum?.path_cover_small,
+    source?.metadatum?.path_cover_large,
+    source?.metadatum?.path_cover,
+    game?.coverUrl,
+    game?.coverURL,
+    game?.cover_url,
+    game?.url_cover,
+    game?.path_cover_small,
+    game?.path_cover_large,
+    game?.path_cover,
+    game?.coverImage,
+    game?.cover_image,
+    game?.cover,
+    game?.boxArt,
+    game?.boxart,
+    game?.posterUrl,
+    game?.poster_url,
+    game?.poster,
+    game?.thumbnail,
+    game?.thumb,
+    game?.media?.cover,
+    game?.assets?.cover,
+    game?.assets?.boxArt,
+    game?.assets?.box_art,
+    game?.assets?.poster,
+    game?.metadata?.cover,
+    game?.metadata?.boxArt,
+    game?.metadata?.box_art,
+    game?.metadata?.poster,
+    rom?.coverUrl,
+    rom?.coverURL,
+    rom?.cover_url,
+    rom?.url_cover,
+    rom?.path_cover_small,
+    rom?.path_cover_large,
+    rom?.path_cover,
+    rom?.coverImage,
+    rom?.cover_image,
+    rom?.cover,
+    rom?.boxArt,
+    rom?.boxart,
+    rom?.posterUrl,
+    rom?.poster_url,
+    rom?.poster,
+    rom?.thumbnail,
+    rom?.thumb,
+    rom?.media?.cover,
+    rom?.assets?.cover,
+    rom?.assets?.boxArt,
+    rom?.assets?.box_art,
+    rom?.assets?.poster,
+    rom?.metadata?.cover,
+    rom?.metadata?.boxArt,
+    rom?.metadata?.box_art,
+    rom?.metadata?.poster,
+    ...findRommAssetCandidates(source, {
+      exactKeys: ['cover', 'cover_url', 'coverurl', 'cover_path', 'coverpath', 'path_cover', 'path_cover_small', 'path_cover_large', 'url_cover', 'box_art', 'boxart', 'poster', 'thumbnail', 'thumb'],
+      containsTokens: ['cover', 'thumb', 'poster', 'boxart'],
+      maxDepth: 5,
+    }),
+  ];
+  const thumb = resolveRommAssetUrl(baseUrl, preferredThumbCandidates) || resolveRommAssetUrl(baseUrl, thumbCandidates);
+  const preferredArtCandidates = [
+    game?.background,
+    game?.backgroundUrl,
+    game?.background_url,
+    game?.backdrop,
+    game?.backdropUrl,
+    game?.backdrop_url,
+    game?.banner,
+    game?.fanart,
+    rom?.background,
+    rom?.backgroundUrl,
+    rom?.background_url,
+    rom?.backdrop,
+    rom?.backdropUrl,
+    rom?.backdrop_url,
+    rom?.banner,
+    rom?.fanart,
+    source?.background,
+    source?.backgroundUrl,
+    source?.background_url,
+    source?.backdrop,
+    source?.backdropUrl,
+    source?.backdrop_url,
+    source?.banner,
+    source?.fanart,
+  ];
+  const artCandidates = [
+    source?.background,
+    source?.backgroundUrl,
+    source?.background_url,
+    source?.backdrop,
+    source?.backdropUrl,
+    source?.backdrop_url,
+    source?.banner,
+    source?.fanart,
+    source?.media?.background,
+    source?.media?.fanart,
+    source?.assets?.background,
+    source?.assets?.backdrop,
+    source?.assets?.banner,
+    source?.assets?.fanart,
+    source?.metadata?.background,
+    source?.metadata?.backdrop,
+    source?.metadata?.banner,
+    source?.metadata?.fanart,
+    game?.background,
+    game?.backgroundUrl,
+    game?.background_url,
+    game?.backdrop,
+    game?.backdropUrl,
+    game?.backdrop_url,
+    game?.banner,
+    game?.fanart,
+    game?.media?.background,
+    game?.media?.fanart,
+    game?.assets?.background,
+    game?.assets?.backdrop,
+    game?.assets?.banner,
+    game?.assets?.fanart,
+    game?.metadata?.background,
+    game?.metadata?.backdrop,
+    game?.metadata?.banner,
+    game?.metadata?.fanart,
+    rom?.background,
+    rom?.backgroundUrl,
+    rom?.background_url,
+    rom?.backdrop,
+    rom?.backdropUrl,
+    rom?.backdrop_url,
+    rom?.banner,
+    rom?.fanart,
+    rom?.media?.background,
+    rom?.media?.fanart,
+    rom?.assets?.background,
+    rom?.assets?.backdrop,
+    rom?.assets?.banner,
+    rom?.assets?.fanart,
+    rom?.metadata?.background,
+    rom?.metadata?.backdrop,
+    rom?.metadata?.banner,
+    rom?.metadata?.fanart,
+    ...findRommAssetCandidates(source, {
+      exactKeys: ['background', 'background_url', 'backgroundurl', 'backdrop', 'backdrop_url', 'backdropurl', 'banner', 'fanart', 'wallpaper', 'hero'],
+      containsTokens: ['background', 'backdrop', 'banner', 'fanart', 'wallpaper', 'hero'],
+      maxDepth: 5,
+    }),
+  ];
+  const art = resolveRommAssetUrl(baseUrl, preferredArtCandidates) || resolveRommAssetUrl(baseUrl, artCandidates);
   const overview = pickFirstNonEmpty([
-    entry?.overview,
-    entry?.summary,
-    entry?.description,
-    entry?.synopsis,
-    entry?.plot,
+    source?.overview,
+    source?.summary,
+    source?.description,
+    source?.synopsis,
+    source?.plot,
+    game?.overview,
+    game?.summary,
+    game?.description,
+    game?.synopsis,
+    game?.plot,
+    rom?.overview,
+    rom?.summary,
+    rom?.description,
+    rom?.synopsis,
+    rom?.plot,
   ]);
   const subtitle = platformName || '-';
   const metaParts = [];
@@ -6313,9 +7766,38 @@ function mapRommRecentlyAddedItem(entry, baseUrl = '') {
   if (sizeLabel) metaParts.push(sizeLabel);
   if (extension) metaParts.push(extension);
   return {
-    id: pickFirstNonEmpty([entry?.id, entry?.uuid, entry?.slug, entry?.romId, entry?.gameId, entry?.name, entry?.title]),
+    id: pickFirstNonEmpty([
+      source?.id,
+      source?.uuid,
+      source?.slug,
+      source?.romId,
+      source?.gameId,
+      game?.id,
+      game?.uuid,
+      game?.slug,
+      rom?.id,
+      rom?.uuid,
+      rom?.slug,
+      source?.name,
+      source?.title,
+    ]),
     kind,
-    title: pickFirstNonEmpty([entry?.name, entry?.title, entry?.romName, entry?.gameTitle, entry?.filename, 'Unknown']),
+    title: pickFirstNonEmpty([
+      game?.title,
+      game?.name,
+      game?.gameTitle,
+      source?.title,
+      source?.name,
+      source?.gameTitle,
+      source?.romName,
+      rom?.title,
+      rom?.name,
+      rom?.romName,
+      source?.filename,
+      rom?.filename,
+      game?.filename,
+      'Unknown',
+    ]),
     subtitle,
     meta: metaParts.join(' • '),
     pill: addedPill,
@@ -6942,12 +8424,15 @@ app.get('/api/romm/:kind', requireUser, async (req, res) => {
       { path: 'api/v1/systems' },
     ]
     : [
-      { path: 'api/roms/recent', query: { limit: '200' } },
-      { path: 'api/roms/recently-added', query: { limit: '200' } },
-      { path: 'api/roms', query: { sort: 'created_at', order: 'desc', limit: '200' } },
-      { path: 'api/v1/roms', query: { sort: 'created_at', order: 'desc', limit: '200' } },
       { path: 'api/games/recent', query: { limit: '200' } },
       { path: 'api/v1/games/recent', query: { limit: '200' } },
+      { path: 'api/games/recently-added', query: { limit: '200' } },
+      { path: 'api/v1/games/recently-added', query: { limit: '200' } },
+      { path: 'api/roms/recent', query: { limit: '200' } },
+      { path: 'api/roms/recently-added', query: { limit: '200' } },
+      { path: 'api/roms', query: { order_by: 'created_at', order_dir: 'desc', with_char_index: 'false', with_filter_values: 'false', limit: '200' } },
+      { path: 'api/roms', query: { sort: 'created_at', order: 'desc', limit: '200' } },
+      { path: 'api/v1/roms', query: { sort: 'created_at', order: 'desc', limit: '200' } },
     ];
 
   let lastError = '';
@@ -6987,14 +8472,22 @@ app.get('/api/romm/:kind', requireUser, async (req, res) => {
         }
         const mapper = kind === 'consoles' ? mapRommConsoleItem : mapRommRecentlyAddedItem;
         const mapped = list
-          .map((entry) => mapper(entry, baseUrl))
-          .filter((item) => Boolean(item?.title));
-        mapped.sort((leftItem, rightItem) => {
-          const leftSort = parseFiniteNumber(leftItem?.sortTs, 0);
-          const rightSort = parseFiniteNumber(rightItem?.sortTs, 0);
-          if (rightSort !== leftSort) return rightSort - leftSort;
-          return String(leftItem?.title || '').localeCompare(String(rightItem?.title || ''));
-        });
+          .map((entry, sourceIndex) => ({ item: mapper(entry, baseUrl), sourceIndex }))
+          .filter(({ item }) => Boolean(item?.title));
+        let ordered = mapped.map(({ item }) => item);
+        if (kind === 'consoles') {
+          ordered = mapped.slice().sort((leftEntry, rightEntry) => {
+            const leftSort = parseFiniteNumber(leftEntry?.item?.sortTs, 0);
+            const rightSort = parseFiniteNumber(rightEntry?.item?.sortTs, 0);
+            if (rightSort !== leftSort) return rightSort - leftSort;
+            return String(leftEntry?.item?.title || '').localeCompare(String(rightEntry?.item?.title || ''));
+          }).map(({ item }) => item);
+        } else {
+          ordered = mapped
+            .slice()
+            .sort((leftEntry, rightEntry) => Number(leftEntry?.sourceIndex || 0) - Number(rightEntry?.sourceIndex || 0))
+            .map(({ item }) => item);
+        }
         const requestedLimitRaw = String(req.query?.limit || '').trim().toLowerCase();
         const defaultLimit = kind === 'consoles' ? 500 : 200;
         const maxCap = kind === 'consoles' ? 5000 : 1000;
@@ -7007,7 +8500,7 @@ app.get('/api/romm/:kind', requireUser, async (req, res) => {
             itemLimit = Math.min(maxCap, Math.max(1, Math.round(parsedLimit)));
           }
         }
-        const items = mapped.slice(0, itemLimit);
+        const items = ordered.slice(0, itemLimit);
         return res.json({ items });
       } catch (err) {
         lastError = safeMessage(err) || `Failed to reach Romm via ${baseUrl}.`;
@@ -7566,6 +9059,64 @@ function normalizeVersionTag(value) {
   return tag.startsWith('v') ? tag : `v${tag}`;
 }
 
+function buildReleaseNotesUrl(versionTag) {
+  const normalized = normalizeVersionTag(versionTag);
+  if (!normalized) return '';
+  return `${RELEASE_NOTES_BASE_URL}${encodeURIComponent(normalized)}`;
+}
+
+function stripMarkdownInline(value) {
+  let text = String(value || '').trim();
+  if (!text) return '';
+  text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+  text = text.replace(/`([^`]+)`/g, '$1');
+  text = text.replace(/\*\*([^*]+)\*\*/g, '$1');
+  text = text.replace(/\*([^*]+)\*/g, '$1');
+  text = text.replace(/~~([^~]+)~~/g, '$1');
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+function loadReleaseHighlights(versionTag, options = {}) {
+  const normalized = normalizeVersionTag(versionTag);
+  if (!normalized) return [];
+  const maxItemsRaw = Number(options.maxItems);
+  const maxItems = Number.isFinite(maxItemsRaw) ? Math.max(1, Math.min(20, maxItemsRaw)) : RELEASE_HIGHLIGHT_LIMIT;
+  const sectionSet = new Set(RELEASE_HIGHLIGHT_SECTIONS.map((section) => section.toLowerCase()));
+  const releaseFilePath = path.join(RELEASE_NOTES_DIR, `${normalized}.md`);
+  if (!fs.existsSync(releaseFilePath)) return [];
+  try {
+    const raw = fs.readFileSync(releaseFilePath, 'utf8');
+    const lines = raw.split(/\r?\n/);
+    let activeSection = '';
+    const highlights = [];
+
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = String(lines[index] || '');
+      const sectionMatch = line.match(/^###\s+(.+?)\s*$/);
+      if (sectionMatch) {
+        const heading = String(sectionMatch[1] || '').trim();
+        const key = heading.toLowerCase();
+        activeSection = sectionSet.has(key) ? heading : '';
+        continue;
+      }
+      if (/^##\s+/.test(line)) {
+        activeSection = '';
+        continue;
+      }
+      if (!activeSection) continue;
+      const bulletMatch = line.match(/^\s*-\s+(.+?)\s*$/);
+      if (!bulletMatch) continue;
+      const bulletText = stripMarkdownInline(bulletMatch[1]);
+      if (!bulletText) continue;
+      highlights.push(`${activeSection}: ${bulletText}`);
+      if (highlights.length >= maxItems) break;
+    }
+    return highlights;
+  } catch (err) {
+    return [];
+  }
+}
+
 function parseSemver(value) {
   const raw = String(value || '').trim().replace(/^v/i, '');
   const match = raw.match(/^(\d+)\.(\d+)\.(\d+)$/);
@@ -8016,6 +9567,7 @@ function resolveDefaultCategoryIcon(name) {
   if (!key) return DEFAULT_CATEGORY_ICON;
   if (key === 'admin') return '/icons/admin.svg';
   if (key === 'media') return '/icons/media-play.svg';
+  if (key === 'requesters') return '/icons/requesters.png';
   if (key === 'manager') return '/icons/settings.svg';
   if (key === 'arr suite') return '/icons/app.svg';
   if (key === 'indexers') return '/icons/indexers.svg';
@@ -8238,6 +9790,7 @@ function canAccessDashboardElement(appItem, elementSettings, role) {
 }
 
 function canAccessAnyDashboardElement(appItem, role) {
+  if (appItem?.removed) return false;
   return mergeOverviewElementSettings(appItem).some((element) =>
     canAccessDashboardElement(appItem, element, role)
   );
@@ -8273,6 +9826,7 @@ function resolveCombinedSourceSelectionIds(appIds = [], sectionMap = {}) {
 }
 
 function canAccessDashboardAppViaCombined(config, appItem, role) {
+  if (appItem?.removed) return false;
   const appId = normalizeAppId(appItem?.id);
   if (!appId) return false;
   const apps = Array.isArray(config?.apps) ? config.apps : [];
@@ -8323,6 +9877,20 @@ function canAccessDashboardAppViaCombined(config, appItem, role) {
       const selectedIds = resolveCombinedSourceSelectionIds(downloaderAppIds, downloaderCombineMap?.[section.key]);
       if (selectedIds.includes(appId)) return true;
     }
+    const downloaderCustomCards = resolveDownloaderDashboardCards(config, apps);
+    for (let index = 0; index < downloaderCustomCards.length; index += 1) {
+      const card = downloaderCustomCards[index];
+      const customToken = normalizeCombinedCardToken(card?.id || '') || `card-${index + 1}`;
+      const combinedKey = `combined:downloadercustom:${customToken}`;
+      if (dashboardRemovedElements[combinedKey]) continue;
+      if (!canAccessCombinedDashboardVisibility(dashboardCombinedSettings[combinedKey], role, 'user')) continue;
+      const selectedIds = [...new Set(
+        (Array.isArray(card?.appIds) ? card.appIds : [])
+          .map((id) => normalizeAppId(id))
+          .filter(Boolean)
+      )];
+      if (selectedIds.includes(appId)) return true;
+    }
   }
 
   if (isAppInSet(appId, MEDIA_APP_IDS)) {
@@ -8337,13 +9905,27 @@ function canAccessDashboardAppViaCombined(config, appItem, role) {
       const selectedIds = resolveCombinedSourceSelectionIds(mediaAppIds, mediaCombineMap?.[section.key]);
       if (selectedIds.includes(appId)) return true;
     }
+    const mediaCustomCards = resolveMediaDashboardCards(config, apps);
+    for (let index = 0; index < mediaCustomCards.length; index += 1) {
+      const card = mediaCustomCards[index];
+      const customToken = normalizeCombinedCardToken(card?.id || '') || `card-${index + 1}`;
+      const combinedKey = `combined:mediacustom:${customToken}`;
+      if (dashboardRemovedElements[combinedKey]) continue;
+      if (!canAccessCombinedDashboardVisibility(dashboardCombinedSettings[combinedKey], role, 'user')) continue;
+      const selectedIds = [...new Set(
+        (Array.isArray(card?.appIds) ? card.appIds : [])
+          .map((id) => normalizeAppId(id))
+          .filter(Boolean)
+      )];
+      if (selectedIds.includes(appId)) return true;
+    }
   }
 
   return false;
 }
 
 function canAccessDashboardApp(config, appItem, role) {
-  if (!appItem) return false;
+  if (!appItem || appItem?.removed) return false;
   if (canAccess(appItem, role, 'overview')) return true;
   if (canAccessAnyDashboardElement(appItem, role)) return true;
   return canAccessDashboardAppViaCombined(config, appItem, role);
@@ -8366,6 +9948,22 @@ function resolveTableVisibleRows(elementId, rawValue, fallbackValue = undefined)
   return defaultRows;
 }
 
+function normalizeTautulliStatsView(value, fallback = 'list') {
+  const normalizedFallback = String(fallback || '').trim().toLowerCase() === 'wheel' ? 'wheel' : 'list';
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw === 'wheel') return 'wheel';
+  if (raw === 'list') return 'list';
+  if (raw === 'watch-stats-wheel' || raw === 'wheel-view') return 'wheel';
+  return normalizedFallback;
+}
+
+function resolveTautulliStatsView(appItem, elementSettings = {}, fallback = 'list') {
+  if (normalizeAppId(appItem?.id) !== 'tautulli') return undefined;
+  const elementId = String(elementSettings?.id || '').trim();
+  if (elementId === 'watch-stats-wheel') return 'wheel';
+  return normalizeTautulliStatsView(elementSettings?.tautulliStatsView, fallback);
+}
+
 function mergeOverviewElementSettings(appItem) {
   const elements = getOverviewElements(appItem);
   if (!elements.length) return [];
@@ -8381,6 +9979,14 @@ function mergeOverviewElementSettings(appItem) {
     const dashboardVisible = dashboardVisibilityRole !== 'disabled';
     const queueVisibleRows = resolveTableVisibleRows(element.id, savedItem.queueVisibleRows);
     const queueLabels = resolveQueueColumnLabels(appItem);
+    const legacyTautulliWheel = savedMap.get('watch-stats-wheel') || {};
+    const tautulliViewFallback = (() => {
+      if (normalizeAppId(appItem?.id) !== 'tautulli' || element.id !== 'watch-stats') return 'list';
+      const wheelOverviewRole = resolveOverviewElementVisibilityRole(appItem, legacyTautulliWheel, 'disabled');
+      const wheelDashboardRole = resolveDashboardElementVisibilityRole(appItem, legacyTautulliWheel, 'disabled');
+      return (wheelOverviewRole !== 'disabled' || wheelDashboardRole !== 'disabled') ? 'wheel' : 'list';
+    })();
+    const tautulliStatsView = resolveTautulliStatsView(appItem, savedItem, tautulliViewFallback);
     return {
       id: element.id,
       name: element.name,
@@ -8401,6 +10007,7 @@ function mergeOverviewElementSettings(appItem) {
       queueShowProtocol: resolveBoolean(savedItem.queueShowProtocol, true),
       queueShowTimeLeft: resolveBoolean(savedItem.queueShowTimeLeft, true),
       queueShowProgress: resolveBoolean(savedItem.queueShowProgress, true),
+      tautulliStatsView,
       queueDetailLabel: queueLabels.detailLabel,
       queueSubDetailLabel: queueLabels.subDetailLabel,
       queueVisibleRows,
@@ -8431,6 +10038,7 @@ function buildOverviewElementsFromRequest(appItem, body) {
     const queueVisibleRows = queueRowsRaw === undefined
       ? undefined
       : resolveTableVisibleRows(element.id, queueRowsRaw);
+    const tautulliStatsView = resolveTautulliStatsView(appItem, existing, 'list');
     return {
       id: element.id,
       enable: Boolean(body[`element_enable_${element.id}`]),
@@ -8450,6 +10058,7 @@ function buildOverviewElementsFromRequest(appItem, body) {
       queueShowProtocol: isQueue ? Boolean(body[`element_queue_col_protocol_${element.id}`]) : undefined,
       queueShowTimeLeft: isQueue ? Boolean(body[`element_queue_col_timeLeft_${element.id}`]) : undefined,
       queueShowProgress: isQueue ? Boolean(body[`element_queue_col_progress_${element.id}`]) : undefined,
+      tautulliStatsView,
       queueVisibleRows,
       order: Number.isFinite(parsedOrder) ? parsedOrder : index + 1,
     };
@@ -8470,6 +10079,7 @@ function buildDashboardElementsFromRequest(appItem, body) {
       if (fallback) {
         const fallbackOverviewVisibilityRole = resolveOverviewElementVisibilityRole(appItem, fallback, 'user');
         const fallbackVisibilityRole = resolveDashboardElementVisibilityRole(appItem, fallback, 'user');
+        const fallbackTautulliStatsView = resolveTautulliStatsView(appItem, fallback, 'list');
         return {
           id: element.id,
           enable: Boolean(fallback.enable),
@@ -8489,6 +10099,7 @@ function buildDashboardElementsFromRequest(appItem, body) {
           queueShowProtocol: fallback.queueShowProtocol !== undefined ? Boolean(fallback.queueShowProtocol) : undefined,
           queueShowTimeLeft: fallback.queueShowTimeLeft !== undefined ? Boolean(fallback.queueShowTimeLeft) : undefined,
           queueShowProgress: fallback.queueShowProgress !== undefined ? Boolean(fallback.queueShowProgress) : undefined,
+          tautulliStatsView: fallbackTautulliStatsView,
           queueVisibleRows: fallback.queueVisibleRows,
           order: Number.isFinite(fallback.order) ? fallback.order : index + 1,
         };
@@ -8511,6 +10122,10 @@ function buildDashboardElementsFromRequest(appItem, body) {
     const queueVisibleRows = queueRowsRaw === undefined
       ? undefined
       : resolveTableVisibleRows(element.id, queueRowsRaw);
+    const tautulliStatsView = normalizeTautulliStatsView(
+      body[`${prefix}tautulli_stats_view`],
+      resolveTautulliStatsView(appItem, existingSettings.get(element.id) || {}, 'list')
+    );
     return {
       id: element.id,
       enable: overviewVisible,
@@ -8530,6 +10145,7 @@ function buildDashboardElementsFromRequest(appItem, body) {
       queueShowProtocol: isQueue ? Boolean(body[`${prefix}queue_col_protocol`]) : undefined,
       queueShowTimeLeft: isQueue ? Boolean(body[`${prefix}queue_col_timeLeft`]) : undefined,
       queueShowProgress: isQueue ? Boolean(body[`${prefix}queue_col_progress`]) : undefined,
+      tautulliStatsView: resolveTautulliStatsView(appItem, { id: element.id, tautulliStatsView }, 'list'),
       queueVisibleRows,
       order: Number.isFinite(parsedOrder) ? parsedOrder : index + 1,
     };
@@ -8975,6 +10591,12 @@ function getArrCombineSection(sectionKey) {
   return ARR_COMBINE_SECTIONS.find((section) => section.key === key) || null;
 }
 
+function getArrCombineSectionByElementId(elementId) {
+  const id = String(elementId || '').trim();
+  if (!id) return null;
+  return ARR_COMBINE_SECTIONS.find((section) => section.elementId === id) || null;
+}
+
 function getArrCombineSectionLabel(sectionKey) {
   const section = getArrCombineSection(sectionKey);
   if (!section) return 'Combined';
@@ -8991,8 +10613,116 @@ function getArrCombineSectionIconPath(sectionKey) {
   if (section.key === 'downloadingSoon') return '/icons/downloading-soon.svg';
   if (section.key === 'recentlyDownloaded') return '/icons/recently-added.svg';
   if (section.key === 'activityQueue') return '/icons/activity-queue.svg';
-  if (section.key === 'calendar') return '/icons/arr-suite.svg';
+  if (section.key === 'calendar') return '/icons/calendar-white.svg';
   return '/icons/arr-suite.svg';
+}
+
+function getDownloaderCombineSection(sectionKey) {
+  const key = String(sectionKey || '').trim();
+  if (!key) return null;
+  return DOWNLOADER_COMBINE_SECTIONS.find((section) => section.key === key) || null;
+}
+
+function getDownloaderCombineSectionByElementId(elementId) {
+  const id = String(elementId || '').trim();
+  if (!id) return null;
+  return DOWNLOADER_COMBINE_SECTIONS.find((section) => section.elementId === id) || null;
+}
+
+function getDownloaderCombineSectionLabel(sectionKey) {
+  const section = getDownloaderCombineSection(sectionKey);
+  if (!section) return 'Download Queue';
+  if (section.key === 'activityQueue') return 'Download Queue';
+  return String(section.elementId || section.key || 'Download Queue');
+}
+
+function getDownloaderCombineSectionIconPath(sectionKey) {
+  const section = getDownloaderCombineSection(sectionKey);
+  if (!section) return '/icons/download.svg';
+  if (section.key === 'activityQueue') return '/icons/download.svg';
+  return '/icons/download.svg';
+}
+
+function getMediaCombineSection(sectionKey) {
+  const key = String(sectionKey || '').trim();
+  if (!key) return null;
+  return MEDIA_COMBINE_SECTIONS.find((section) => section.key === key) || null;
+}
+
+function getMediaCombineSectionByElementId(elementId) {
+  const id = String(elementId || '').trim();
+  if (!id) return null;
+  return MEDIA_COMBINE_SECTIONS.find((section) => section.elementId === id) || null;
+}
+
+function getMediaCombineSectionLabel(sectionKey) {
+  const section = getMediaCombineSection(sectionKey);
+  if (!section) return 'Media';
+  if (section.key === 'recent') return 'Recently Added';
+  return 'Active Streams';
+}
+
+function getMediaCombineSectionIconPath(sectionKey) {
+  const section = getMediaCombineSection(sectionKey);
+  if (!section) return '/icons/media-play.svg';
+  if (section.key === 'recent') return '/icons/recently-added.svg';
+  return '/icons/media-play.svg';
+}
+
+function resolveDeprecatedDashboardCardDescriptor(key) {
+  const value = String(key || '').trim();
+  if (!value) return null;
+  const combinedMatch = value.match(/^combined:(arr|downloader|media):(.+)$/);
+  if (combinedMatch) {
+    const type = String(combinedMatch[1] || '').trim();
+    const sectionKey = String(combinedMatch[2] || '').trim();
+    if (type === 'arr' && getArrCombineSection(sectionKey)) {
+      return { kind: 'combined', type, sectionKey };
+    }
+    if (type === 'downloader' && getDownloaderCombineSection(sectionKey)) {
+      return { kind: 'combined', type, sectionKey };
+    }
+    if (type === 'media' && getMediaCombineSection(sectionKey)) {
+      return { kind: 'combined', type, sectionKey };
+    }
+    return null;
+  }
+
+  const appMatch = value.match(/^app:([^:]+):(.+)$/);
+  if (!appMatch) return null;
+  const appId = normalizeAppId(appMatch[1]);
+  const elementId = String(appMatch[2] || '').trim();
+  if (!appId || !elementId) return null;
+
+  const arrSection = getArrCombineSectionByElementId(elementId);
+  if (arrSection && isAppInSet(appId, ARR_APP_IDS)) {
+    return { kind: 'app', type: 'arr', sectionKey: arrSection.key, appId, elementId };
+  }
+  const downloaderSection = getDownloaderCombineSectionByElementId(elementId);
+  if (downloaderSection && isAppInSet(appId, DOWNLOADER_APP_IDS)) {
+    return { kind: 'app', type: 'downloader', sectionKey: downloaderSection.key, appId, elementId };
+  }
+  const mediaSection = getMediaCombineSectionByElementId(elementId);
+  if (mediaSection && isAppInSet(appId, MEDIA_APP_IDS)) {
+    return { kind: 'app', type: 'media', sectionKey: mediaSection.key, appId, elementId };
+  }
+  return null;
+}
+
+function resolveDeprecatedDashboardElementIdsForApp(appId) {
+  const normalizedAppId = normalizeAppId(appId);
+  if (!normalizedAppId) return [];
+  const deprecatedIds = [];
+  if (isAppInSet(normalizedAppId, ARR_APP_IDS)) {
+    deprecatedIds.push(...ARR_COMBINE_SECTIONS.map((section) => String(section?.elementId || '').trim()).filter(Boolean));
+  }
+  if (isAppInSet(normalizedAppId, DOWNLOADER_APP_IDS)) {
+    deprecatedIds.push(...DOWNLOADER_COMBINE_SECTIONS.map((section) => String(section?.elementId || '').trim()).filter(Boolean));
+  }
+  if (isAppInSet(normalizedAppId, MEDIA_APP_IDS)) {
+    deprecatedIds.push(...MEDIA_COMBINE_SECTIONS.map((section) => String(section?.elementId || '').trim()).filter(Boolean));
+  }
+  return [...new Set(deprecatedIds)];
 }
 
 function normalizeCombinedCardToken(value) {
@@ -9005,6 +10735,7 @@ function buildCombinedCardId() {
 }
 
 function resolveArrDashboardCombinedCards(config, apps) {
+  if (!ENABLE_ARR_UNIFIED_CARDS) return [];
   const configured = Array.isArray(config?.arrDashboardCombinedCards) ? config.arrDashboardCombinedCards : [];
   const allowedAppIds = [
     ...new Set(
@@ -9046,9 +10777,450 @@ function resolveArrDashboardCombinedCards(config, apps) {
   return cards;
 }
 
+function resolveMediaDashboardCards(config, apps) {
+  const configured = Array.isArray(config?.mediaDashboardCards) ? config.mediaDashboardCards : [];
+  const allowedAppIds = [
+    ...new Set(
+      (Array.isArray(apps) ? apps : [])
+        .filter((appItem) => !appItem?.removed)
+        .map((appItem) => normalizeAppId(appItem?.id))
+        .filter((id) => isAppInSet(id, MEDIA_APP_IDS))
+    ),
+  ];
+  const allowedAppIdSet = new Set(allowedAppIds);
+  const cards = [];
+  const seen = new Set();
+  configured.forEach((entry) => {
+    const baseId = normalizeCombinedCardToken(entry?.id || '');
+    if (!baseId) return;
+    const sectionKey = String(entry?.sectionKey || '').trim();
+    if (!getMediaCombineSection(sectionKey)) return;
+    const hasExplicitAppIds = Object.prototype.hasOwnProperty.call(entry || {}, 'appIds');
+    const rawAppIds = hasExplicitAppIds
+      ? (Array.isArray(entry?.appIds) ? entry.appIds : [entry?.appIds])
+      : [...allowedAppIds];
+    const selectedAppIds = [...new Set(
+      rawAppIds
+        .map((appId) => normalizeAppId(appId))
+        .filter((appId) => allowedAppIdSet.has(appId))
+    )];
+    const appIds = hasExplicitAppIds ? selectedAppIds : [...allowedAppIds];
+    if (!hasExplicitAppIds && !appIds.length) return;
+    let nextId = baseId;
+    if (seen.has(nextId)) {
+      let suffix = 2;
+      while (seen.has(`${baseId}-${suffix}`)) suffix += 1;
+      nextId = `${baseId}-${suffix}`;
+    }
+    seen.add(nextId);
+    cards.push({
+      id: nextId,
+      sectionKey,
+      appIds,
+    });
+  });
+  return cards;
+}
+
+function resolveDownloaderDashboardCards(config, apps) {
+  if (!ENABLE_DOWNLOADER_UNIFIED_CARDS) return [];
+  const configured = Array.isArray(config?.downloaderDashboardCards) ? config.downloaderDashboardCards : [];
+  const allowedAppIds = [
+    ...new Set(
+      (Array.isArray(apps) ? apps : [])
+        .filter((appItem) => !appItem?.removed)
+        .map((appItem) => normalizeAppId(appItem?.id))
+        .filter((id) => isAppInSet(id, DOWNLOADER_APP_IDS))
+    ),
+  ];
+  const allowedAppIdSet = new Set(allowedAppIds);
+  const cards = [];
+  const seen = new Set();
+  configured.forEach((entry) => {
+    const baseId = normalizeCombinedCardToken(entry?.id || '');
+    if (!baseId) return;
+    const sectionKey = String(entry?.sectionKey || '').trim();
+    if (!getDownloaderCombineSection(sectionKey)) return;
+    const hasExplicitAppIds = Object.prototype.hasOwnProperty.call(entry || {}, 'appIds');
+    const rawAppIds = hasExplicitAppIds
+      ? (Array.isArray(entry?.appIds) ? entry.appIds : [entry?.appIds])
+      : [...allowedAppIds];
+    const selectedAppIds = [...new Set(
+      rawAppIds
+        .map((appId) => normalizeAppId(appId))
+        .filter((appId) => allowedAppIdSet.has(appId))
+    )];
+    const appIds = hasExplicitAppIds ? selectedAppIds : [...allowedAppIds];
+    if (!hasExplicitAppIds && !appIds.length) return;
+    let nextId = baseId;
+    if (seen.has(nextId)) {
+      let suffix = 2;
+      while (seen.has(`${baseId}-${suffix}`)) suffix += 1;
+      nextId = `${baseId}-${suffix}`;
+    }
+    seen.add(nextId);
+    cards.push({
+      id: nextId,
+      sectionKey,
+      appIds,
+    });
+  });
+  return cards;
+}
+
+function migrateDeprecatedDashboardCards(config) {
+  const source = config && typeof config === 'object' ? config : {};
+  const sourceApps = Array.isArray(source.apps) ? source.apps : [];
+  const apps = sourceApps.map((appItem) => ({
+    ...(appItem || {}),
+    overviewElements: Array.isArray(appItem?.overviewElements)
+      ? appItem.overviewElements.map((entry) => ({ ...(entry || {}) }))
+      : [],
+  }));
+  const dashboardRemovedElements = (source.dashboardRemovedElements && typeof source.dashboardRemovedElements === 'object')
+    ? { ...source.dashboardRemovedElements }
+    : {};
+  const dashboardCombinedSettings = (source.dashboardCombinedSettings && typeof source.dashboardCombinedSettings === 'object')
+    ? { ...source.dashboardCombinedSettings }
+    : {};
+  const dashboardCombinedOrder = (source.dashboardCombinedOrder && typeof source.dashboardCombinedOrder === 'object')
+    ? { ...source.dashboardCombinedOrder }
+    : {};
+  const arrDashboardCombinedCards = resolveArrDashboardCombinedCards(source, apps).map((card) => ({ ...card, appIds: Array.isArray(card?.appIds) ? [...card.appIds] : [] }));
+  const mediaDashboardCards = resolveMediaDashboardCards(source, apps).map((card) => ({ ...card, appIds: Array.isArray(card?.appIds) ? [...card.appIds] : [] }));
+  const downloaderDashboardCards = resolveDownloaderDashboardCards(source, apps).map((card) => ({ ...card, appIds: Array.isArray(card?.appIds) ? [...card.appIds] : [] }));
+  const arrLegacySelection = resolveArrDashboardCombineSettings(source, apps);
+  const mediaLegacySelection = resolveMediaDashboardCombineSettings(source, apps);
+  const downloaderLegacySelection = resolveDownloaderDashboardCombineSettings(source, apps);
+
+  const allowedByType = {
+    arr: [...new Set(
+      apps
+        .filter((appItem) => !appItem?.removed && isAppInSet(appItem?.id, ARR_APP_IDS))
+        .map((appItem) => normalizeAppId(appItem?.id))
+        .filter(Boolean)
+    )],
+    media: [...new Set(
+      apps
+        .filter((appItem) => !appItem?.removed && isAppInSet(appItem?.id, MEDIA_APP_IDS))
+        .map((appItem) => normalizeAppId(appItem?.id))
+        .filter(Boolean)
+    )],
+    downloader: [...new Set(
+      apps
+        .filter((appItem) => !appItem?.removed && isAppInSet(appItem?.id, DOWNLOADER_APP_IDS))
+        .map((appItem) => normalizeAppId(appItem?.id))
+        .filter(Boolean)
+    )],
+  };
+  const allowedSetByType = {
+    arr: new Set(allowedByType.arr),
+    media: new Set(allowedByType.media),
+    downloader: new Set(allowedByType.downloader),
+  };
+  const cardsByType = {
+    arr: arrDashboardCombinedCards,
+    media: mediaDashboardCards,
+    downloader: downloaderDashboardCards,
+  };
+  const supportsType = {
+    arr: ENABLE_ARR_UNIFIED_CARDS,
+    media: true,
+    downloader: ENABLE_DOWNLOADER_UNIFIED_CARDS,
+  };
+  let changed = false;
+  const markChanged = () => {
+    changed = true;
+  };
+
+  const makeSignature = (sectionKey, appIds) => {
+    const uniqueSorted = [...new Set((Array.isArray(appIds) ? appIds : []).map((id) => normalizeAppId(id)).filter(Boolean))].sort();
+    return `${String(sectionKey || '').trim()}|${uniqueSorted.join(',')}`;
+  };
+
+  const cardStateByType = {
+    arr: { signatures: new Map(), ids: new Set() },
+    media: { signatures: new Map(), ids: new Set() },
+    downloader: { signatures: new Map(), ids: new Set() },
+  };
+  Object.entries(cardsByType).forEach(([type, cards]) => {
+    cards.forEach((card, index) => {
+      const cardId = normalizeCombinedCardToken(card?.id || '') || `card-${index + 1}`;
+      cardStateByType[type].ids.add(cardId);
+      cardStateByType[type].signatures.set(makeSignature(card?.sectionKey, card?.appIds), cardId);
+    });
+  });
+
+  const ensureReplacement = ({ type, sectionKey, appIds, hasExplicitSelection, visibilityRole, order }) => {
+    if (!supportsType[type]) return '';
+    if (!sectionKey) return '';
+    const allowedSet = allowedSetByType[type];
+    const allowedList = allowedByType[type] || [];
+    if (!allowedSet || !Array.isArray(allowedList)) return '';
+    let selected = [...new Set(
+      (Array.isArray(appIds) ? appIds : [])
+        .map((id) => normalizeAppId(id))
+        .filter((id) => allowedSet.has(id))
+    )];
+    if (type === 'arr' && !selected.length) selected = [...allowedList];
+    if ((type === 'media' || type === 'downloader') && !hasExplicitSelection) {
+      selected = [...allowedList];
+    }
+    if (type === 'arr' && !selected.length) return '';
+
+    const signature = makeSignature(sectionKey, selected);
+    let cardId = cardStateByType[type].signatures.get(signature) || '';
+    if (!cardId) {
+      cardId = normalizeCombinedCardToken(buildCombinedCardId()) || `card-${Date.now().toString(36)}`;
+      while (cardStateByType[type].ids.has(cardId)) {
+        cardId = `${cardId}-${Math.random().toString(36).slice(2, 6)}`;
+      }
+      cardStateByType[type].ids.add(cardId);
+      cardStateByType[type].signatures.set(signature, cardId);
+      cardsByType[type].push({
+        id: cardId,
+        sectionKey,
+        appIds: selected,
+      });
+      markChanged();
+    }
+
+    const combinedKey = `combined:${type}custom:${cardId}`;
+    const normalizedVisibilityRole = normalizeVisibilityRole(visibilityRole, 'user');
+    const existingSettings = dashboardCombinedSettings[combinedKey] && typeof dashboardCombinedSettings[combinedKey] === 'object'
+      ? dashboardCombinedSettings[combinedKey]
+      : {};
+    const nextSettings = {
+      ...existingSettings,
+      visibilityRole: normalizedVisibilityRole,
+      enable: normalizedVisibilityRole !== 'disabled',
+      dashboard: normalizedVisibilityRole !== 'disabled',
+    };
+    if (!deepEqual(existingSettings, nextSettings)) {
+      dashboardCombinedSettings[combinedKey] = nextSettings;
+      markChanged();
+    }
+    const parsedOrder = Number(order);
+    if (Number.isFinite(parsedOrder) && dashboardCombinedOrder[combinedKey] !== parsedOrder) {
+      dashboardCombinedOrder[combinedKey] = parsedOrder;
+      markChanged();
+    }
+    if (dashboardRemovedElements[combinedKey]) {
+      delete dashboardRemovedElements[combinedKey];
+      markChanged();
+    }
+    return combinedKey;
+  };
+
+  apps.forEach((appItem) => {
+    if (appItem?.removed) return;
+    const normalizedAppId = normalizeAppId(appItem?.id);
+    if (!normalizedAppId) return;
+    let nextOverviewElements = Array.isArray(appItem?.overviewElements)
+      ? appItem.overviewElements.map((entry) => ({ ...(entry || {}) }))
+      : [];
+
+    if (normalizedAppId === 'tautulli') {
+      const watchStatsKey = `app:${appItem.id}:watch-stats`;
+      const wheelKey = `app:${appItem.id}:watch-stats-wheel`;
+      const watchIndex = nextOverviewElements.findIndex((element) => String(element?.id || '').trim() === 'watch-stats');
+      const wheelIndex = nextOverviewElements.findIndex((element) => String(element?.id || '').trim() === 'watch-stats-wheel');
+      const hadWatchStats = watchIndex >= 0;
+      const wheelRemoved = Boolean(dashboardRemovedElements[wheelKey]);
+      if (wheelIndex >= 0) {
+        const watchStatsElement = watchIndex >= 0 ? nextOverviewElements[watchIndex] : null;
+        const wheelElement = nextOverviewElements[wheelIndex] || {};
+        const watchOverviewRole = resolveOverviewElementVisibilityRole(appItem, watchStatsElement || {}, 'disabled');
+        const watchDashboardRole = resolveDashboardElementVisibilityRole(appItem, watchStatsElement || {}, 'disabled');
+        const wheelOverviewRole = resolveOverviewElementVisibilityRole(appItem, wheelElement, 'disabled');
+        const wheelDashboardRole = resolveDashboardElementVisibilityRole(appItem, wheelElement, 'disabled');
+        const preferWheelView = !watchStatsElement
+          || (
+            !Object.prototype.hasOwnProperty.call(watchStatsElement, 'tautulliStatsView')
+            && (
+              (watchOverviewRole === 'disabled' && wheelOverviewRole !== 'disabled')
+              || (watchDashboardRole === 'disabled' && wheelDashboardRole !== 'disabled')
+            )
+          );
+        const mergedWatchStats = {
+          ...(watchStatsElement || wheelElement || {}),
+          id: 'watch-stats',
+          tautulliStatsView: normalizeTautulliStatsView(
+            watchStatsElement?.tautulliStatsView,
+            preferWheelView ? 'wheel' : 'list'
+          ),
+        };
+        if (watchOverviewRole === 'disabled' && wheelOverviewRole !== 'disabled') {
+          mergedWatchStats.enable = true;
+          mergedWatchStats.overviewVisibilityRole = wheelOverviewRole;
+        }
+        if (watchDashboardRole === 'disabled' && wheelDashboardRole !== 'disabled') {
+          mergedWatchStats.dashboard = true;
+          mergedWatchStats.dashboardVisibilityRole = wheelDashboardRole;
+          const wheelOrder = Number(wheelElement?.order);
+          if (Number.isFinite(wheelOrder)) mergedWatchStats.order = wheelOrder;
+        }
+        const displayFields = [
+          'favourite',
+          'showSubtitle',
+          'showMeta',
+          'showPill',
+          'showTypeIcon',
+          'showViewIcon',
+          'showUsername',
+          'queueShowDetail',
+          'queueShowSubDetail',
+          'queueShowSize',
+          'queueShowProtocol',
+          'queueShowTimeLeft',
+          'queueShowProgress',
+          'queueVisibleRows',
+        ];
+        displayFields.forEach((field) => {
+          if (mergedWatchStats[field] === undefined && wheelElement[field] !== undefined) {
+            mergedWatchStats[field] = wheelElement[field];
+          }
+        });
+        if (watchIndex >= 0) {
+          nextOverviewElements[watchIndex] = mergedWatchStats;
+        } else {
+          nextOverviewElements.push(mergedWatchStats);
+        }
+        nextOverviewElements = nextOverviewElements.filter((element, index) => (
+          index !== wheelIndex
+          && String(element?.id || '').trim() !== 'watch-stats-wheel'
+        ));
+        markChanged();
+      }
+      if (wheelRemoved) {
+        if (!hadWatchStats && !dashboardRemovedElements[watchStatsKey]) {
+          dashboardRemovedElements[watchStatsKey] = true;
+          markChanged();
+        }
+        delete dashboardRemovedElements[wheelKey];
+        markChanged();
+      }
+    }
+
+    appItem.overviewElements = nextOverviewElements;
+    nextOverviewElements.forEach((element) => {
+      const elementId = String(element?.id || '').trim();
+      if (!elementId) return;
+      const legacyKey = `app:${appItem.id}:${elementId}`;
+      if (dashboardRemovedElements[legacyKey]) return;
+      let type = '';
+      let sectionKey = '';
+      if (isAppInSet(normalizedAppId, ARR_APP_IDS)) {
+        const section = getArrCombineSectionByElementId(elementId);
+        if (section) {
+          type = 'arr';
+          sectionKey = section.key;
+        }
+      } else if (isAppInSet(normalizedAppId, MEDIA_APP_IDS)) {
+        const section = getMediaCombineSectionByElementId(elementId);
+        if (section) {
+          type = 'media';
+          sectionKey = section.key;
+        }
+      } else if (isAppInSet(normalizedAppId, DOWNLOADER_APP_IDS)) {
+        const section = getDownloaderCombineSectionByElementId(elementId);
+        if (section) {
+          type = 'downloader';
+          sectionKey = section.key;
+        }
+      }
+      if (!type || !sectionKey) return;
+      const visibilityRole = resolveDashboardElementVisibilityRole(appItem, element, 'user');
+      if (visibilityRole === 'disabled') return;
+      const replacementKey = ensureReplacement({
+        type,
+        sectionKey,
+        appIds: [normalizedAppId],
+        hasExplicitSelection: true,
+        visibilityRole,
+        order: Number(element?.order),
+      });
+      if (!replacementKey) return;
+      if (!dashboardRemovedElements[legacyKey]) {
+        dashboardRemovedElements[legacyKey] = true;
+        markChanged();
+      }
+      if (element.dashboard !== false || normalizeVisibilityRole(element.dashboardVisibilityRole, 'disabled') !== 'disabled') {
+        element.dashboard = false;
+        element.dashboardVisibilityRole = 'disabled';
+        markChanged();
+      }
+    });
+  });
+
+  const migrateLegacyCombinedSection = (type, sectionKey, selectionMap) => {
+    const legacyKey = `combined:${type}:${sectionKey}`;
+    if (dashboardRemovedElements[legacyKey]) return;
+    const legacySettings = dashboardCombinedSettings[legacyKey] && typeof dashboardCombinedSettings[legacyKey] === 'object'
+      ? dashboardCombinedSettings[legacyKey]
+      : {};
+    const visibilityRole = resolveCombinedDashboardVisibilityRole(legacySettings, 'user');
+    if (visibilityRole === 'disabled') return;
+    const allowedIds = allowedByType[type] || [];
+    const sourceSelection = selectionMap && typeof selectionMap === 'object'
+      ? selectionMap
+      : {};
+    const hasExplicitSelection = Object.keys(sourceSelection).length > 0;
+    const selectedIds = hasExplicitSelection
+      ? allowedIds.filter((id) => Boolean(sourceSelection[id]))
+      : [...allowedIds];
+    const replacementKey = ensureReplacement({
+      type,
+      sectionKey,
+      appIds: selectedIds,
+      hasExplicitSelection,
+      visibilityRole,
+      order: Number(dashboardCombinedOrder[legacyKey]),
+    });
+    if (!replacementKey) return;
+    if (!dashboardRemovedElements[legacyKey]) {
+      dashboardRemovedElements[legacyKey] = true;
+      markChanged();
+    }
+  };
+
+  if (ENABLE_ARR_UNIFIED_CARDS) {
+    ARR_COMBINE_SECTIONS.forEach((section) => {
+      migrateLegacyCombinedSection('arr', section.key, arrLegacySelection[section.key]);
+    });
+  }
+  if (ENABLE_DOWNLOADER_UNIFIED_CARDS) {
+    DOWNLOADER_COMBINE_SECTIONS.forEach((section) => {
+      migrateLegacyCombinedSection('downloader', section.key, downloaderLegacySelection[section.key]);
+    });
+  }
+  MEDIA_COMBINE_SECTIONS.forEach((section) => {
+    migrateLegacyCombinedSection('media', section.key, mediaLegacySelection[section.key]);
+  });
+
+  if (!changed) {
+    return { changed: false, config: source };
+  }
+
+  return {
+    changed: true,
+    config: {
+      ...source,
+      apps,
+      arrDashboardCombinedCards,
+      mediaDashboardCards,
+      downloaderDashboardCards,
+      dashboardRemovedElements,
+      dashboardCombinedSettings,
+      dashboardCombinedOrder,
+    },
+  };
+}
+
 function buildArrCombinedDisplayMeta(appLookup, sectionKey, appIds) {
   const sectionLabel = getArrCombineSectionLabel(sectionKey);
-  const combinedTitle = `Combined ${sectionLabel}`.trim();
+  const combinedTitle = sectionLabel;
+  const sectionIconPath = getArrCombineSectionIconPath(sectionKey);
   const selectedApps = (Array.isArray(appIds) ? appIds : [])
     .map((appId) => appLookup.get(normalizeAppId(appId)))
     .filter(Boolean);
@@ -9056,35 +11228,73 @@ function buildArrCombinedDisplayMeta(appLookup, sectionKey, appIds) {
     return {
       appIds: [],
       appNames: [],
-      iconPath: '/icons/app-arr.svg',
+      iconPath: sectionIconPath,
       displayName: combinedTitle,
     };
   }
   const selectedAppIds = selectedApps.map((appItem) => normalizeAppId(appItem.id)).filter(Boolean);
   const selectedAppNames = selectedApps.map((appItem) => String(appItem.name || '').trim()).filter(Boolean);
-  const baseIds = [...new Set(selectedApps.map((appItem) => getAppBaseId(appItem.id)).filter(Boolean))];
-  if (selectedApps.length === 1) {
-    const only = selectedApps[0];
-    return {
-      appIds: selectedAppIds,
-      appNames: selectedAppNames,
-      iconPath: resolvePersistedAppIconPath(only),
-      displayName: combinedTitle,
-    };
-  }
-  if (baseIds.length === 1) {
-    const baseId = baseIds[0];
-    return {
-      appIds: selectedAppIds,
-      appNames: selectedAppNames,
-      iconPath: getDefaultIconPathForAppId(baseId),
-      displayName: combinedTitle,
-    };
-  }
+  const iconPath = selectedApps.length === 1
+    ? resolvePersistedAppIconPath(selectedApps[0])
+    : sectionIconPath;
   return {
     appIds: selectedAppIds,
     appNames: selectedAppNames,
-    iconPath: '/icons/app-arr.svg',
+    iconPath,
+    displayName: combinedTitle,
+  };
+}
+
+function buildMediaCombinedDisplayMeta(appLookup, sectionKey, appIds) {
+  const sectionLabel = getMediaCombineSectionLabel(sectionKey);
+  const combinedTitle = sectionLabel;
+  const selectedApps = (Array.isArray(appIds) ? appIds : [])
+    .map((appId) => appLookup.get(normalizeAppId(appId)))
+    .filter(Boolean);
+  if (!selectedApps.length) {
+    return {
+      appIds: [],
+      appNames: [],
+      iconPath: getMediaCombineSectionIconPath(sectionKey),
+      displayName: combinedTitle,
+    };
+  }
+  const selectedAppIds = selectedApps.map((appItem) => normalizeAppId(appItem.id)).filter(Boolean);
+  const selectedAppNames = selectedApps.map((appItem) => String(appItem.name || '').trim()).filter(Boolean);
+  const iconPath = selectedApps.length === 1
+    ? resolvePersistedAppIconPath(selectedApps[0])
+    : getMediaCombineSectionIconPath(sectionKey);
+  return {
+    appIds: selectedAppIds,
+    appNames: selectedAppNames,
+    iconPath,
+    displayName: combinedTitle,
+  };
+}
+
+function buildDownloaderCombinedDisplayMeta(appLookup, sectionKey, appIds) {
+  const sectionLabel = getDownloaderCombineSectionLabel(sectionKey);
+  const combinedTitle = sectionLabel;
+  const selectedApps = (Array.isArray(appIds) ? appIds : [])
+    .map((appId) => appLookup.get(normalizeAppId(appId)))
+    .filter(Boolean);
+  if (!selectedApps.length) {
+    return {
+      appIds: [],
+      appNames: [],
+      iconPath: getDownloaderCombineSectionIconPath(sectionKey),
+      displayName: combinedTitle,
+    };
+  }
+  const selectedAppIds = selectedApps.map((appItem) => normalizeAppId(appItem.id)).filter(Boolean);
+  const selectedAppNames = selectedApps.map((appItem) => String(appItem.name || '').trim()).filter(Boolean);
+  const iconPath = selectedApps.length === 1
+    ? resolvePersistedAppIconPath(selectedApps[0])
+    : getDownloaderCombineSectionIconPath(sectionKey);
+  return {
+    appIds: selectedAppIds,
+    appNames: selectedAppNames,
+    iconPath,
     displayName: combinedTitle,
   };
 }
@@ -9552,15 +11762,19 @@ function loadConfig() {
   const defaults = loadDefaultApps();
   const defaultCategories = loadDefaultCategories();
   try {
+    let seededNewConfig = false;
     if (!fs.existsSync(CONFIG_PATH)) {
       if (!fs.existsSync(path.dirname(CONFIG_PATH))) {
         fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
       }
-      if (fs.existsSync(CONFIG_EXAMPLE_PATH)) {
-        fs.copyFileSync(CONFIG_EXAMPLE_PATH, CONFIG_PATH);
+      const configExampleSource = [CONFIG_EXAMPLE_PATH, BUNDLED_CONFIG_EXAMPLE_PATH]
+        .find((candidatePath) => fs.existsSync(candidatePath));
+      if (configExampleSource) {
+        fs.copyFileSync(configExampleSource, CONFIG_PATH);
       } else {
         fs.writeFileSync(CONFIG_PATH, JSON.stringify({ apps: [], categories: [] }, null, 2));
       }
+      seededNewConfig = true;
     }
     const raw = fs.readFileSync(CONFIG_PATH, 'utf8');
     const parsed = JSON.parse(raw);
@@ -9568,8 +11782,20 @@ function loadConfig() {
     const overrideCategories = parsed && Array.isArray(parsed.categories) ? parsed.categories : [];
     const mergedApps = mergeAppDefaults(defaults, overrideApps);
     const mergedCategories = mergeCategoryDefaults(defaultCategories, overrideCategories);
+    const nextConfig = { ...parsed, apps: mergedApps, categories: mergedCategories };
+    const hasActiveApps = mergedApps.some((appItem) => !appItem?.removed);
+    if (seededNewConfig || !hasActiveApps) {
+      refreshRuntimeMultiInstanceBaseIds(mergedApps);
+      return nextConfig;
+    }
+    const migration = migrateDeprecatedDashboardCards(nextConfig);
+    if (migration.changed) {
+      saveConfig(migration.config);
+      refreshRuntimeMultiInstanceBaseIds(Array.isArray(migration.config?.apps) ? migration.config.apps : mergedApps);
+      return migration.config;
+    }
     refreshRuntimeMultiInstanceBaseIds(mergedApps);
-    return { ...parsed, apps: mergedApps, categories: mergedCategories };
+    return nextConfig;
   } catch (err) {
     refreshRuntimeMultiInstanceBaseIds(defaults);
     return { apps: defaults, categories: defaultCategories };

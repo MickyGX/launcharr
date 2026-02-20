@@ -626,7 +626,13 @@
                     name: String(appItem?.name || '').trim() || 'App',
                     icon: resolveAppIconPath(appItem),
                     category: String(appItem?.category || 'Tools').trim() || 'Tools',
+                    order: Number.isFinite(Number(appItem?.order)) ? Number(appItem.order) : Number.MAX_SAFE_INTEGER,
                   })); %>
+                <% const resolveMissingDefaultCategoryRank = (categoryName) => {
+                  const normalized = String(categoryName || '').trim().toLowerCase();
+                  const index = availableCategories.findIndex((entry) => String(entry || '').trim().toLowerCase() === normalized);
+                  return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+                }; %>
                 <% const missingDefaultApps = defaultCatalog
                   .filter((entry) => {
                     const targetId = String(entry?.id || '').trim().toLowerCase();
@@ -635,7 +641,18 @@
                     return !existing || Boolean(existing?.removed);
                   })
                   .concat(fallbackMissingDefaultApps)
-                  .sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || ''))); %>
+                  .sort((a, b) => {
+                    const categoryDelta = resolveMissingDefaultCategoryRank(a?.category) - resolveMissingDefaultCategoryRank(b?.category);
+                    if (categoryDelta !== 0) return categoryDelta;
+                    const categoryNameDelta = String(a?.category || '').localeCompare(String(b?.category || ''));
+                    if (categoryNameDelta !== 0) return categoryNameDelta;
+                    const leftOrder = Number(a?.order);
+                    const rightOrder = Number(b?.order);
+                    const orderDelta = (Number.isFinite(leftOrder) ? leftOrder : Number.MAX_SAFE_INTEGER)
+                      - (Number.isFinite(rightOrder) ? rightOrder : Number.MAX_SAFE_INTEGER);
+                    if (orderDelta !== 0) return orderDelta;
+                    return String(a?.name || '').localeCompare(String(b?.name || ''));
+                  }); %>
                 <% const missingDefaultAppGroups = missingDefaultApps.reduce((acc, entry) => {
                   const group = String(entry?.category || 'Tools').trim() || 'Tools';
                   if (!acc[group]) acc[group] = [];
@@ -840,7 +857,11 @@
                   </button>
                   <div class="icon-picker-menu" role="listbox" aria-label="Default app">
                     <% if (missingDefaultApps.length) { %>
-                      <% Object.keys(missingDefaultAppGroups).sort((a, b) => String(a || '').localeCompare(String(b || ''))).forEach((groupName) => { %>
+                      <% Object.keys(missingDefaultAppGroups).sort((a, b) => {
+                        const categoryDelta = resolveMissingDefaultCategoryRank(a) - resolveMissingDefaultCategoryRank(b);
+                        if (categoryDelta !== 0) return categoryDelta;
+                        return String(a || '').localeCompare(String(b || ''));
+                      }).forEach((groupName) => { %>
                         <div class="icon-picker-group-label"><%= groupName %></div>
                         <% missingDefaultAppGroups[groupName].forEach((entry) => { %>
                           <button
@@ -953,6 +974,10 @@
                     <span class="settings-head-label">Name</span>
                   </div>
                   <div>
+                    <img class="settings-head-icon" src="/icons/all-type.svg" alt="" />
+                    <span class="settings-head-label">Filter</span>
+                  </div>
+                  <div>
                     <img class="settings-head-icon" src="/icons/view.svg" alt="" />
                     <span class="settings-head-label">Visibility</span>
                   </div>
@@ -977,13 +1002,82 @@
                   <% const isArrCombined = item.combined && (item.combinedType === 'arr' || item.combinedType === 'arrcustom'); %>
                   <% const isCustomArrCombined = item.combinedType === 'arrcustom'; %>
                   <% const canRemoveDashboardItem = Boolean(item.dashboardElementKey); %>
-                  <% const showWatchCardsPanel = item.appId === 'tautulli' && (element.id === 'watch-stats' || element.id === 'watch-stats-wheel') && tautulliItems.length; %>
+                  <% const showWatchCardsPanel = item.appId === 'tautulli' && element.id === 'watch-stats' && tautulliItems.length; %>
+                  <% const tautulliStatsView = element.tautulliStatsView === 'wheel' ? 'wheel' : 'list'; %>
                   <% const combinedOrderKey = item.combined ? `combined:${item.combinedType || 'mixed'}:${item.combinedSection || element.id || 'unknown'}` : ''; %>
                   <% const combinedOrderValue = combinedOrderKey && dashboardCombinedOrder ? Number(dashboardCombinedOrder[combinedOrderKey]) : NaN; %>
                   <% const orderValue = Number.isFinite(combinedOrderValue) ? combinedOrderValue : (Number.isFinite(element.order) ? element.order : index + 1); %>
                   <% const isQueue = element.id === 'activity-queue'; %>
                   <% const isTableCard = ['activity-queue', 'subtitle-queue', 'recent-matches', 'delivery-queue', 'search'].includes(element.id); %>
                   <% const isDisabled = Boolean(item.appAccess === false); %>
+                  <% const isUnifiedArrCard = isArrCombined; %>
+                  <% const arrSectionKey = isUnifiedArrCard ? (item.arrCombined?.sectionKey || item.combinedSection || 'activityQueue') : ''; %>
+                  <% const arrSectionElementId = arrSectionKey === 'downloadingSoon'
+                    ? 'downloading-soon'
+                    : (arrSectionKey === 'recentlyDownloaded'
+                      ? 'recently-downloaded'
+                      : (arrSectionKey === 'calendar' ? 'calendar' : 'activity-queue')); %>
+                  <% const arrSectionLabel = arrSectionKey === 'downloadingSoon'
+                    ? 'Downloading Soon'
+                    : (arrSectionKey === 'recentlyDownloaded'
+                      ? 'Recently Downloaded'
+                      : (arrSectionKey === 'calendar' ? 'Calendar' : 'Activity Queue')); %>
+                  <% const arrCustomCardId = isUnifiedArrCard ? String(item.arrCombined?.cardId || item.combinedSection || 'card').trim() : ''; %>
+                  <% const arrCardToken = isUnifiedArrCard ? String(arrCustomCardId || `legacy-${arrSectionKey}`).trim() : ''; %>
+                  <% const combinedArrApps = isUnifiedArrCard
+                    ? ((Array.isArray(arrApps) && arrApps.length)
+                      ? arrApps
+                      : (Array.isArray(apps) ? apps.filter((appItem) => ['radarr', 'sonarr', 'lidarr', 'readarr'].includes(resolveAppBaseId(appItem.id))) : []))
+                    : []; %>
+                  <% const isUnifiedDownloaderCard = item.combined && (item.combinedType === 'downloader' || item.combinedType === 'downloadercustom'); %>
+                  <% const downloaderSectionKey = isUnifiedDownloaderCard ? (item.downloaderCombined?.sectionKey || item.combinedSection || 'activityQueue') : ''; %>
+                  <% const downloaderSectionElementId = downloaderSectionKey === 'activityQueue' ? 'activity-queue' : 'activity-queue'; %>
+                  <% const downloaderSectionLabel = downloaderSectionKey === 'activityQueue' ? 'Download Queue' : 'Download Queue'; %>
+                  <% const isCustomDownloaderCombined = item.combinedType === 'downloadercustom'; %>
+                  <% const downloaderCustomCardId = isUnifiedDownloaderCard ? String(item.downloaderCombined?.cardId || item.combinedSection || 'card').trim() : ''; %>
+                  <% const downloaderCardToken = isUnifiedDownloaderCard ? String(downloaderCustomCardId || `legacy-${downloaderSectionKey}`).trim() : ''; %>
+                  <% const combinedDownloaderApps = isUnifiedDownloaderCard
+                    ? ((Array.isArray(downloaderApps) && downloaderApps.length)
+                      ? downloaderApps
+                      : (Array.isArray(apps) ? apps.filter((appItem) => ['transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(resolveAppBaseId(appItem.id))) : []))
+                    : []; %>
+                  <% const isUnifiedMediaCard = item.combined && (item.combinedType === 'media' || item.combinedType === 'mediacustom'); %>
+                  <% const mediaSectionKey = isUnifiedMediaCard ? (item.mediaCombined?.sectionKey || item.combinedSection || 'active') : ''; %>
+                  <% const mediaSectionLabel = mediaSectionKey === 'recent' ? 'Recently Added' : 'Active Streams'; %>
+                  <% const isCustomMediaCombined = item.combinedType === 'mediacustom'; %>
+                  <% const mediaCustomCardId = isUnifiedMediaCard ? (item.mediaCombined?.cardId || item.combinedSection || 'card') : ''; %>
+                  <% const mediaCardToken = isUnifiedMediaCard ? String(mediaCustomCardId || `legacy-${mediaSectionKey}`).trim() : ''; %>
+                  <% const isUnifiedCard = isUnifiedMediaCard || isUnifiedArrCard || isUnifiedDownloaderCard; %>
+                  <% const combinedMediaApps = isUnifiedMediaCard
+                    ? ((Array.isArray(mediaApps) && mediaApps.length)
+                      ? mediaApps
+                      : (Array.isArray(apps) ? apps.filter((appItem) => ['plex', 'jellyfin', 'emby'].includes(appItem.id)) : []))
+                    : []; %>
+                  <% const unifiedOverviewApps = isUnifiedMediaCard
+                    ? combinedMediaApps
+                    : (isUnifiedArrCard ? combinedArrApps : (isUnifiedDownloaderCard ? combinedDownloaderApps : [])); %>
+                  <% const unifiedOverviewPrefix = isUnifiedMediaCard
+                    ? 'media'
+                    : (isUnifiedArrCard ? 'arr' : (isUnifiedDownloaderCard ? 'downloader' : '')); %>
+                  <% const unifiedSectionKey = isUnifiedMediaCard
+                    ? mediaSectionKey
+                    : (isUnifiedArrCard ? arrSectionKey : (isUnifiedDownloaderCard ? downloaderSectionKey : '')); %>
+                  <% const unifiedElementId = isUnifiedMediaCard
+                    ? mediaSectionKey
+                    : (isUnifiedArrCard ? arrSectionElementId : (isUnifiedDownloaderCard ? downloaderSectionElementId : '')); %>
+                  <% const unifiedCardToken = isUnifiedMediaCard
+                    ? mediaCardToken
+                    : (isUnifiedArrCard ? arrCardToken : (isUnifiedDownloaderCard ? downloaderCardToken : '')); %>
+                  <% const hasCarouselDisplayOptions = element.id !== 'activity-queue' && !isTableCard; %>
+                  <% const showAppDisplayOptionsInFilter = !item.combined && !item.dashboardIsDeprecated && (isQueue || isTableCard); %>
+                  <% const hasFilterPanel = isUnifiedMediaCard
+                    || isUnifiedArrCard
+                    || isUnifiedDownloaderCard
+                    || showWatchCardsPanel
+                    || hasCarouselDisplayOptions
+                    || showAppDisplayOptionsInFilter; %>
+                  <% const hasOptionsPanel = ((isQueue && !item.combined) && !showAppDisplayOptionsInFilter)
+                    || ((!item.combined && isTableCard) && !showAppDisplayOptionsInFilter); %>
                   <% const combinedKey = item.combined ? `combined:${item.combinedType || 'mixed'}:${item.combinedSection || element.id || 'unknown'}` : ''; %>
                   <% const combinedSettings = combinedKey && dashboardCombinedSettings ? dashboardCombinedSettings[combinedKey] : null; %>
                   <% const baseOverviewVisibilityRole = item.combined
@@ -1001,7 +1095,7 @@
                   <% const effectiveOverviewVisibilityRole = isDisabled ? 'disabled' : baseOverviewVisibilityRole; %>
                   <% const effectiveVisibilityRole = isDisabled ? 'disabled' : baseVisibilityRole; %>
                   <% const combinedPrefix = item.combined ? `dashboard_combined_${item.combinedType || 'mixed'}_${item.combinedSection || element.id}` : `dashboard_${item.appId}_${element.id}`; %>
-                  <div class="settings-row settings-row--elements settings-row--with-expand settings-row--draggable <%= effectiveVisibilityRole === 'disabled' ? 'is-disabled' : '' %>" data-app-id="<%= item.appId %>" data-category="<%= item.category || 'Tools' %>" data-category-rank="<%= categoryRank %>" draggable="true">
+                  <div class="settings-row settings-row--elements settings-row--with-expand settings-row--draggable <%= item.dashboardIsCurrent ? 'settings-row--card-current' : '' %> <%= item.dashboardIsDeprecated ? 'settings-row--card-deprecated' : '' %> <%= effectiveVisibilityRole === 'disabled' ? 'is-disabled' : '' %>" data-app-id="<%= item.appId %>" data-category="<%= item.category || 'Tools' %>" data-category-rank="<%= categoryRank %>" data-app-access-disabled="<%= isDisabled ? '1' : '0' %>" draggable="true">
                     <div class="settings-element">
                       <button class="order-button settings-drag-handle" type="button" title="Drag to reorder" aria-label="Drag to reorder">&#x2630;</button>
                       <img class="settings-element-icon" src="<%= elementIcon %>" alt="" onerror="this.src='/icons/app.svg'" />
@@ -1010,28 +1104,372 @@
                     <div class="settings-cell settings-cell--visibility settings-col-visibility">
                       <div class="settings-visibility-popover" data-dashboard-visibility-popover>
                         <button class="settings-visibility-trigger" type="button" aria-label="Configure dashboard visibility role" aria-expanded="false" aria-haspopup="true" <%= isDisabled ? 'disabled' : '' %>></button>
-                        <div class="settings-visibility-menu" hidden>
-                          <label class="settings-visibility-group">
-                            <span class="settings-visibility-label">Overview</span>
-                            <select class="settings-select settings-visibility-select dashboard-overview-visibility-select" name="<%= combinedPrefix %>_overview_visibility_role" data-dashboard-overview-visibility-role <%= (isDisabled || item.combined) ? 'disabled title="Overview visibility is configurable for app overview cards only."' : '' %>>
-                              <% dashboardVisibilityRoles.forEach((option) => { %>
-                                <option value="<%= option.value %>" <%= option.value === effectiveOverviewVisibilityRole ? 'selected' : '' %>><%= option.label %></option>
+                        <div class="settings-visibility-menu<%= isUnifiedCard ? ' settings-filter-menu' : '' %>" hidden>
+                          <% if (!isUnifiedCard) { %>
+                            <label class="settings-visibility-group">
+                              <span class="settings-visibility-label">Overview Visibility</span>
+                              <select class="settings-select settings-visibility-select dashboard-overview-visibility-select" name="<%= combinedPrefix %>_overview_visibility_role" data-dashboard-overview-visibility-role <%= (isDisabled || item.combined) ? 'disabled title="Overview visibility is configurable for app overview cards only."' : '' %>>
+                                <% dashboardVisibilityRoles.forEach((option) => { %>
+                                  <option value="<%= option.value %>" <%= option.value === effectiveOverviewVisibilityRole ? 'selected' : '' %>><%= option.label %></option>
+                                <% }) %>
+                              </select>
+                              <% if (item.combined) { %>
+                                <input type="hidden" name="<%= combinedPrefix %>_overview_visibility_role" value="disabled" />
+                              <% } %>
+                            </label>
+                          <% } else { %>
+                            <input type="hidden" name="<%= combinedPrefix %>_overview_visibility_role" value="disabled" />
+                            <div class="settings-filter-group-title">Overview Visibility</div>
+                            <div class="settings-unified-source-list">
+                              <% unifiedOverviewApps.forEach((app) => { %>
+                                <% const iconPath = resolveAppIconPath(app); %>
+                                <% const unifiedElementSettings = (Array.isArray(app.overviewElements) ? app.overviewElements : []).find((entry) => entry && entry.id === unifiedElementId) || null; %>
+                                <% const overviewVisibilityRole = normalizeDashboardVisibilityRole(
+                                  unifiedElementSettings?.overviewVisibilityRole,
+                                  (unifiedElementSettings && unifiedElementSettings.enable === false) ? 'disabled' : 'user'
+                                ); %>
+                                <div class="settings-unified-source-row settings-unified-source-row--overview" data-unified-overview-row data-combined-source-app-id="<%= app.id %>">
+                                  <div class="settings-unified-source-app">
+                                    <img class="settings-combined-icon" src="<%= iconPath %>" alt="" onerror="this.src='/icons/app.svg'" />
+                                    <span class="settings-combined-name"><%= app.name %></span>
+                                  </div>
+                                  <label class="settings-unified-source-role">
+                                    <select class="settings-select settings-visibility-select settings-unified-source-role-select" name="<%= unifiedOverviewPrefix %>_app_overview_role__<%= unifiedCardToken %>__<%= unifiedSectionKey %>__<%= app.id %>" data-unified-overview-select <%= isDisabled ? 'disabled' : '' %>>
+                                      <% dashboardVisibilityRoles.forEach((option) => { %>
+                                        <option value="<%= option.value %>" <%= option.value === overviewVisibilityRole ? 'selected' : '' %>><%= option.label %></option>
+                                      <% }) %>
+                                    </select>
+                                  </label>
+                                  <input type="hidden" name="<%= unifiedOverviewPrefix %>_app_state_present__<%= unifiedCardToken %>__<%= unifiedSectionKey %>__<%= app.id %>" value="1" data-unified-overview-present />
+                                </div>
                               <% }) %>
-                            </select>
-                            <% if (item.combined) { %>
-                              <input type="hidden" name="<%= combinedPrefix %>_overview_visibility_role" value="disabled" />
-                            <% } %>
-                          </label>
-                          <label class="settings-visibility-group">
-                            <span class="settings-visibility-label">Dashboard</span>
-                            <select class="settings-select settings-visibility-select dashboard-visibility-select" name="<%= combinedPrefix %>_visibility_role" data-dashboard-visibility-role <%= isDisabled ? 'disabled' : '' %>>
-                              <% dashboardVisibilityRoles.forEach((option) => { %>
-                                <option value="<%= option.value %>" <%= option.value === effectiveVisibilityRole ? 'selected' : '' %>><%= option.label %></option>
-                              <% }) %>
-                            </select>
-                          </label>
+                            </div>
+                            <div class="settings-filter-group-title">Dashboard Visibility</div>
+                            <div class="settings-unified-source-list">
+                              <div class="settings-unified-source-row settings-unified-source-row--overview">
+                                <div class="settings-unified-source-app">
+                                  <img class="settings-combined-icon" src="/icons/dashboard.svg" alt="" onerror="this.src='/icons/app.svg'" />
+                                  <span class="settings-combined-name">Dashboard</span>
+                                </div>
+                                <label class="settings-unified-source-role">
+                                  <select class="settings-select settings-visibility-select settings-unified-source-role-select dashboard-visibility-select" name="<%= combinedPrefix %>_visibility_role" data-dashboard-visibility-role <%= isDisabled ? 'disabled' : '' %>>
+                                    <% dashboardVisibilityRoles.forEach((option) => { %>
+                                      <option value="<%= option.value %>" <%= option.value === effectiveVisibilityRole ? 'selected' : '' %>><%= option.label %></option>
+                                    <% }) %>
+                                  </select>
+                                </label>
+                              </div>
+                            </div>
+                          <% } %>
+                          <% if (!isUnifiedCard) { %>
+                            <label class="settings-visibility-group">
+                              <span class="settings-visibility-label">Dashboard Visibility</span>
+                              <select class="settings-select settings-visibility-select dashboard-visibility-select" name="<%= combinedPrefix %>_visibility_role" data-dashboard-visibility-role <%= isDisabled ? 'disabled' : '' %>>
+                                <% dashboardVisibilityRoles.forEach((option) => { %>
+                                  <option value="<%= option.value %>" <%= option.value === effectiveVisibilityRole ? 'selected' : '' %>><%= option.label %></option>
+                                <% }) %>
+                              </select>
+                            </label>
+                          <% } %>
                         </div>
                       </div>
+                    </div>
+                    <div class="settings-cell settings-cell--visibility settings-col-filter">
+                      <% if (hasFilterPanel) { %>
+                        <div class="settings-visibility-popover" data-dashboard-filter-popover>
+                          <button class="settings-visibility-trigger" type="button" aria-label="Configure filters and display options" aria-expanded="false" aria-haspopup="true" <%= isDisabled ? 'disabled' : '' %>></button>
+                          <div class="settings-visibility-menu settings-filter-menu" hidden>
+                            <% if (isUnifiedMediaCard) { %>
+                              <div class="settings-filter-group-title"><%= mediaSectionLabel %> Apps</div>
+                              <div class="settings-unified-source-list">
+                                <% combinedMediaApps.forEach((app) => { %>
+                                  <% const iconPath = app.icon || (app.id === 'jellyfin'
+                                    ? '/icons/jellyfin.png'
+                                    : (app.id === 'emby' ? '/icons/emby.png' : '/icons/plex.png')); %>
+                                  <% const sourceName = isCustomMediaCombined
+                                    ? (`mediacustom_combine_${mediaCustomCardId}_${app.id}`)
+                                    : (`media_combine_${mediaSectionKey}_${app.id}`); %>
+                                  <% const sourceEnabled = isCustomMediaCombined
+                                    ? (Array.isArray(item.mediaCombined?.appIds) && item.mediaCombined.appIds.includes(app.id))
+                                    : Boolean(mediaDashboardCombine?.[mediaSectionKey]?.[app.id]); %>
+                                  <div class="settings-unified-source-row settings-unified-source-row--source">
+                                    <label class="settings-unified-source-toggle" aria-label="Toggle source for <%= app.name %>">
+                                      <input
+                                        type="checkbox"
+                                        name="<%= sourceName %>"
+                                        data-combined-source-toggle
+                                        data-media-source-toggle
+                                        data-media-app-id="<%= app.id %>"
+                                        data-combined-source-app-id="<%= app.id %>"
+                                        <%= sourceEnabled ? 'checked' : '' %>
+                                      />
+                                    </label>
+                                    <div class="settings-unified-source-app">
+                                      <img class="settings-combined-icon" src="<%= iconPath %>" alt="" onerror="this.src='/icons/app.svg'" />
+                                      <span class="settings-combined-name"><%= app.name %></span>
+                                    </div>
+                                  </div>
+                                <% }) %>
+                              </div>
+                            <% } %>
+                            <% if (isUnifiedArrCard) { %>
+                              <div class="settings-filter-group-title">Combined <%= arrSectionLabel %> Sources</div>
+                              <div class="settings-unified-source-list">
+                                <% combinedArrApps.forEach((app) => { %>
+                                  <% const arrIconPath = resolveAppIconPath(app); %>
+                                  <% const arrSourceName = isCustomArrCombined
+                                    ? (`arrcustom_combine_${arrCustomCardId}_${app.id}`)
+                                    : (`arr_combine_${arrSectionKey}_${app.id}`); %>
+                                  <% const arrSourceEnabled = isCustomArrCombined
+                                    ? (Array.isArray(item.arrCombined?.appIds) && item.arrCombined.appIds.includes(app.id))
+                                    : Boolean(arrDashboardCombine?.[arrSectionKey]?.[app.id]); %>
+                                  <div class="settings-unified-source-row settings-unified-source-row--source">
+                                    <label class="settings-unified-source-toggle" aria-label="Toggle source for <%= app.name %>">
+                                      <input
+                                        type="checkbox"
+                                        name="<%= arrSourceName %>"
+                                        data-combined-source-toggle
+                                        data-combined-source-app-id="<%= app.id %>"
+                                        <%= arrSourceEnabled ? 'checked' : '' %>
+                                      />
+                                    </label>
+                                    <div class="settings-unified-source-app">
+                                      <img class="settings-combined-icon" src="<%= arrIconPath %>" alt="" onerror="this.src='/icons/app.svg'" />
+                                      <span class="settings-combined-name"><%= app.name %></span>
+                                    </div>
+                                  </div>
+                                <% }) %>
+                              </div>
+                              <% if (arrSectionKey === 'activityQueue') { %>
+                                <div class="settings-filter-group-title">Combined Queue Display Options</div>
+                                <div class="settings-grid">
+                                  <label class="radio-pill">
+                                    <input type="checkbox" name="arr_combined_queue_col_detail" <%= arrCombinedQueueDisplay?.queueShowDetail !== false ? 'checked' : '' %> />
+                                    <span>Detail</span>
+                                  </label>
+                                  <label class="radio-pill">
+                                    <input type="checkbox" name="arr_combined_queue_col_subdetail" <%= arrCombinedQueueDisplay?.queueShowSubDetail !== false ? 'checked' : '' %> />
+                                    <span>Sub-detail</span>
+                                  </label>
+                                  <label class="radio-pill">
+                                    <input type="checkbox" name="arr_combined_queue_col_size" <%= arrCombinedQueueDisplay?.queueShowSize !== false ? 'checked' : '' %> />
+                                    <span>Quality</span>
+                                  </label>
+                                  <label class="radio-pill">
+                                    <input type="checkbox" name="arr_combined_queue_col_protocol" <%= arrCombinedQueueDisplay?.queueShowProtocol !== false ? 'checked' : '' %> />
+                                    <span>Protocol</span>
+                                  </label>
+                                  <label class="radio-pill">
+                                    <input type="checkbox" name="arr_combined_queue_col_timeleft" <%= arrCombinedQueueDisplay?.queueShowTimeLeft !== false ? 'checked' : '' %> />
+                                    <span>Time Left</span>
+                                  </label>
+                                  <label class="radio-pill">
+                                    <input type="checkbox" name="arr_combined_queue_col_progress" <%= arrCombinedQueueDisplay?.queueShowProgress !== false ? 'checked' : '' %> />
+                                    <span>Progress</span>
+                                  </label>
+                                </div>
+                                <div class="settings-grid" style="margin-top:12px;">
+                                  <label class="field">
+                                    <span>Visible items in queue</span>
+                                    <input
+                                      type="number"
+                                      min="5"
+                                      max="50"
+                                      step="1"
+                                      name="arr_combined_queue_visible_rows"
+                                      value="<%= arrCombinedQueueDisplay?.queueVisibleRows || 10 %>"
+                                    />
+                                  </label>
+                                </div>
+                              <% } %>
+                            <% } %>
+                            <% if (isUnifiedDownloaderCard) { %>
+                              <div class="settings-filter-group-title">Combined <%= downloaderSectionLabel %> Sources</div>
+                              <div class="settings-unified-source-list">
+                                <% combinedDownloaderApps.forEach((app) => { %>
+                                  <% const downloaderSourceName = isCustomDownloaderCombined
+                                    ? (`downloadercustom_combine_${downloaderCustomCardId}_${app.id}`)
+                                    : (`downloader_combine_${downloaderSectionKey}_${app.id}`); %>
+                                  <% const downloaderSourceEnabled = isCustomDownloaderCombined
+                                    ? (Array.isArray(item.downloaderCombined?.appIds) && item.downloaderCombined.appIds.includes(app.id))
+                                    : Boolean(downloaderDashboardCombine?.[downloaderSectionKey]?.[app.id]); %>
+                                  <div class="settings-unified-source-row settings-unified-source-row--source">
+                                    <label class="settings-unified-source-toggle" aria-label="Toggle source for <%= app.name %>">
+                                      <input
+                                        type="checkbox"
+                                        name="<%= downloaderSourceName %>"
+                                        data-combined-source-toggle
+                                        data-combined-source-app-id="<%= app.id %>"
+                                        <%= downloaderSourceEnabled ? 'checked' : '' %>
+                                      />
+                                    </label>
+                                    <div class="settings-unified-source-app">
+                                      <img class="settings-combined-icon" src="<%= resolveAppIconPath(app) %>" alt="" onerror="this.src='/icons/app.svg'" />
+                                      <span class="settings-combined-name"><%= app.name %></span>
+                                    </div>
+                                  </div>
+                                <% }) %>
+                              </div>
+                              <% if (downloaderSectionKey === 'activityQueue') { %>
+                                <div class="settings-filter-group-title">Combined Download Queue Display Options</div>
+                                <div class="settings-grid">
+                                  <label class="radio-pill">
+                                    <input type="checkbox" name="downloader_combined_queue_col_detail" <%= downloaderCombinedQueueDisplay?.queueShowDetail !== false ? 'checked' : '' %> />
+                                    <span>Source</span>
+                                  </label>
+                                  <label class="radio-pill">
+                                    <input type="checkbox" name="downloader_combined_queue_col_subdetail" <%= downloaderCombinedQueueDisplay?.queueShowSubDetail !== false ? 'checked' : '' %> />
+                                    <span>Detail</span>
+                                  </label>
+                                  <label class="radio-pill">
+                                    <input type="checkbox" name="downloader_combined_queue_col_size" <%= downloaderCombinedQueueDisplay?.queueShowSize !== false ? 'checked' : '' %> />
+                                    <span>Size</span>
+                                  </label>
+                                  <label class="radio-pill">
+                                    <input type="checkbox" name="downloader_combined_queue_col_protocol" <%= downloaderCombinedQueueDisplay?.queueShowProtocol !== false ? 'checked' : '' %> />
+                                    <span>Protocol</span>
+                                  </label>
+                                  <label class="radio-pill">
+                                    <input type="checkbox" name="downloader_combined_queue_col_timeleft" <%= downloaderCombinedQueueDisplay?.queueShowTimeLeft !== false ? 'checked' : '' %> />
+                                    <span>Time Left</span>
+                                  </label>
+                                  <label class="radio-pill">
+                                    <input type="checkbox" name="downloader_combined_queue_col_progress" <%= downloaderCombinedQueueDisplay?.queueShowProgress !== false ? 'checked' : '' %> />
+                                    <span>Progress</span>
+                                  </label>
+                                </div>
+                                <div class="settings-grid" style="margin-top:12px;">
+                                  <label class="field">
+                                    <span>Visible items in queue</span>
+                                    <input
+                                      type="number"
+                                      min="5"
+                                      max="50"
+                                      step="1"
+                                      name="downloader_combined_queue_visible_rows"
+                                      value="<%= downloaderCombinedQueueDisplay?.queueVisibleRows || 10 %>"
+                                    />
+                                  </label>
+                                </div>
+                              <% } %>
+                            <% } %>
+                            <% if (showWatchCardsPanel) { %>
+                              <div class="settings-filter-group-title">Watch Statistics View</div>
+                              <div class="settings-grid">
+                                <label class="radio-pill">
+                                  <input type="radio" name="dashboard_<%= item.appId %>_<%= element.id %>_tautulli_stats_view" value="list" <%= tautulliStatsView !== 'wheel' ? 'checked' : '' %> />
+                                  <span>List View</span>
+                                </label>
+                                <label class="radio-pill">
+                                  <input type="radio" name="dashboard_<%= item.appId %>_<%= element.id %>_tautulli_stats_view" value="wheel" <%= tautulliStatsView === 'wheel' ? 'checked' : '' %> />
+                                  <span>Wheel View</span>
+                                </label>
+                              </div>
+                              <div class="settings-filter-group-title">Watch Statistics Cards</div>
+                              <div class="settings-table settings-table--tautulli-cards">
+                                <% tautulliItems.forEach((item, cardIndex) => { %>
+                                  <% const orderValue = Number.isFinite(item.order) ? item.order : cardIndex + 1; %>
+                                  <div class="settings-row settings-row--tautulli-cards settings-row--tautulli-inline settings-row--draggable">
+                                    <button class="order-button settings-drag-handle settings-drag-handle--tautulli-inline" type="button" title="Drag to reorder" aria-label="Drag to reorder">&#x2630;</button>
+                                    <label class="settings-tautulli-inline-toggle" aria-label="Enable <%= item.name %>">
+                                      <input type="checkbox" name="dashboard_tautulli_card_enable_<%= element.id %>_<%= item.id %>" <%= item.enable ? 'checked' : '' %> />
+                                    </label>
+                                    <span class="settings-element-name settings-element-name--tautulli-inline"><%= item.name %></span>
+                                    <input type="hidden" class="settings-order-input" name="dashboard_tautulli_card_order_<%= element.id %>_<%= item.id %>" value="<%= orderValue %>" />
+                                  </div>
+                                <% }) %>
+                              </div>
+                            <% } %>
+                            <% if (showAppDisplayOptionsInFilter && isQueue) { %>
+                              <div class="settings-filter-group-title">Queue Display Options</div>
+                              <div class="settings-grid">
+                                <label class="radio-pill">
+                                  <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_queue_col_detail" <%= element.queueShowDetail !== false ? 'checked' : '' %> />
+                                  <span><%= element.queueDetailLabel || 'Detail' %></span>
+                                </label>
+                                <label class="radio-pill">
+                                  <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_queue_col_subdetail" <%= element.queueShowSubDetail !== false ? 'checked' : '' %> />
+                                  <span><%= element.queueSubDetailLabel || 'Sub-detail' %></span>
+                                </label>
+                                <label class="radio-pill">
+                                  <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_queue_col_size" <%= element.queueShowSize !== false ? 'checked' : '' %> />
+                                  <span><%= ['transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(resolveAppBaseId(item.appId)) ? 'Size' : 'Quality' %></span>
+                                </label>
+                                <label class="radio-pill">
+                                  <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_queue_col_protocol" <%= element.queueShowProtocol !== false ? 'checked' : '' %> />
+                                  <span>Protocol</span>
+                                </label>
+                                <label class="radio-pill">
+                                  <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_queue_col_timeLeft" <%= element.queueShowTimeLeft !== false ? 'checked' : '' %> />
+                                  <span>Time Left</span>
+                                </label>
+                                <label class="radio-pill">
+                                  <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_queue_col_progress" <%= element.queueShowProgress !== false ? 'checked' : '' %> />
+                                  <span>Progress</span>
+                                </label>
+                              </div>
+                              <div class="settings-grid" style="margin-top:12px;">
+                                <label class="field">
+                                  <span>Visible items in queue</span>
+                                  <input
+                                    type="number"
+                                    min="5"
+                                    max="50"
+                                    step="1"
+                                    name="dashboard_<%= item.appId %>_<%= element.id %>_queue_visible_rows"
+                                    value="<%= element.queueVisibleRows || 10 %>"
+                                  />
+                                </label>
+                              </div>
+                            <% } else if (showAppDisplayOptionsInFilter && isTableCard) { %>
+                              <% const isIndexerSearch = element.id === 'search'; %>
+                              <div class="settings-filter-group-title">Table Display Options</div>
+                              <div class="settings-grid">
+                                <label class="field">
+                                  <span><%= isIndexerSearch ? 'Visible items in table' : 'Visible items in queue' %></span>
+                                  <input
+                                    type="number"
+                                    min="5"
+                                    max="<%= isIndexerSearch ? 100 : 50 %>"
+                                    step="1"
+                                    name="dashboard_<%= item.appId %>_<%= element.id %>_queue_visible_rows"
+                                    value="<%= element.queueVisibleRows || (isIndexerSearch ? 25 : 10) %>"
+                                  />
+                                </label>
+                              </div>
+                            <% } %>
+                            <% if (hasCarouselDisplayOptions) { %>
+                              <div class="settings-filter-group-title">Carousel Display</div>
+                              <div class="settings-grid">
+                                <label class="radio-pill">
+                                  <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_showSubtitle" <%= element.showSubtitle !== false ? 'checked' : '' %> />
+                                  <span>Subtitle</span>
+                                </label>
+                                <label class="radio-pill">
+                                  <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_showMeta" <%= element.showMeta !== false ? 'checked' : '' %> />
+                                  <span>Meta</span>
+                                </label>
+                                <label class="radio-pill">
+                                  <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_showPill" <%= element.showPill !== false ? 'checked' : '' %> />
+                                  <span>Pill</span>
+                                </label>
+                                <label class="radio-pill">
+                                  <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_showTypeIcon" <%= element.showTypeIcon !== false ? 'checked' : '' %> />
+                                  <span>Type Icon</span>
+                                </label>
+                                <label class="radio-pill">
+                                  <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_showViewIcon" <%= element.showViewIcon !== false ? 'checked' : '' %> />
+                                  <span>View Icon</span>
+                                </label>
+                                <label class="radio-pill">
+                                  <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_showUsername" <%= element.showUsername !== false ? 'checked' : '' %> />
+                                  <span>Username</span>
+                                </label>
+                              </div>
+                            <% } %>
+                          </div>
+                        </div>
+                      <% } %>
                     </div>
                     <% const orderName = item.combined ? `dashboard_combined_${item.combinedType || 'mixed'}_${item.combinedSection || element.id}_order` : `dashboard_${item.appId}_${element.id}_order`; %>
                     <input type="hidden" class="settings-order-input" name="<%= orderName %>" value="<%= orderValue %>" />
@@ -1041,7 +1479,7 @@
                       <input type="hidden" name="dashboard_<%= item.appId %>_<%= element.id %>_present" value="1" />
                     <% } %>
                     <div class="settings-cell settings-expand-cell">
-                      <button class="settings-expand-toggle settings-inline-toggle settings-element-options-toggle" type="button" data-target="dashboardOptions-<%= rowKey %>" aria-label="Toggle carousel display options" aria-expanded="false" <%= isDisabled ? 'disabled' : '' %>>
+                      <button class="settings-expand-toggle settings-inline-toggle settings-element-options-toggle" type="button" data-target="dashboardOptions-<%= rowKey %>" aria-label="Toggle card options" aria-expanded="false" <%= (isDisabled || !hasOptionsPanel) ? 'disabled' : '' %>>
                         <img class="settings-expand-icon" src="/icons/expand.svg" alt="" />
                       </button>
                     </div>
@@ -1059,182 +1497,7 @@
                   <div class="settings-collapsible is-collapsed settings-inline-collapsible" id="dashboardOptions-<%= rowKey %>">
                     <div class="settings-card">
                       <fieldset class="settings-card-fields" <%= isDisabled ? 'disabled' : '' %>>
-                      <% if (showWatchCardsPanel) { %>
-                        <div class="settings-card-title">Watch Statistics Cards</div>
-                        <div class="settings-table settings-table--tautulli-cards">
-                          <% tautulliItems.forEach((item, cardIndex) => { %>
-                            <% const orderValue = Number.isFinite(item.order) ? item.order : cardIndex + 1; %>
-                            <div class="settings-row settings-row--tautulli-cards settings-row--draggable">
-                              <div class="settings-element">
-                                <button class="order-button settings-drag-handle" type="button" title="Drag to reorder" aria-label="Drag to reorder">&#x2630;</button>
-                                <span class="settings-element-name"><%= item.name %></span>
-                              </div>
-                              <div class="settings-cell">
-                                <input type="checkbox" name="dashboard_tautulli_card_enable_<%= element.id %>_<%= item.id %>" <%= item.enable ? 'checked' : '' %> />
-                              </div>
-                              <div class="settings-cell settings-cell--blank" aria-hidden="true"></div>
-                              <div class="settings-cell settings-cell--blank" aria-hidden="true"></div>
-                              <input type="hidden" class="settings-order-input" name="dashboard_tautulli_card_order_<%= element.id %>_<%= item.id %>" value="<%= orderValue %>" />
-                              <div class="settings-cell settings-cell--blank" aria-hidden="true"></div>
-                            </div>
-                          <% }) %>
-                        </div>
-                      <% } %>
-                      <% if (isArrCombined) { %>
-                        <% const arrSectionKey = isCustomArrCombined ? (item.arrCombined?.sectionKey || 'activityQueue') : (item.combinedSection || 'activityQueue'); %>
-                        <% const arrSectionLabel = arrSectionKey === 'downloadingSoon'
-                          ? 'Downloading Soon'
-                          : (arrSectionKey === 'recentlyDownloaded'
-                            ? 'Recently Downloaded'
-                            : (arrSectionKey === 'calendar' ? 'Calendar' : 'Activity Queue')); %>
-                        <div class="settings-card-title">Combined <%= arrSectionLabel %> Sources</div>
-                        <div class="settings-combined-grid settings-combined-grid--arr" data-section="<%= arrSectionKey %>">
-                          <% arrApps.forEach((app) => { %>
-                            <% const arrIconPath = resolveAppIconPath(app); %>
-                            <% const isChecked = isCustomArrCombined
-                              ? (Array.isArray(item.arrCombined?.appIds) && item.arrCombined.appIds.includes(app.id))
-                              : Boolean(arrDashboardCombine?.[arrSectionKey]?.[app.id]); %>
-                            <% const arrSourceName = isCustomArrCombined
-                              ? `arrcustom_combine_${item.arrCombined?.cardId}_${app.id}`
-                              : `arr_combine_${arrSectionKey}_${app.id}`; %>
-                            <label class="settings-combined-item">
-                              <img class="settings-combined-icon" src="<%= arrIconPath %>" alt="" onerror="this.src='/icons/app.svg'" />
-                              <span class="settings-combined-name"><%= app.name %></span>
-                              <input
-                                type="checkbox"
-                                name="<%= arrSourceName %>"
-                                <%= isChecked ? 'checked' : '' %>
-                              />
-                            </label>
-                          <% }) %>
-                        </div>
-                        <% if (arrSectionKey === 'activityQueue') { %>
-                          <div class="settings-card-title" style="margin-top:12px;">Combined Queue Display Options</div>
-                          <div class="settings-grid">
-                            <label class="radio-pill">
-                              <input type="checkbox" name="arr_combined_queue_col_detail" <%= arrCombinedQueueDisplay?.queueShowDetail !== false ? 'checked' : '' %> />
-                              <span>Detail</span>
-                            </label>
-                            <label class="radio-pill">
-                              <input type="checkbox" name="arr_combined_queue_col_subdetail" <%= arrCombinedQueueDisplay?.queueShowSubDetail !== false ? 'checked' : '' %> />
-                              <span>Sub-detail</span>
-                            </label>
-                            <label class="radio-pill">
-                              <input type="checkbox" name="arr_combined_queue_col_size" <%= arrCombinedQueueDisplay?.queueShowSize !== false ? 'checked' : '' %> />
-                              <span>Quality</span>
-                            </label>
-                            <label class="radio-pill">
-                              <input type="checkbox" name="arr_combined_queue_col_protocol" <%= arrCombinedQueueDisplay?.queueShowProtocol !== false ? 'checked' : '' %> />
-                              <span>Protocol</span>
-                            </label>
-                            <label class="radio-pill">
-                              <input type="checkbox" name="arr_combined_queue_col_timeleft" <%= arrCombinedQueueDisplay?.queueShowTimeLeft !== false ? 'checked' : '' %> />
-                              <span>Time Left</span>
-                            </label>
-                            <label class="radio-pill">
-                              <input type="checkbox" name="arr_combined_queue_col_progress" <%= arrCombinedQueueDisplay?.queueShowProgress !== false ? 'checked' : '' %> />
-                              <span>Progress</span>
-                            </label>
-                          </div>
-                          <div class="settings-grid" style="margin-top:12px;">
-                            <label class="field">
-                              <span>Visible items in queue</span>
-                              <input
-                                type="number"
-                                min="5"
-                                max="50"
-                                step="1"
-                                name="arr_combined_queue_visible_rows"
-                                value="<%= arrCombinedQueueDisplay?.queueVisibleRows || 10 %>"
-                              />
-                            </label>
-                          </div>
-                        <% } %>
-                      <% } %>
-                      <% if (item.combined && item.combinedType === 'media') { %>
-                        <% const mediaSectionKey = item.combinedSection || 'active'; %>
-                        <% const mediaSectionLabel = mediaSectionKey === 'recent' ? 'Recently Added' : 'Active Streams'; %>
-                        <% const combinedMediaApps = (Array.isArray(mediaApps) && mediaApps.length)
-                          ? mediaApps
-                          : (Array.isArray(apps) ? apps.filter((appItem) => ['plex', 'jellyfin', 'emby'].includes(appItem.id)) : []); %>
-                        <div class="settings-card-title">Combined <%= mediaSectionLabel %> Sources</div>
-                        <div class="settings-combined-grid settings-combined-grid--arr" data-section="<%= mediaSectionKey %>">
-                          <% combinedMediaApps.forEach((app) => { %>
-                            <% const iconPath = app.icon || (app.id === 'jellyfin'
-                              ? '/icons/jellyfin.png'
-                              : (app.id === 'emby' ? '/icons/emby.png' : '/icons/plex.png')); %>
-                            <label class="settings-combined-item">
-                              <img class="settings-combined-icon" src="<%= iconPath %>" alt="" onerror="this.src='/icons/app.svg'" />
-                              <span class="settings-combined-name"><%= app.name %></span>
-                              <input
-                                type="checkbox"
-                                name="media_combine_<%= mediaSectionKey %>_<%= app.id %>"
-                                <%= mediaDashboardCombine?.[mediaSectionKey]?.[app.id] ? 'checked' : '' %>
-                              />
-                            </label>
-                          <% }) %>
-                        </div>
-                      <% } %>
-                      <% if (item.combined && item.combinedType === 'downloader' && element.id === 'activity-queue') { %>
-                        <% const combinedDownloaderApps = (Array.isArray(downloaderApps) && downloaderApps.length)
-                          ? downloaderApps
-                          : (Array.isArray(apps) ? apps.filter((appItem) => ['transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(resolveAppBaseId(appItem.id))) : []); %>
-                        <div class="settings-card-title">Combined Download Queue Sources</div>
-                        <div class="settings-combined-grid settings-combined-grid--arr" data-section="activityQueue">
-                          <% combinedDownloaderApps.forEach((app) => { %>
-                            <label class="settings-combined-item">
-                              <img class="settings-combined-icon" src="<%= resolveAppIconPath(app) %>" alt="" onerror="this.src='/icons/app.svg'" />
-                              <span class="settings-combined-name"><%= app.name %></span>
-                              <input
-                                type="checkbox"
-                                name="downloader_combine_activityQueue_<%= app.id %>"
-                                <%= downloaderDashboardCombine?.activityQueue?.[app.id] ? 'checked' : '' %>
-                              />
-                            </label>
-                          <% }) %>
-                        </div>
-                        <div class="settings-card-title" style="margin-top:12px;">Combined Download Queue Display Options</div>
-                        <div class="settings-grid">
-                          <label class="radio-pill">
-                            <input type="checkbox" name="downloader_combined_queue_col_detail" <%= downloaderCombinedQueueDisplay?.queueShowDetail !== false ? 'checked' : '' %> />
-                            <span>Source</span>
-                          </label>
-                          <label class="radio-pill">
-                            <input type="checkbox" name="downloader_combined_queue_col_subdetail" <%= downloaderCombinedQueueDisplay?.queueShowSubDetail !== false ? 'checked' : '' %> />
-                            <span>Detail</span>
-                          </label>
-                          <label class="radio-pill">
-                            <input type="checkbox" name="downloader_combined_queue_col_size" <%= downloaderCombinedQueueDisplay?.queueShowSize !== false ? 'checked' : '' %> />
-                            <span>Size</span>
-                          </label>
-                          <label class="radio-pill">
-                            <input type="checkbox" name="downloader_combined_queue_col_protocol" <%= downloaderCombinedQueueDisplay?.queueShowProtocol !== false ? 'checked' : '' %> />
-                            <span>Protocol</span>
-                          </label>
-                          <label class="radio-pill">
-                            <input type="checkbox" name="downloader_combined_queue_col_timeleft" <%= downloaderCombinedQueueDisplay?.queueShowTimeLeft !== false ? 'checked' : '' %> />
-                            <span>Time Left</span>
-                          </label>
-                          <label class="radio-pill">
-                            <input type="checkbox" name="downloader_combined_queue_col_progress" <%= downloaderCombinedQueueDisplay?.queueShowProgress !== false ? 'checked' : '' %> />
-                            <span>Progress</span>
-                          </label>
-                        </div>
-                        <div class="settings-grid" style="margin-top:12px;">
-                          <label class="field">
-                            <span>Visible items in queue</span>
-                            <input
-                              type="number"
-                              min="5"
-                              max="50"
-                              step="1"
-                              name="downloader_combined_queue_visible_rows"
-                              value="<%= downloaderCombinedQueueDisplay?.queueVisibleRows || 10 %>"
-                            />
-                          </label>
-                        </div>
-                      <% } %>
-                      <% if (isQueue && !item.combined) { %>
+                      <% if ((isQueue && !item.combined) && !showAppDisplayOptionsInFilter) { %>
                         <div class="settings-card-title">Queue Display Options</div>
                         <div class="settings-grid">
                           <label class="radio-pill">
@@ -1275,7 +1538,7 @@
                             />
                           </label>
                         </div>
-                      <% } else if (!item.combined && isTableCard) { %>
+                      <% } else if ((!item.combined && isTableCard) && !showAppDisplayOptionsInFilter) { %>
                         <% const isIndexerSearch = element.id === 'search'; %>
                         <div class="settings-card-title">Table Display Options</div>
                         <div class="settings-grid">
@@ -1291,34 +1554,6 @@
                             />
                           </label>
                         </div>
-                      <% } else if (!item.combined || (element.id !== 'activity-queue' && !isTableCard)) { %>
-                        <div class="settings-card-title">Carousel Display Options</div>
-                        <div class="settings-grid">
-                          <label class="radio-pill">
-                            <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_showSubtitle" <%= element.showSubtitle !== false ? 'checked' : '' %> />
-                            <span>Subtitle</span>
-                          </label>
-                          <label class="radio-pill">
-                            <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_showMeta" <%= element.showMeta !== false ? 'checked' : '' %> />
-                            <span>Meta</span>
-                          </label>
-                          <label class="radio-pill">
-                            <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_showPill" <%= element.showPill !== false ? 'checked' : '' %> />
-                            <span>Pill</span>
-                          </label>
-                          <label class="radio-pill">
-                            <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_showTypeIcon" <%= element.showTypeIcon !== false ? 'checked' : '' %> />
-                            <span>Type Icon</span>
-                          </label>
-                          <label class="radio-pill">
-                            <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_showViewIcon" <%= element.showViewIcon !== false ? 'checked' : '' %> />
-                            <span>View Icon</span>
-                          </label>
-                          <label class="radio-pill">
-                            <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_showUsername" <%= element.showUsername !== false ? 'checked' : '' %> />
-                            <span>Username</span>
-                          </label>
-                        </div>
                       <% } %>
                       </fieldset>
                     </div>
@@ -1326,40 +1561,46 @@
                 <% }) %>
               </div>
               <%
-                const dashboardElementResultMap = {
-                  added: 'Dashboard item added back.',
-                  removed: 'Dashboard item removed. Re-add it from the list below.',
+                const dashboardAddResultMap = {
+                  added: 'Dashboard card added.',
+                  removed: 'Dashboard card removed. Re-add it from the list below.',
                 };
-                const dashboardElementNotice = dashboardElementError
-                  ? dashboardElementError
-                  : (dashboardElementResultMap[dashboardElementResult] || 'Remove dashboard rows and re-add them as needed.');
-                const dashboardAddOptions = Array.isArray(dashboardRemovedAddOptions) ? dashboardRemovedAddOptions : [];
-                const dashboardAddGroups = dashboardAddOptions.reduce((acc, entry) => {
-                  const groupName = String(entry?.group || 'Apps').trim() || 'Apps';
+                const dashboardAddResult = String(dashboardElementResult || arrCombinedCardResult || '').trim();
+                const dashboardAddError = String(dashboardElementError || arrCombinedCardError || '').trim();
+                const dashboardAddNotice = dashboardAddError
+                  ? dashboardAddError
+                  : (dashboardAddResultMap[dashboardAddResult] || 'Add dashboard cards by category.');
+                const dashboardCurrentEntries = Array.isArray(dashboardAddOptions) ? dashboardAddOptions : [];
+                const groupDashboardEntries = (entries) => entries.reduce((acc, entry) => {
+                  const groupName = String(entry?.group || 'Cards').trim() || 'Cards';
                   if (!acc[groupName]) acc[groupName] = [];
                   acc[groupName].push(entry);
                   return acc;
                 }, {});
+                const dashboardCurrentGroups = groupDashboardEntries(dashboardCurrentEntries);
               %>
-              <div class="category-manager-add app-manager-add dashboard-element-add-row" id="dashboardElementAddForm">
-                <div class="icon-picker dashboard-element-picker" data-dashboard-element-picker>
+              <div class="category-manager-add app-manager-add dashboard-add-row" id="dashboardAddFormDeprecated" data-dashboard-add-form>
+                <div class="icon-picker dashboard-add-picker" data-dashboard-add-picker>
                   <button class="settings-select icon-picker-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
                     <span class="icon-picker-preview" aria-hidden="true"></span>
-                    <span class="icon-picker-label">Select dashboard item</span>
+                    <span class="icon-picker-label">Select dashboard card</span>
                   </button>
-                  <div class="icon-picker-menu" role="listbox" aria-label="Dashboard item">
-                    <% if (dashboardAddOptions.length) { %>
-                      <% Object.keys(dashboardAddGroups).sort((a, b) => String(a || '').localeCompare(String(b || ''))).forEach((groupName) => { %>
+                  <div class="icon-picker-menu" role="listbox" aria-label="Dashboard card">
+                    <% if (dashboardCurrentEntries.length) { %>
+                      <% Object.keys(dashboardCurrentGroups).forEach((groupName) => { %>
                         <div class="icon-picker-group-label"><%= groupName %></div>
-                        <% dashboardAddGroups[groupName].forEach((entry) => { %>
+                        <% dashboardCurrentGroups[groupName].forEach((entry) => { %>
+                          <% const addDisabled = Boolean(entry?.disabled); %>
                           <button
-                            class="icon-picker-option"
+                            class="icon-picker-option<%= addDisabled ? ' is-disabled' : '' %>"
                             type="button"
                             role="option"
-                            data-dashboard-element-option
+                            data-dashboard-add-option
                             data-value="<%= entry.key %>"
                             data-label="<%= entry.name %>"
                             data-preview="<%= entry.icon || '/icons/app.svg' %>"
+                            data-disabled="<%= addDisabled ? '1' : '0' %>"
+                            <%= addDisabled ? 'disabled aria-disabled="true"' : '' %>
                           >
                             <img class="icon-picker-icon" src="<%= entry.icon || '/icons/app.svg' %>" alt="" onerror="this.src='/icons/app.svg'" />
                             <span class="icon-picker-option-label"><%= entry.name %></span>
@@ -1367,66 +1608,14 @@
                         <% }) %>
                       <% }) %>
                     <% } else { %>
-                      <div class="icon-picker-empty">No removed dashboard items</div>
+                      <div class="icon-picker-empty">No current dashboard cards available</div>
                     <% } %>
                   </div>
-                  <input type="hidden" name="dashboard_element_key" id="dashboardElementSelect" value="" />
+                  <input type="hidden" name="dashboard_add_key_current" id="dashboardAddKeySelectDeprecated" data-dashboard-add-key value="" />
                 </div>
-                <button class="primary-button dashboard-element-add-btn" type="submit" formaction="/settings/dashboard-elements/add" formmethod="post" <%= dashboardAddOptions.length ? '' : 'disabled' %>>Add Dashboard Card</button>
+                <button class="primary-button dashboard-add-btn" type="submit" formaction="/settings/dashboard/add" formmethod="post" <%= dashboardCurrentEntries.length ? '' : 'disabled' %>>Add Dashboard Card</button>
               </div>
-              <span class="settings-users-note<%= dashboardElementError ? ' settings-users-note--error' : '' %>"><%= dashboardElementNotice %></span>
-              <%
-                const arrCombinedCardResultMap = {
-                  added: 'Combined card added.',
-                  removed: 'Combined card removed.',
-                };
-                const arrCombinedCardNotice = arrCombinedCardError
-                  ? arrCombinedCardError
-                  : (arrCombinedCardResultMap[arrCombinedCardResult] || 'Add combined cards here, then set sources inside each card options.');
-              %>
-              <% const arrCombinedOptions = Array.isArray(dashboardCombinedAddOptions) ? dashboardCombinedAddOptions : []; %>
-              <div class="category-manager-add app-manager-add dashboard-combined-add-row" id="dashboardCombinedAddForm">
-                <div class="icon-picker dashboard-combined-picker" data-dashboard-combined-picker>
-                  <button class="settings-select icon-picker-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
-                    <span class="icon-picker-preview" aria-hidden="true"></span>
-                    <span class="icon-picker-label">Select combined card</span>
-                  </button>
-                  <div class="icon-picker-menu" role="listbox" aria-label="Combined card section">
-                    <% if (arrCombinedOptions.length) { %>
-                      <%
-                        const combinedOptionGroups = arrCombinedOptions.reduce((acc, entry) => {
-                          const groupName = String(entry?.group || 'Combined Cards').trim() || 'Combined Cards';
-                          if (!acc[groupName]) acc[groupName] = [];
-                          acc[groupName].push(entry);
-                          return acc;
-                        }, {});
-                      %>
-                      <% Object.keys(combinedOptionGroups).sort((a, b) => String(a || '').localeCompare(String(b || ''))).forEach((groupName) => { %>
-                        <div class="icon-picker-group-label"><%= groupName %></div>
-                        <% combinedOptionGroups[groupName].forEach((option) => { %>
-                          <button
-                            class="icon-picker-option"
-                            type="button"
-                            role="option"
-                            data-dashboard-combined-option
-                            data-value="<%= option.key %>"
-                            data-label="<%= option.name %>"
-                            data-preview="<%= option.icon || '/icons/arr-suite.svg' %>"
-                          >
-                            <img class="icon-picker-icon" src="<%= option.icon || '/icons/arr-suite.svg' %>" alt="" onerror="this.src='/icons/arr-suite.svg'" />
-                            <span class="icon-picker-option-label"><%= option.name %></span>
-                          </button>
-                        <% }) %>
-                      <% }) %>
-                    <% } else { %>
-                      <div class="icon-picker-empty">No combined sections available</div>
-                    <% } %>
-                  </div>
-                  <input type="hidden" name="dashboard_combined_key" id="dashboardCombinedKeySelect" value="" />
-                </div>
-                <button class="primary-button dashboard-combined-add-btn" type="submit" formaction="/settings/dashboard-combined/add" formmethod="post" <%= arrCombinedOptions.length ? '' : 'disabled' %>>Add Combined Card</button>
-              </div>
-              <span class="settings-users-note<%= arrCombinedCardError ? ' settings-users-note--error' : '' %>"><%= arrCombinedCardNotice %></span>
+              <span class="settings-users-note<%= dashboardAddError ? ' settings-users-note--error' : '' %>"><%= dashboardAddNotice %></span>
               <button class="primary-button" type="submit">Save dashboard settings</button>
             </form>
           </div>
@@ -2923,12 +3112,7 @@
         const defaultAppSelect = document.getElementById('defaultAppSelect');
         const defaultAppCategory = document.getElementById('defaultAppCategory');
         const defaultAppNote = document.getElementById('defaultAppNote');
-        const dashboardElementAddForm = document.getElementById('dashboardElementAddForm');
-        const dashboardElementPicker = dashboardElementAddForm?.querySelector('[data-dashboard-element-picker]');
-        const dashboardElementSelect = document.getElementById('dashboardElementSelect');
-        const dashboardCombinedAddForm = document.getElementById('dashboardCombinedAddForm');
-        const dashboardCombinedPicker = dashboardCombinedAddForm?.querySelector('[data-dashboard-combined-picker]');
-        const dashboardCombinedSelect = document.getElementById('dashboardCombinedKeySelect');
+        const dashboardAddForms = Array.from(document.querySelectorAll('[data-dashboard-add-form]'));
         const customAppName = document.getElementById('customAppName');
         const customAppCategory = document.getElementById('customAppCategory');
         const customAppIconSelect = document.getElementById('customAppIconSelect');
@@ -2975,30 +3159,23 @@
         } else {
           defaultAppPickerApi.setSelection('', 'No default apps available');
         }
-        const dashboardElementPickerApi = initIconPicker(dashboardElementPicker, dashboardElementSelect);
-        const dashboardElementOptions = Array.from(dashboardElementPicker?.querySelectorAll('.icon-picker-option[data-dashboard-element-option]') || []);
-        if (dashboardElementOptions.length) {
-          const firstDashboardOption = dashboardElementOptions[0];
-          dashboardElementPickerApi.setSelection(
-            String(firstDashboardOption.dataset.value || '').trim(),
-            String(firstDashboardOption.dataset.label || firstDashboardOption.textContent || '').trim(),
-            firstDashboardOption
-          );
-        } else {
-          dashboardElementPickerApi.setSelection('', 'No removed dashboard items');
-        }
-        const dashboardCombinedPickerApi = initIconPicker(dashboardCombinedPicker, dashboardCombinedSelect);
-        const dashboardCombinedOptions = Array.from(dashboardCombinedPicker?.querySelectorAll('.icon-picker-option[data-dashboard-combined-option]') || []);
-        if (dashboardCombinedOptions.length) {
-          const firstCombinedOption = dashboardCombinedOptions[0];
-          dashboardCombinedPickerApi.setSelection(
-            String(firstCombinedOption.dataset.value || '').trim(),
-            String(firstCombinedOption.dataset.label || firstCombinedOption.textContent || '').trim(),
-            firstCombinedOption
-          );
-        } else {
-          dashboardCombinedPickerApi.setSelection('', 'No combined sections available');
-        }
+        dashboardAddForms.forEach((dashboardAddForm) => {
+          const dashboardAddPicker = dashboardAddForm?.querySelector('[data-dashboard-add-picker]');
+          const dashboardAddSelect = dashboardAddForm?.querySelector('input[data-dashboard-add-key]');
+          if (!dashboardAddPicker || !dashboardAddSelect) return;
+          const dashboardAddPickerApi = initIconPicker(dashboardAddPicker, dashboardAddSelect);
+          const dashboardAddPickerOptions = Array.from(dashboardAddPicker.querySelectorAll('.icon-picker-option[data-dashboard-add-option]'));
+          const firstDashboardOption = dashboardAddPickerOptions.find((option) => !option.disabled);
+          if (firstDashboardOption) {
+            dashboardAddPickerApi.setSelection(
+              String(firstDashboardOption.dataset.value || '').trim(),
+              String(firstDashboardOption.dataset.label || firstDashboardOption.textContent || '').trim(),
+              firstDashboardOption
+            );
+          } else {
+            dashboardAddPickerApi.setSelection('', 'No dashboard cards available');
+          }
+        });
 
         customAppSubmit?.addEventListener('click', async () => {
           const name = String(customAppName?.value || '').trim();
@@ -3241,20 +3418,25 @@
         const dashboardTable = document.querySelector('.settings-subtab-panel[data-subtab="dashboard"] .settings-table--elements');
         if (dashboardTable) {
           let draggedElementRow = null;
-          let openDashboardVisibilityPopover = null;
+          let openDashboardPopover = null;
           const getDashboardVisibilityRole = (row) => {
-            const select = row?.querySelector('select[data-dashboard-visibility-role]');
+            const select = row?.querySelector('select[data-dashboard-visibility-role], select.dashboard-visibility-select');
             if (select) return String(select.value || '').trim().toLowerCase();
-            const hidden = row?.querySelector('input[type="hidden"][name$="_visibility_role"]');
-            return String(hidden?.value || '').trim().toLowerCase();
+            const hidden = row?.querySelector('input[type="hidden"][name$="_visibility_role"]:not([name$="_overview_visibility_role"])');
+            if (hidden) return String(hidden.value || '').trim().toLowerCase();
+            return 'user';
           };
           const updateRowState = (row) => {
             if (!row) return;
             const visibilityRole = getDashboardVisibilityRole(row);
+            const sourceToggles = Array.from(row.querySelectorAll('input[type="checkbox"][data-combined-source-toggle]'));
+            const hasSourceToggles = sourceToggles.length > 0;
+            const hasSelectedSource = sourceToggles.some((input) => input.checked);
             row.classList.toggle('is-disabled', visibilityRole === 'disabled');
+            row.classList.toggle('is-inactive', visibilityRole !== 'disabled' && hasSourceToggles && !hasSelectedSource);
             row.classList.remove('is-muted');
           };
-          const closeDashboardVisibilityPopover = (popover) => {
+          const closeDashboardPopover = (popover) => {
             if (!popover) return;
             const trigger = popover.querySelector('.settings-visibility-trigger');
             const menu = popover.querySelector('.settings-visibility-menu');
@@ -3263,12 +3445,12 @@
             menu.hidden = true;
             const row = popover.closest('.settings-row');
             if (row) row.classList.remove('has-open-visibility');
-            if (openDashboardVisibilityPopover === popover) openDashboardVisibilityPopover = null;
+            if (openDashboardPopover === popover) openDashboardPopover = null;
           };
-          const openDashboardVisibilityMenu = (popover) => {
+          const openDashboardPopoverMenu = (popover) => {
             if (!popover) return;
-            if (openDashboardVisibilityPopover && openDashboardVisibilityPopover !== popover) {
-              closeDashboardVisibilityPopover(openDashboardVisibilityPopover);
+            if (openDashboardPopover && openDashboardPopover !== popover) {
+              closeDashboardPopover(openDashboardPopover);
             }
             const trigger = popover.querySelector('.settings-visibility-trigger');
             const menu = popover.querySelector('.settings-visibility-menu');
@@ -3277,7 +3459,29 @@
             menu.hidden = false;
             const row = popover.closest('.settings-row');
             if (row) row.classList.add('has-open-visibility');
-            openDashboardVisibilityPopover = popover;
+            openDashboardPopover = popover;
+          };
+          const syncUnifiedOverviewRows = (row) => {
+            if (!row) return;
+            const sourceToggles = Array.from(row.querySelectorAll('input[type="checkbox"][data-combined-source-toggle][data-combined-source-app-id]'));
+            const overviewRows = Array.from(row.querySelectorAll('[data-unified-overview-row]'));
+            if (!sourceToggles.length || !overviewRows.length) return;
+            const isAppAccessDisabled = row.dataset.appAccessDisabled === '1';
+            const selectedAppIds = new Set(
+              sourceToggles
+                .filter((input) => input.checked)
+                .map((input) => String(input.dataset.combinedSourceAppId || input.dataset.mediaAppId || '').trim())
+                .filter(Boolean)
+            );
+            overviewRows.forEach((overviewRow) => {
+              const appId = String(overviewRow.dataset.combinedSourceAppId || overviewRow.dataset.mediaAppId || '').trim();
+              const isSelected = selectedAppIds.has(appId);
+              overviewRow.hidden = !isSelected;
+              const select = overviewRow.querySelector('[data-unified-overview-select], [data-media-overview-select]');
+              if (select) select.disabled = !isSelected || isAppAccessDisabled;
+              const present = overviewRow.querySelector('[data-unified-overview-present], [data-media-overview-present]');
+              if (present) present.disabled = !isSelected || isAppAccessDisabled;
+            });
           };
           const initDragOrderTable = (table) => {
             if (!table) return;
@@ -3351,6 +3555,7 @@
 
           dataRows().forEach((row) => {
             updateRowState(row);
+            syncUnifiedOverviewRows(row);
             row.addEventListener('dragstart', (event) => {
               if (event.dataTransfer) {
                 event.dataTransfer.effectAllowed = 'move';
@@ -3384,7 +3589,7 @@
             });
           });
 
-          dashboardTable.querySelectorAll('[data-dashboard-visibility-popover]').forEach((popover) => {
+          dashboardTable.querySelectorAll('[data-dashboard-visibility-popover], [data-dashboard-filter-popover]').forEach((popover) => {
             const trigger = popover.querySelector('.settings-visibility-trigger');
             const menu = popover.querySelector('.settings-visibility-menu');
             if (!trigger || !menu) return;
@@ -3394,8 +3599,8 @@
               event.preventDefault();
               event.stopPropagation();
               const isOpen = trigger.getAttribute('aria-expanded') === 'true';
-              if (isOpen) closeDashboardVisibilityPopover(popover);
-              else openDashboardVisibilityMenu(popover);
+              if (isOpen) closeDashboardPopover(popover);
+              else openDashboardPopoverMenu(popover);
             });
           });
 
@@ -3405,6 +3610,15 @@
 
           dashboardTable.addEventListener('change', (event) => {
             if (!(event.target instanceof Element)) return;
+            const combinedSourceToggle = event.target.closest('input[type="checkbox"][data-combined-source-toggle]');
+            if (combinedSourceToggle) {
+              const row = combinedSourceToggle.closest('.settings-row--draggable');
+              if (row) {
+                syncUnifiedOverviewRows(row);
+                updateRowState(row);
+              }
+              return;
+            }
             const visibilitySelect = event.target.closest('select[data-dashboard-visibility-role]');
             if (!visibilitySelect) return;
             const row = visibilitySelect.closest('.settings-row--draggable');
@@ -3444,13 +3658,13 @@
             toggle.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
           });
           document.addEventListener('click', (event) => {
-            if (!openDashboardVisibilityPopover) return;
-            if (openDashboardVisibilityPopover.contains(event.target)) return;
-            closeDashboardVisibilityPopover(openDashboardVisibilityPopover);
+            if (!openDashboardPopover) return;
+            if (openDashboardPopover.contains(event.target)) return;
+            closeDashboardPopover(openDashboardPopover);
           });
           document.addEventListener('keydown', (event) => {
             if (event.key !== 'Escape') return;
-            closeDashboardVisibilityPopover(openDashboardVisibilityPopover);
+            closeDashboardPopover(openDashboardPopover);
           });
         }
       } catch (err) {

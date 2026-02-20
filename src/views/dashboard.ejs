@@ -295,7 +295,6 @@
           const hasPlexRecent = dashboardModules.some((item) => item.app.id === 'plex' && item.element.id === 'recent' && !item.mediaCombined);
           const hasPlexWatchlisted = dashboardModules.some((item) => item.app.id === 'plex' && item.element.id === 'watchlisted');
           const hasTautulliStats = dashboardModules.some((item) => item.app.id === 'tautulli' && item.element.id === 'watch-stats');
-          const hasTautulliStatsWheel = dashboardModules.some((item) => item.app.id === 'tautulli' && item.element.id === 'watch-stats-wheel');
           const hasMediaCombinedModules = dashboardModules.some((item) => item.mediaCombined && ['active', 'recent'].includes(item.element.id));
           const hasRequestModules = dashboardModules.some((item) => ['pulsarr', 'seerr'].includes(item.app.id) && (item.element.id === 'recent-requests' || item.element.id === 'most-watchlisted'));
         %>
@@ -303,14 +302,16 @@
           <% dashboardModules.forEach((item) => { %>
             <% if (item.mediaCombined && item.element.id === 'active') { %>
               <%
-                const moduleId = 'mediacombined-active';
-                const controlPrefix = 'mediacombinedActive';
+                const moduleKey = String(item.mediaCombined?.moduleKey || 'mediacombined-active').trim() || 'mediacombined-active';
+                const moduleId = moduleKey;
+                const controlPrefix = moduleKey.replace(/[^a-zA-Z0-9_-]+/g, '') || 'mediacombinedActive';
                 const combinedSourceApps = Array.isArray(item.mediaCombined?.appIds)
                   ? item.mediaCombined.appIds
                     .map((appId) => apps.find((entry) => entry.id === appId))
                     .filter(Boolean)
                   : [];
-                const defaultLogo = '/icons/media-play.svg';
+                const defaultLogo = String(item.mediaCombined?.iconPath || '/icons/media-play.svg').trim() || '/icons/media-play.svg';
+                const title = String(item.mediaCombined?.displayName || 'Active Streams').trim() || 'Active Streams';
               %>
               <section class="plex-module plex-module--no-subtitle" id="<%= moduleId %>">
                 <div class="plex-topbar">
@@ -324,7 +325,7 @@
                         alt="Combined media"
                         loading="eager"
                       />
-                      <span>Active Streams</span>
+                      <span><%= title %></span>
                     </div>
                     <div class="plex-subtitle"></div>
                   </div>
@@ -363,14 +364,16 @@
             <% } %>
             <% if (item.mediaCombined && item.element.id === 'recent') { %>
               <%
-                const moduleId = 'mediacombined-recent';
-                const controlPrefix = 'mediacombinedRecent';
+                const moduleKey = String(item.mediaCombined?.moduleKey || 'mediacombined-recent').trim() || 'mediacombined-recent';
+                const moduleId = moduleKey;
+                const controlPrefix = moduleKey.replace(/[^a-zA-Z0-9_-]+/g, '') || 'mediacombinedRecent';
                 const combinedSourceApps = Array.isArray(item.mediaCombined?.appIds)
                   ? item.mediaCombined.appIds
                     .map((appId) => apps.find((entry) => entry.id === appId))
                     .filter(Boolean)
                   : [];
-                const defaultLogo = '/icons/media-play.svg';
+                const defaultLogo = String(item.mediaCombined?.iconPath || '/icons/media-play.svg').trim() || '/icons/media-play.svg';
+                const title = String(item.mediaCombined?.displayName || 'Recently Added').trim() || 'Recently Added';
               %>
               <section class="plex-module plex-module--no-subtitle" id="<%= moduleId %>">
                 <div class="plex-topbar">
@@ -384,7 +387,7 @@
                         alt="Combined media"
                         loading="eager"
                       />
-                      <span>Recently Added</span>
+                      <span><%= title %></span>
                     </div>
                     <div class="plex-subtitle"></div>
                   </div>
@@ -642,7 +645,8 @@
               </section>
             <% } %>
             <% if (item.app.id === 'tautulli' && item.element.id === 'watch-stats') { %>
-              <section class="plex-module plex-module--no-subtitle" id="tautulli-stats">
+              <% const tautulliViewMode = item.element?.tautulliStatsView === 'wheel' ? 'wheel' : 'list'; %>
+              <section class="plex-module plex-module--no-subtitle" id="<%= tautulliViewMode === 'wheel' ? 'tautulli-stats-wheel' : 'tautulli-stats' %>">
                 <div class="plex-topbar">
                   <div class="plex-title-wrap">
                     <div class="plex-title">
@@ -654,9 +658,14 @@
                   <div class="plex-spacer"></div>
 
                   <div class="plex-controls-right">
-                    <button class="plex-iconbtn" id="tautulliStatsPrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
-                    <button class="plex-iconbtn" id="tautulliStatsNextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
-                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="tautulli-stats">
+                    <% if (tautulliViewMode === 'wheel') { %>
+                      <button class="plex-iconbtn" id="tautulliWheelPrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
+                      <button class="plex-iconbtn" id="tautulliWheelNextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
+                    <% } else { %>
+                      <button class="plex-iconbtn" id="tautulliStatsPrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
+                      <button class="plex-iconbtn" id="tautulliStatsNextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
+                    <% } %>
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="<%= tautulliViewMode === 'wheel' ? 'tautulli-stats-wheel' : 'tautulli-stats' %>">
                       <div class="plex-doublechev">
                         <div class="plex-chev plex-up"></div>
                         <div class="plex-chev plex-down"></div>
@@ -666,44 +675,19 @@
                 </div>
 
                 <div class="plex-panel">
-                  <div id="tautulliStatsViewport" class="plex-carousel-viewport">
-                    <div id="tautulliStatsTrack" class="plex-carousel-track">
-                      <div class="plex-empty">Loading…</div>
-                    </div>
-                  </div>
-                </div>
-              </section>
-            <% } %>
-            <% if (item.app.id === 'tautulli' && item.element.id === 'watch-stats-wheel') { %>
-              <section class="plex-module plex-module--no-subtitle" id="tautulli-stats-wheel">
-                <div class="plex-topbar">
-                  <div class="plex-title-wrap">
-                    <div class="plex-title">
-                      <img class="plex-logo" src="/icons/tautulli.png" alt="Tautulli" loading="eager" />
-                      <span>Watch Statistics Wheel</span>
-                    </div>
-                    <div class="plex-subtitle"></div>
-                  </div>
-                  <div class="plex-spacer"></div>
-
-                  <div class="plex-controls-right">
-                    <button class="plex-iconbtn" id="tautulliWheelPrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
-                    <button class="plex-iconbtn" id="tautulliWheelNextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
-                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="tautulli-stats-wheel">
-                      <div class="plex-doublechev">
-                        <div class="plex-chev plex-up"></div>
-                        <div class="plex-chev plex-down"></div>
+                  <% if (tautulliViewMode === 'wheel') { %>
+                    <div id="tautulliWheelViewport" class="plex-carousel-viewport">
+                      <div id="tautulliWheelTrack" class="plex-carousel-track">
+                        <div class="plex-empty">Loading…</div>
                       </div>
-                    </button>
-                  </div>
-                </div>
-
-                <div class="plex-panel">
-                  <div id="tautulliWheelViewport" class="plex-carousel-viewport">
-                    <div id="tautulliWheelTrack" class="plex-carousel-track">
-                      <div class="plex-empty">Loading…</div>
                     </div>
-                  </div>
+                  <% } else { %>
+                    <div id="tautulliStatsViewport" class="plex-carousel-viewport">
+                      <div id="tautulliStatsTrack" class="plex-carousel-track">
+                        <div class="plex-empty">Loading…</div>
+                      </div>
+                    </div>
+                  <% } %>
                 </div>
               </section>
             <% } %>
@@ -821,7 +805,7 @@
                 const moduleId = combinedModuleKey + '-downloading-soon';
                 const controlPrefix = combinedModuleKey + 'Soon';
                 const logo = isCombined ? (item.arrCombined?.iconPath || '/icons/app-arr.svg') : resolveAppIconPath(item.app);
-                const title = isCombined ? (item.arrCombined?.displayName || 'Combined Downloading Soon') : 'Downloading Soon';
+                const title = isCombined ? (item.arrCombined?.displayName || 'Downloading Soon') : 'Downloading Soon';
               %>
               <section class="plex-module plex-module--no-subtitle" id="<%= moduleId %>">
                 <div class="plex-topbar">
@@ -929,7 +913,7 @@
                 const moduleId = combinedModuleKey + '-recently-downloaded';
                 const controlPrefix = combinedModuleKey + 'Recent';
                 const logo = isCombined ? (item.arrCombined?.iconPath || '/icons/app-arr.svg') : resolveAppIconPath(item.app);
-                const title = isCombined ? (item.arrCombined?.displayName || 'Combined Recently Downloaded') : 'Recently Downloaded';
+                const title = isCombined ? (item.arrCombined?.displayName || 'Recently Downloaded') : 'Recently Downloaded';
               %>
               <section class="plex-module plex-module--no-subtitle" id="<%= moduleId %>">
                 <div class="plex-topbar">
@@ -1046,7 +1030,7 @@
                 const moduleId = combinedModuleKey + '-activity-queue';
                 const controlPrefix = combinedModuleKey + 'Queue';
                 const logo = isCombined ? (item.arrCombined?.iconPath || '/icons/app-arr.svg') : resolveAppIconPath(item.app);
-                const title = isCombined ? (item.arrCombined?.displayName || 'Combined Activity Queue') : 'Activity Queue';
+                const title = isCombined ? (item.arrCombined?.displayName || 'Activity Queue') : 'Activity Queue';
                 const combinedQueueDisplay = isCombined ? arrCombinedQueueDisplay : null;
                 const queueDisplay = combinedQueueDisplay || item.element || {};
                 const queueClasses = [
@@ -1192,7 +1176,7 @@
                 const moduleId = combinedModuleKey + '-calendar';
                 const controlPrefix = combinedModuleKey + 'Calendar';
                 const logo = isCombined ? (item.arrCombined?.iconPath || '/icons/app-arr.svg') : resolveAppIconPath(item.app);
-                const title = isCombined ? (item.arrCombined?.displayName || 'Combined Calendar') : 'Calendar';
+                const title = isCombined ? (item.arrCombined?.displayName || 'Calendar') : 'Calendar';
               %>
               <section class="plex-module plex-module--no-subtitle" id="<%= moduleId %>">
                 <div class="plex-topbar">
@@ -1500,14 +1484,20 @@
               <%
                 const isCombined = Boolean(item.downloaderCombined);
                 const itemBaseId = resolveAppBaseId(item.app.id);
-                const moduleId = isCombined ? 'downloaderscombined-activity-queue' : (item.app.id + '-activity-queue');
-                const controlPrefix = isCombined ? 'downloaderscombinedQueue' : (item.app.id + 'Queue');
-                const configPrefix = isCombined ? 'downloaderscombined' : item.app.id;
+                const combinedModuleKey = isCombined ? String(item.downloaderCombined?.moduleKey || 'downloaderscombinedqueue').trim() : String(item.app.id || '').trim();
+                const configPrefix = isCombined
+                  ? (combinedModuleKey.replace(/[^a-zA-Z0-9_-]+/g, '') || 'downloaderscombined')
+                  : item.app.id;
+                const moduleId = configPrefix + '-activity-queue';
+                const controlPrefix = configPrefix + 'Queue';
                 const isTorrentApp = ['transmission', 'qbittorrent'].includes(itemBaseId);
                 const isUsenetApp = ['nzbget', 'sabnzbd'].includes(itemBaseId);
                 const logo = isCombined
-                  ? '/icons/download.svg'
+                  ? (item.downloaderCombined?.iconPath || '/icons/download.svg')
                   : resolveAppIconPath(item.app);
+                const title = isCombined
+                  ? (item.downloaderCombined?.displayName || 'Download Queue')
+                  : 'Download Queue';
                 const detailLabel = isCombined ? 'Source' : (isUsenetApp ? 'Category' : 'Status');
                 const subDetailLabel = isCombined ? 'Detail' : (isUsenetApp ? 'Status' : 'Rate');
                 const combinedQueueDisplay = isCombined ? downloaderCombinedQueueDisplay : null;
@@ -1534,7 +1524,7 @@
                         alt="<%= isCombined ? 'Downloaders' : item.app.name %>"
                         loading="eager"
                       />
-                      <span>Download Queue</span>
+                      <span><%= title %></span>
                     </div>
                     <div class="plex-subtitle"></div>
                   </div>
@@ -1766,7 +1756,7 @@
               </div>
             </div>
           <% } %>
-          <% if (hasTautulliStats || hasTautulliStatsWheel) { %>
+          <% if (hasTautulliStats) { %>
             <div id="tautulliModalBackdrop" class="plex-modal-backdrop plex-hidden">
               <div class="plex-modal">
                 <button id="tautulliModalClose" class="plex-modal-close" aria-label="Close">✕</button>
@@ -2280,6 +2270,8 @@
   <% }) %>
   <% if (dashboardModules.some((item) => item.app.id === 'tautulli')) { %>
     <% const tautulliApp = dashboardModules.find((item) => item.app.id === 'tautulli')?.app; %>
+    <% const tautulliStatsModule = dashboardModules.find((item) => item.app.id === 'tautulli' && item.element.id === 'watch-stats'); %>
+    <% const tautulliStatsView = tautulliStatsModule?.element?.tautulliStatsView === 'wheel' ? 'wheel' : 'list'; %>
     <% const plexAppForTautulli = dashboardModules.find((item) => item.app.id === 'plex')?.app || apps.find((appItem) => appItem.id === 'plex'); %>
     <% const activeTautulliCards = (Array.isArray(tautulliCards) ? tautulliCards : []).filter((item) => item.enable).sort((a, b) => (a.order || 0) - (b.order || 0)).map((item) => item.id); %>
     <% if (tautulliApp) { %>
@@ -2288,7 +2280,8 @@
           baseUrl: (appBaseUrls && appBaseUrls[tautulliApp.id]) || tautulliApp.localUrl || tautulliApp.remoteUrl || tautulliApp.url || '',
           apiKey: tautulliApp.apiKey || '',
           plexBaseUrl: (plexAppForTautulli && ((appBaseUrls && appBaseUrls[plexAppForTautulli.id]) || plexAppForTautulli.localUrl || plexAppForTautulli.remoteUrl || plexAppForTautulli.url)) || '',
-          statsCards: activeTautulliCards
+          statsCards: activeTautulliCards,
+          statsView: tautulliStatsView
         }) %>;
       </script>
       <script src="/tautulli-overview.js?v=<%= assetVersion %>"></script>
@@ -2400,11 +2393,13 @@
     <% dashboardModules.forEach((item) => { %>
       <% if (item.downloaderCombined && item.element.id === 'activity-queue') { %>
         <% const sources = (item.downloaderCombined.appIds || []).map((id) => apps.find((appItem) => appItem.id === id)).filter(Boolean); %>
-        <% if (sources.length > 1) { %>
+        <% if (sources.length) { %>
+          <% const moduleKey = String(item.downloaderCombined?.moduleKey || 'downloaderscombinedqueue').trim() || 'downloaderscombinedqueue'; %>
+          <% const prefix = moduleKey.replace(/[^a-zA-Z0-9_-]+/g, '') || 'downloaderscombined'; %>
           <% downloaderQueueApps.push({
-            appId: 'downloaderscombined',
-            appName: item.downloaderCombined.appNames.join(' + '),
-            prefix: 'downloaderscombined',
+            appId: moduleKey,
+            appName: item.downloaderCombined.displayName || item.downloaderCombined.appNames.join(' + ') || 'Download Queue',
+            prefix,
             sources: sources.map((appItem) => ({ appId: appItem.id, appName: appItem.name })),
           }); %>
         <% } %>
@@ -2424,8 +2419,10 @@
         window.MEDIA_OVERVIEW_COMBINED_CONFIGS = <%- JSON.stringify(
           mediaCombinedModules.map((item) => {
             const isActive = item.element.id === 'active';
-            const controlPrefix = isActive ? 'mediacombinedActive' : 'mediacombinedRecent';
-            const moduleId = isActive ? 'mediacombined-active' : 'mediacombined-recent';
+            const moduleKey = String(item.mediaCombined?.moduleKey || (isActive ? 'mediacombined-active' : 'mediacombined-recent')).trim()
+              || (isActive ? 'mediacombined-active' : 'mediacombined-recent');
+            const controlPrefix = moduleKey.replace(/[^a-zA-Z0-9_-]+/g, '') || (isActive ? 'mediacombinedActive' : 'mediacombinedRecent');
+            const moduleId = moduleKey;
             return {
               section: isActive ? 'active' : 'recent',
               moduleId,

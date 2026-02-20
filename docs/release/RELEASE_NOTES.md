@@ -1,4 +1,15 @@
-# Release Notes (v0.1.0 -> v0.2.30)
+# Release Notes (v0.1.0 -> v0.2.31)
+
+## v0.2.31 (2026-02-20)
+
+- Added first-install `Quick Start Guide` popup with guided setup steps and direct sidebar-settings navigation.
+- Added release `Welcome` popup that surfaces highlights from `Added/Changed/Fixed` sections for the installed version.
+- Added unified custom cards for ARR and Downloaders to match media unified-card workflows.
+- Added unified-card source selection so a single unified card can target one app or multiple apps.
+- Added default `Requesters` category with `Pulsarr` and `Seerr` assigned to Requesters.
+- Updated fresh-install defaults so built-in apps start removed until explicitly restored in `Settings -> Custom -> Sidebar`.
+- Unified Tautulli watch statistics into one card with selectable `list`/`wheel` mode.
+- Fixed deprecated-card reintroduction during app add/restore flows and improved dashboard ordering consistency.
 
 ## v0.2.30 (2026-02-19)
 
@@ -194,7 +205,7 @@
 - Fixed empty-state behavior for active stream modules to align card output across Plex/Jellyfin/Emby and combined views.
 
 
-This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.29`.
+This document summarizes project releases from the initial `v0.1.0` baseline to current `v0.2.31`.
 
 ## v0.2.5 (2026-02-15)
 

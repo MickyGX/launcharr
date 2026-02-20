@@ -6,10 +6,33 @@
     "basePath": "",
     "restrictGuests": false
   },
-  "apps": [],
+  "apps": [
+    { "id": "plex", "removed": true },
+    { "id": "jellyfin", "removed": true },
+    { "id": "emby", "removed": true },
+    { "id": "tautulli", "removed": true },
+    { "id": "radarr", "removed": true },
+    { "id": "sonarr", "removed": true },
+    { "id": "lidarr", "removed": true },
+    { "id": "readarr", "removed": true },
+    { "id": "bazarr", "removed": true },
+    { "id": "prowlarr", "removed": true },
+    { "id": "pulsarr", "removed": true },
+    { "id": "seerr", "removed": true },
+    { "id": "cleanuparr", "removed": true },
+    { "id": "huntarr", "removed": true },
+    { "id": "transmission", "removed": true },
+    { "id": "qbittorrent", "removed": true },
+    { "id": "sabnzbd", "removed": true },
+    { "id": "nzbget", "removed": true },
+    { "id": "jackett", "removed": true },
+    { "id": "autobrr", "removed": true },
+    { "id": "romm", "removed": true }
+  ],
   "categories": [
     { "name": "Admin", "sidebarMenu": false, "icon": "/icons/admin.svg" },
     { "name": "Media", "sidebarMenu": true, "icon": "/icons/media-play.svg" },
+    { "name": "Requesters", "sidebarMenu": false, "icon": "/icons/requesters.png" },
     { "name": "Manager", "sidebarMenu": false, "icon": "/icons/settings.svg" },
     { "name": "Games", "sidebarMenu": false, "icon": "/icons/games.svg" },
     { "name": "Arr Suite", "sidebarMenu": false, "icon": "/icons/app.svg" },
@@ -20,6 +43,9 @@
   "logs": {
     "maxEntries": 250,
     "maxDays": 7
+  },
+  "onboarding": {
+    "quickStartPending": true
   },
   "arrDashboardCombine": {
     "downloadingSoon": {},

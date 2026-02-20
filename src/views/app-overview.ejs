@@ -614,77 +614,55 @@
       <% if (appBaseId === 'tautulli') { %>
         <%
           const overviewItems = Array.isArray(overviewElements) ? overviewElements : [];
-          const showStats = overviewItems.some((item) => item.id === 'watch-stats' && item.enable !== false);
-          const showStatsWheel = overviewItems.some((item) => item.id === 'watch-stats-wheel' && item.enable !== false);
+          const watchStatsElement = overviewItems.find((item) => item.id === 'watch-stats' && item.enable !== false);
+          const tautulliStatsView = watchStatsElement?.tautulliStatsView === 'wheel' ? 'wheel' : 'list';
         %>
-        <% if (showStats || showStatsWheel) { %>
+        <% if (watchStatsElement) { %>
           <div class="plex-overview">
-            <% if (showStats) { %>
-              <section class="plex-module plex-module--no-subtitle" id="tautulli-stats">
-                <div class="plex-topbar">
-                  <div class="plex-title-wrap">
-                    <div class="plex-title">
-                      <img class="plex-logo" src="/icons/tautulli.png" alt="Tautulli" loading="eager" />
-                      <span>Watch Statistics</span>
-                    </div>
-                    <div class="plex-subtitle"></div>
+            <section class="plex-module plex-module--no-subtitle" id="<%= tautulliStatsView === 'wheel' ? 'tautulli-stats-wheel' : 'tautulli-stats' %>">
+              <div class="plex-topbar">
+                <div class="plex-title-wrap">
+                  <div class="plex-title">
+                    <img class="plex-logo" src="/icons/tautulli.png" alt="Tautulli" loading="eager" />
+                    <span>Watch Statistics</span>
                   </div>
-                  <div class="plex-spacer"></div>
-
-                  <div class="plex-controls-right">
-                    <button class="plex-iconbtn" id="tautulliStatsPrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
-                    <button class="plex-iconbtn" id="tautulliStatsNextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
-                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="tautulli-stats">
-                      <div class="plex-doublechev">
-                        <div class="plex-chev plex-up"></div>
-                        <div class="plex-chev plex-down"></div>
-                      </div>
-                    </button>
-                  </div>
+                  <div class="plex-subtitle"></div>
                 </div>
+                <div class="plex-spacer"></div>
 
-                <div class="plex-panel">
-                  <div id="tautulliStatsViewport" class="plex-carousel-viewport">
-                    <div id="tautulliStatsTrack" class="plex-carousel-track">
-                      <div class="plex-empty">Loading…</div>
-                    </div>
-                  </div>
-                </div>
-              </section>
-            <% } %>
-            <% if (showStatsWheel) { %>
-              <section class="plex-module plex-module--no-subtitle" id="tautulli-stats-wheel">
-                <div class="plex-topbar">
-                  <div class="plex-title-wrap">
-                    <div class="plex-title">
-                      <img class="plex-logo" src="/icons/tautulli.png" alt="Tautulli" loading="eager" />
-                      <span>Watch Statistics Wheel</span>
-                    </div>
-                    <div class="plex-subtitle"></div>
-                  </div>
-                  <div class="plex-spacer"></div>
-
-                  <div class="plex-controls-right">
+                <div class="plex-controls-right">
+                  <% if (tautulliStatsView === 'wheel') { %>
                     <button class="plex-iconbtn" id="tautulliWheelPrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
                     <button class="plex-iconbtn" id="tautulliWheelNextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
-                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="tautulli-stats-wheel">
-                      <div class="plex-doublechev">
-                        <div class="plex-chev plex-up"></div>
-                        <div class="plex-chev plex-down"></div>
-                      </div>
-                    </button>
-                  </div>
+                  <% } else { %>
+                    <button class="plex-iconbtn" id="tautulliStatsPrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
+                    <button class="plex-iconbtn" id="tautulliStatsNextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
+                  <% } %>
+                  <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="<%= tautulliStatsView === 'wheel' ? 'tautulli-stats-wheel' : 'tautulli-stats' %>">
+                    <div class="plex-doublechev">
+                      <div class="plex-chev plex-up"></div>
+                      <div class="plex-chev plex-down"></div>
+                    </div>
+                  </button>
                 </div>
+              </div>
 
-                <div class="plex-panel">
+              <div class="plex-panel">
+                <% if (tautulliStatsView === 'wheel') { %>
                   <div id="tautulliWheelViewport" class="plex-carousel-viewport">
                     <div id="tautulliWheelTrack" class="plex-carousel-track">
                       <div class="plex-empty">Loading…</div>
                     </div>
                   </div>
-                </div>
-              </section>
-            <% } %>
+                <% } else { %>
+                  <div id="tautulliStatsViewport" class="plex-carousel-viewport">
+                    <div id="tautulliStatsTrack" class="plex-carousel-track">
+                      <div class="plex-empty">Loading…</div>
+                    </div>
+                  </div>
+                <% } %>
+              </div>
+            </section>
           </div>
           <div id="tautulliModalBackdrop" class="plex-modal-backdrop plex-hidden">
             <div class="plex-modal">
@@ -2109,13 +2087,16 @@
   <% } %>
   <% if (appBaseId === 'tautulli') { %>
     <% const plexApp = apps.find((appItem) => appItem.id === 'plex'); %>
+    <% const tautulliElement = (Array.isArray(overviewElements) ? overviewElements : []).find((item) => item?.id === 'watch-stats'); %>
+    <% const tautulliStatsView = tautulliElement?.tautulliStatsView === 'wheel' ? 'wheel' : 'list'; %>
     <% const activeTautulliCards = (Array.isArray(tautulliCards) ? tautulliCards : []).filter((item) => item.enable).sort((a, b) => (a.order || 0) - (b.order || 0)).map((item) => item.id); %>
     <script>
       window.TAUTULLI_OVERVIEW_CONFIG = <%- JSON.stringify({
         baseUrl: (appBaseUrls && appBaseUrls[app.id]) || app.localUrl || app.remoteUrl || app.url || '',
         apiKey: app.apiKey || '',
         plexBaseUrl: (plexApp && ((appBaseUrls && appBaseUrls[plexApp.id]) || plexApp.localUrl || plexApp.remoteUrl || plexApp.url)) || '',
-        statsCards: activeTautulliCards
+        statsCards: activeTautulliCards,
+        statsView: tautulliStatsView
       }) %>;
     </script>
     <script src="/tautulli-overview.js"></script>

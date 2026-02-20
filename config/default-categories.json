@@ -1,6 +1,7 @@
 [
   { "name": "Admin", "sidebarMenu": false, "icon": "/icons/admin.svg" },
   { "name": "Media", "sidebarMenu": true, "icon": "/icons/media-play.svg" },
+  { "name": "Requesters", "sidebarMenu": false, "icon": "/icons/requesters.png" },
   { "name": "Manager", "sidebarMenu": false, "icon": "/icons/settings.svg" },
   { "name": "Games", "sidebarMenu": false, "icon": "/icons/games.svg" },
   { "name": "Arr Suite", "sidebarMenu": false, "icon": "/icons/app.svg" },

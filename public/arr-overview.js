@@ -1019,7 +1019,9 @@
 
       function computeLayout() {
         const viewportWidth = viewport.clientWidth;
-        cardWidth = cssNum('--plex-cardW', 203);
+        const firstCard = track.querySelector('.plex-card') || viewport.querySelector('.plex-card');
+        const measuredWidth = firstCard ? Math.round(firstCard.getBoundingClientRect().width) : 0;
+        cardWidth = measuredWidth > 0 ? measuredWidth : cssNum('--plex-cardW', 203);
         gap = cssNum('--plex-gap', 24);
         if (viewportWidth <= 0) return;
         visibleCount = Math.max(1, Math.floor((viewportWidth + gap) / (cardWidth + gap)));
@@ -1117,6 +1119,35 @@
       function addSwipe() {
         if (freeScrollMode) {
           viewport.style.touchAction = 'pan-x pan-y';
+          let dragStartX = 0;
+          let dragStartScroll = 0;
+          let dragging = false;
+          const isInteractive = (target) => !!(target && target.closest
+            && target.closest('button, input, select, textarea, a, [data-action="view"]'));
+          const onStart = (x, target) => {
+            if (isInteractive(target)) return;
+            dragging = true;
+            dragStartX = x;
+            dragStartScroll = viewport.scrollLeft;
+          };
+          const onMove = (x) => {
+            if (!dragging) return;
+            viewport.scrollLeft = dragStartScroll - (x - dragStartX);
+          };
+          const onEnd = () => {
+            dragging = false;
+          };
+          viewport.addEventListener('pointerdown', (event) => {
+            if (event.pointerType === 'touch') return;
+            onStart(event.clientX, event.target);
+            if (dragging && viewport.setPointerCapture) viewport.setPointerCapture(event.pointerId);
+          });
+          viewport.addEventListener('pointermove', (event) => {
+            if (event.pointerType === 'touch') return;
+            onMove(event.clientX);
+          });
+          viewport.addEventListener('pointerup', onEnd);
+          viewport.addEventListener('pointercancel', onEnd);
           return;
         }
         viewport.style.touchAction = 'pan-y';

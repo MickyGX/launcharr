@@ -1,6 +1,14 @@
 (function () {
   'use strict';
 
+  var carouselFreeScroll = (function () {
+    try {
+      return localStorage.getItem('launcharr-carousel-free-scroll') === '1';
+    } catch (_err) {
+      return false;
+    }
+  })();
+
   var configs = Array.isArray(window.MEDIA_OVERVIEW_COMBINED_CONFIGS)
     ? window.MEDIA_OVERVIEW_COMBINED_CONFIGS
     : [];
@@ -374,21 +382,124 @@
 
   function bindCarousel(viewport, prevBtn, nextBtn) {
     if (!viewport) return;
+    var freeScrollMode = carouselFreeScroll;
     var step = function () {
       var card = viewport.querySelector('.plex-card');
       var cardWidth = card ? card.getBoundingClientRect().width : 220;
       return Math.max(220, Math.round(cardWidth + 20));
     };
+    var slidePrev = function () {
+      viewport.scrollBy({ left: -step(), behavior: 'smooth' });
+    };
+    var slideNext = function () {
+      viewport.scrollBy({ left: step(), behavior: 'smooth' });
+    };
+    if (freeScrollMode) {
+      viewport.style.overflowX = 'auto';
+      viewport.style.overflowY = 'hidden';
+      viewport.style.scrollBehavior = 'smooth';
+      viewport.style.webkitOverflowScrolling = 'touch';
+    } else {
+      viewport.style.overflowX = '';
+      viewport.style.overflowY = '';
+      viewport.style.scrollBehavior = '';
+      viewport.style.webkitOverflowScrolling = '';
+    }
     if (prevBtn) {
       prevBtn.addEventListener('click', function () {
-        viewport.scrollBy({ left: -step(), behavior: 'smooth' });
+        slidePrev();
       });
     }
     if (nextBtn) {
       nextBtn.addEventListener('click', function () {
-        viewport.scrollBy({ left: step(), behavior: 'smooth' });
+        slideNext();
       });
     }
+
+    if (viewport.__mediaSwipeBound) return;
+    viewport.__mediaSwipeBound = true;
+    if (freeScrollMode) {
+      viewport.style.touchAction = 'pan-x pan-y';
+      var dragStartX = 0;
+      var dragStartScroll = 0;
+      var dragging = false;
+      var isInteractive = function (target) {
+        return Boolean(
+          target && target.closest
+          && target.closest('[data-action="view"], button, a, input, select, textarea')
+        );
+      };
+      var onStart = function (x, target) {
+        if (isInteractive(target)) return;
+        dragging = true;
+        dragStartX = x;
+        dragStartScroll = viewport.scrollLeft;
+      };
+      var onMove = function (x) {
+        if (!dragging) return;
+        viewport.scrollLeft = dragStartScroll - (x - dragStartX);
+      };
+      var onEnd = function () {
+        dragging = false;
+      };
+      viewport.addEventListener('pointerdown', function (event) {
+        if (event.pointerType === 'touch') return;
+        onStart(event.clientX, event.target);
+        if (dragging && viewport.setPointerCapture) viewport.setPointerCapture(event.pointerId);
+      });
+      viewport.addEventListener('pointermove', function (event) {
+        if (event.pointerType === 'touch') return;
+        onMove(event.clientX);
+      });
+      viewport.addEventListener('pointerup', onEnd);
+      viewport.addEventListener('pointercancel', onEnd);
+      return;
+    }
+    viewport.style.touchAction = 'pan-y';
+    var startX = 0;
+    var deltaX = 0;
+    var tracking = false;
+    var threshold = 42;
+    var onSwipeStart = function (x, target) {
+      if (target && target.closest && target.closest('button, input, select, textarea, a, [data-action="view"]')) {
+        tracking = false;
+        return;
+      }
+      tracking = true;
+      startX = x;
+      deltaX = 0;
+    };
+    var onSwipeMove = function (x) {
+      if (!tracking) return;
+      deltaX = x - startX;
+    };
+    var onSwipeEnd = function () {
+      if (!tracking) return;
+      if (Math.abs(deltaX) > threshold) {
+        if (deltaX > 0) slidePrev();
+        else slideNext();
+      }
+      tracking = false;
+    };
+    viewport.addEventListener('pointerdown', function (event) {
+      onSwipeStart(event.clientX, event.target);
+      if (tracking && viewport.setPointerCapture) viewport.setPointerCapture(event.pointerId);
+    });
+    viewport.addEventListener('pointermove', function (event) {
+      onSwipeMove(event.clientX);
+    });
+    viewport.addEventListener('pointerup', onSwipeEnd);
+    viewport.addEventListener('pointercancel', onSwipeEnd);
+    viewport.addEventListener('touchstart', function (event) {
+      if (!event.touches || !event.touches.length) return;
+      onSwipeStart(event.touches[0].clientX, event.target);
+    }, { passive: true });
+    viewport.addEventListener('touchmove', function (event) {
+      if (!event.touches || !event.touches.length) return;
+      onSwipeMove(event.touches[0].clientX);
+    }, { passive: true });
+    viewport.addEventListener('touchend', onSwipeEnd);
+    viewport.addEventListener('touchcancel', onSwipeEnd);
   }
 
   function renderTrack(track, items, displaySettings, options) {

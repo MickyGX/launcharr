@@ -33,7 +33,7 @@
   }
 
   if (!baseUrl || !apiKey) {
-    track.innerHTML = '<div class="plex-empty">Add a Tautulli API key in settings.</div>';
+    if (track) track.innerHTML = '<div class="plex-empty">Add a Tautulli API key in settings.</div>';
     if (wheelTrack) wheelTrack.innerHTML = '<div class="plex-empty">Add a Tautulli API key in settings.</div>';
     return;
   }
@@ -448,7 +448,9 @@
       const viewportWidth = viewport.clientWidth;
       const defaultWidth = cssNum('--plex-cardW', 203);
       const defaultGap = cssNum('--plex-gap', 24);
-      cardWidth = defaultWidth;
+      const firstCard = track.querySelector('.plex-card') || viewport.querySelector('.plex-card');
+      const measuredWidth = firstCard ? Math.round(firstCard.getBoundingClientRect().width) : 0;
+      cardWidth = measuredWidth > 0 ? measuredWidth : defaultWidth;
       gap = defaultGap;
       if (viewportWidth <= 0) return;
       visibleCount = Math.max(1, Math.floor((viewportWidth + gap) / (cardWidth + gap)));

@@ -30,11 +30,16 @@ fi
 if [ -f /app/default-categories.json ] && [ ! -f /app/config/default-categories.json ]; then
   cp /app/default-categories.json /app/config/default-categories.json 2>/dev/null || true
 fi
+if [ -f /app/config.example.json ] && [ ! -f /app/config/config.json ]; then
+  cp /app/config.example.json /app/config/config.json 2>/dev/null || true
+fi
 
 chown "${APP_USER}:${APP_GROUP}" /app/default-apps.json /app/default-categories.json 2>/dev/null || true
 chown "${APP_USER}:${APP_GROUP}" /app/config/default-apps.json /app/config/default-categories.json 2>/dev/null || true
+chown "${APP_USER}:${APP_GROUP}" /app/config/config.json 2>/dev/null || true
 
 chmod 644 /app/default-apps.json /app/default-categories.json 2>/dev/null || true
 chmod 644 /app/config/default-apps.json /app/config/default-categories.json 2>/dev/null || true
+chmod 644 /app/config/config.json 2>/dev/null || true
 
 exec su-exec "${APP_USER}:${APP_GROUP}" "$@"

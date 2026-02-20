@@ -1,6 +1,14 @@
 (function () {
   'use strict';
 
+  var carouselFreeScroll = (function () {
+    try {
+      return localStorage.getItem('launcharr-carousel-free-scroll') === '1';
+    } catch (_err) {
+      return false;
+    }
+  })();
+
   var configs = [];
   if (Array.isArray(window.ROMM_OVERVIEW_CONFIGS)) configs = window.ROMM_OVERVIEW_CONFIGS.slice();
   if (window.ROMM_OVERVIEW_CONFIG && typeof window.ROMM_OVERVIEW_CONFIG === 'object') {
@@ -141,6 +149,13 @@
       '<circle cx="12" cy="12" r="3"></circle></svg>';
   }
 
+  function rommFallbackArtworkHtml() {
+    return '<div class="plex-placeholder plex-placeholder-romm">' +
+      '<img class="plex-placeholder-romm-icon" src="/icons/romm.svg" alt="Romm" loading="lazy" onerror="this.onerror=null;this.src=\'/icons/games.svg\'" />' +
+      '<div class="plex-placeholder-small">No artwork</div>' +
+      '</div>';
+  }
+
   function typeIcon(kind) {
     var value = String(kind || '').toLowerCase();
     if (value === 'bios') return chipIcon();
@@ -261,8 +276,8 @@
     }
     if (!overview) overview = 'No description available for this title.';
     var poster = item.thumb
-      ? '<img src="' + escapeHtml(item.thumb) + '" alt="' + escapeHtml(title) + '" referrerpolicy="no-referrer" />'
-      : '<div class="plex-placeholder" style="height:340px"><div class="plex-placeholder-big">' + escapeHtml(title) + '</div><div class="plex-placeholder-small">No artwork</div></div>';
+      ? '<img src="' + escapeHtml(item.thumb) + '" alt="' + escapeHtml(title) + '" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src=\'/icons/romm.svg\';this.classList.add(\'plex-fallback-art\')" />'
+      : rommFallbackArtworkHtml();
     var pills = [
       '<span class="plex-pill2">' + escapeHtml(kindLabel(item.kind)) + '</span>',
       subtitleBits.length ? '<span class="plex-pill2">' + escapeHtml(subtitleBits[0]) + '</span>' : '',
@@ -331,21 +346,110 @@
 
   function bindCarousel(viewport, prevBtn, nextBtn) {
     if (!viewport) return;
+    var freeScrollMode = carouselFreeScroll;
     var step = function () {
       var card = viewport.querySelector('.plex-card');
       var cardWidth = card ? card.getBoundingClientRect().width : 220;
       return Math.max(220, Math.round(cardWidth + 20));
     };
+    var slidePrev = function () {
+      viewport.scrollBy({ left: -step(), behavior: 'smooth' });
+    };
+    var slideNext = function () {
+      viewport.scrollBy({ left: step(), behavior: 'smooth' });
+    };
+    if (freeScrollMode) {
+      viewport.style.overflowX = 'auto';
+      viewport.style.overflowY = 'hidden';
+      viewport.style.scrollBehavior = 'smooth';
+      viewport.style.webkitOverflowScrolling = 'touch';
+    } else {
+      viewport.style.overflowX = '';
+      viewport.style.overflowY = '';
+      viewport.style.scrollBehavior = '';
+      viewport.style.webkitOverflowScrolling = '';
+    }
     if (prevBtn) {
       prevBtn.addEventListener('click', function () {
-        viewport.scrollBy({ left: -step(), behavior: 'smooth' });
+        slidePrev();
       });
     }
     if (nextBtn) {
       nextBtn.addEventListener('click', function () {
-        viewport.scrollBy({ left: step(), behavior: 'smooth' });
+        slideNext();
       });
     }
+
+    if (viewport.__rommSwipeBound) return;
+    viewport.__rommSwipeBound = true;
+    if (freeScrollMode) {
+      viewport.style.touchAction = 'pan-x pan-y';
+      return;
+    }
+    viewport.style.touchAction = 'pan-y';
+    var startX = 0;
+    var startY = 0;
+    var movedX = 0;
+    var movedY = 0;
+    var tracking = false;
+    var threshold = 40;
+
+    var isInteractive = function (target) {
+      return Boolean(
+        target && target.closest
+        && target.closest('[data-action="view"], button, a, input, select, textarea, .plex-modal, .plex-modal-backdrop')
+      );
+    };
+
+    var onStart = function (x, y, target) {
+      if (isInteractive(target)) {
+        tracking = false;
+        return;
+      }
+      tracking = true;
+      startX = x;
+      startY = y;
+      movedX = 0;
+      movedY = 0;
+    };
+
+    var onMove = function (x, y) {
+      if (!tracking) return;
+      movedX = x - startX;
+      movedY = y - startY;
+    };
+
+    var onEnd = function () {
+      if (!tracking) return;
+      tracking = false;
+      if (Math.abs(movedX) > threshold && Math.abs(movedX) > Math.abs(movedY) * 1.2) {
+        if (movedX > 0) slidePrev();
+        else slideNext();
+      }
+    };
+
+    viewport.addEventListener('pointerdown', function (event) {
+      onStart(event.clientX, event.clientY, event.target);
+      if (tracking && viewport.setPointerCapture) viewport.setPointerCapture(event.pointerId);
+    });
+    viewport.addEventListener('pointermove', function (event) {
+      onMove(event.clientX, event.clientY);
+    });
+    viewport.addEventListener('pointerup', onEnd);
+    viewport.addEventListener('pointercancel', function () { tracking = false; });
+
+    viewport.addEventListener('touchstart', function (event) {
+      if (!event.touches || !event.touches.length) return;
+      var touch = event.touches[0];
+      onStart(touch.clientX, touch.clientY, event.target);
+    }, { passive: true });
+    viewport.addEventListener('touchmove', function (event) {
+      if (!event.touches || !event.touches.length) return;
+      var touch = event.touches[0];
+      onMove(touch.clientX, touch.clientY);
+    }, { passive: true });
+    viewport.addEventListener('touchend', onEnd);
+    viewport.addEventListener('touchcancel', function () { tracking = false; });
   }
 
   function buildLaunchUrl(config, item) {
@@ -359,7 +463,8 @@
 
   function normalizeItem(item, config) {
     var raw = item && typeof item === 'object' ? item : {};
-    var defaultKind = config.sectionId === 'consoles' ? 'console' : 'game';
+    var sectionId = String(config.sectionId || '').trim().toLowerCase();
+    var defaultKind = sectionId === 'consoles' ? 'console' : 'game';
     var title = String(raw.title || raw.name || 'Untitled').trim() || 'Untitled';
     var subtitle = String(raw.subtitle || raw.episode || '').trim();
     var meta = String(raw.meta || raw.episodeTitle || raw.quality || '').trim();
@@ -370,6 +475,12 @@
     if (defaultKind === 'console' && !stats.length && romCount > 0) {
       stats.push({ label: 'ROMs', value: String(romCount) });
     }
+    var thumb = '';
+    if (sectionId === 'recently-added') {
+      thumb = String(raw.thumb || raw.poster || raw.cover || '').trim();
+    } else {
+      thumb = String(raw.thumb || raw.poster || raw.image || raw.art || raw.backdrop || '').trim();
+    }
     return {
       id: String(raw.id || title).trim() || title,
       title: title,
@@ -378,7 +489,7 @@
       pill: String(raw.pill || relativePill(sortTs)).trim(),
       kind: kind,
       user: String(raw.user || '').trim(),
-      thumb: String(raw.thumb || raw.poster || raw.image || raw.art || raw.backdrop || '').trim(),
+      thumb: thumb,
       art: String(raw.art || raw.backdrop || raw.background || raw.thumb || raw.poster || '').trim(),
       overview: String(raw.overview || raw.description || '').trim(),
       romCount: romCount,
@@ -409,8 +520,8 @@
         ? '<div class="plex-eye-icon" title="Open Romm" data-action="view">' + eyeSvg() + '</div>'
         : '';
       var poster = item.thumb
-        ? '<img src="' + escapeHtml(item.thumb) + '" alt="' + escapeHtml(item.title || 'Poster') + '" loading="lazy" referrerpolicy="no-referrer" />'
-        : '<div class="plex-placeholder"><div class="plex-placeholder-big">' + escapeHtml(item.title || 'Untitled') + '</div><div class="plex-placeholder-small">No artwork</div></div>';
+        ? '<img src="' + escapeHtml(item.thumb) + '" alt="' + escapeHtml(item.title || 'Poster') + '" loading="lazy" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src=\'/icons/romm.svg\';this.classList.add(\'plex-fallback-art\')" />'
+        : rommFallbackArtworkHtml();
       return '' +
         '<div class="plex-card" data-index="' + String(idx) + '">' +
           '<div class="plex-poster-wrap">' +
@@ -491,27 +602,23 @@
       var limit = Number(limitValue);
       if (!showAll && (!Number.isFinite(limit) || limit < 1)) limit = 20;
       var filtered = sourceItems
-        .filter(function (item) { return matchesType(item, selectedType); })
-        .sort(function (left, right) {
+        .filter(function (item) { return matchesType(item, selectedType); });
+      if (sectionId === 'consoles') {
+        filtered = filtered.sort(function (left, right) {
           var leftTitle = String(left && left.title || '');
           var rightTitle = String(right && right.title || '');
-          if (sectionId === 'consoles') {
-            var leftCount = parseCount(left && (left.romCount || left.sortTs || 0));
-            var rightCount = parseCount(right && (right.romCount || right.sortTs || 0));
-            if (selectedSort === 'a-z') return leftTitle.localeCompare(rightTitle);
-            if (selectedSort === 'z-a') return rightTitle.localeCompare(leftTitle);
-            if (selectedSort === 'roms-asc') {
-              if (leftCount !== rightCount) return leftCount - rightCount;
-              return leftTitle.localeCompare(rightTitle);
-            }
-            if (rightCount !== leftCount) return rightCount - leftCount;
+          var leftCount = parseCount(left && (left.romCount || left.sortTs || 0));
+          var rightCount = parseCount(right && (right.romCount || right.sortTs || 0));
+          if (selectedSort === 'a-z') return leftTitle.localeCompare(rightTitle);
+          if (selectedSort === 'z-a') return rightTitle.localeCompare(leftTitle);
+          if (selectedSort === 'roms-asc') {
+            if (leftCount !== rightCount) return leftCount - rightCount;
             return leftTitle.localeCompare(rightTitle);
           }
-          var rightTs = Number(right && right.sortTs || 0);
-          var leftTs = Number(left && left.sortTs || 0);
-          if (rightTs !== leftTs) return rightTs - leftTs;
+          if (rightCount !== leftCount) return rightCount - leftCount;
           return leftTitle.localeCompare(rightTitle);
         });
+      }
       if (!showAll) filtered = filtered.slice(0, limit);
       renderTrack(
         track,
