@@ -1480,6 +1480,111 @@
                 </div>
               </section>
             <% } %>
+            <% if (item.app.id === 'maintainerr' && ['library-media', 'rules', 'collections-media'].includes(item.element.id)) { %>
+              <%
+                const moduleId = `${item.app.id}-${item.element.id}`;
+                const isLibraryMedia = item.element.id === 'library-media';
+                const isRules = item.element.id === 'rules';
+                const controlPrefix = `${item.app.id}${isLibraryMedia ? 'LibraryMedia' : (isRules ? 'Rules' : 'CollectionsMedia')}`;
+              %>
+              <section class="plex-module plex-module--no-subtitle" id="<%= moduleId %>">
+                <div class="plex-topbar">
+                  <div class="plex-title-wrap">
+                    <div class="plex-title">
+                      <img class="plex-logo" src="<%= resolveAppIconPath(item.app) %>" alt="<%= item.app.name %>" loading="eager" onerror="this.src='/icons/app.svg'" />
+                      <span><%= isLibraryMedia ? 'Library Media' : (isRules ? 'Rules' : 'Collections Media') %></span>
+                    </div>
+                    <div class="plex-subtitle"></div>
+                  </div>
+                  <div class="plex-spacer"></div>
+                  <div class="plex-controls-right">
+                    <% if (isLibraryMedia) { %>
+                      <div class="plex-select plex-icon plex-filter-media" title="Media type">
+                        <select id="<%= controlPrefix %>TypeFilter" aria-label="Media type">
+                          <option value="all" selected>All</option>
+                          <option value="movie">Movies</option>
+                          <option value="show">TV</option>
+                        </select>
+                      </div>
+                      <div class="plex-select plex-xsmall" title="Title initial">
+                        <select id="<%= controlPrefix %>LetterFilter" aria-label="Title initial">
+                          <option value="all" selected>All</option>
+                          <option value="#">#</option>
+                          <% 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').forEach((letter) => { %>
+                            <option value="<%= letter %>"><%= letter %></option>
+                          <% }) %>
+                        </select>
+                      </div>
+                      <div class="plex-select plex-xsmall" title="Limit">
+                        <select id="<%= controlPrefix %>LimitSelect" aria-label="Limit">
+                          <option value="20">20</option>
+                          <option value="50" selected>50</option>
+                          <option value="100">100</option>
+                          <option value="200">200</option>
+                        </select>
+                      </div>
+                      <button class="plex-iconbtn" id="<%= controlPrefix %>PrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
+                      <button class="plex-iconbtn" id="<%= controlPrefix %>NextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
+                    <% } %>
+                    <% if (isRules) { %>
+                      <div class="plex-select plex-icon plex-filter-media" title="Media type">
+                        <select id="<%= controlPrefix %>TypeFilter" aria-label="Media type">
+                          <option value="all" selected>All</option>
+                          <option value="movie">Movies</option>
+                          <option value="show">TV</option>
+                        </select>
+                      </div>
+                      <div class="plex-select plex-icon plex-filter-status" title="Rule status">
+                        <select id="<%= controlPrefix %>StatusFilter" aria-label="Rule status">
+                          <option value="all" selected>All</option>
+                          <option value="active">Active</option>
+                          <option value="paused">Paused</option>
+                        </select>
+                      </div>
+                      <button class="plex-iconbtn" id="<%= controlPrefix %>PrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
+                      <button class="plex-iconbtn" id="<%= controlPrefix %>NextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
+                    <% } %>
+                    <% if (!isLibraryMedia && !isRules) { %>
+                      <div class="plex-select plex-icon plex-filter-source" title="Collection">
+                        <select id="<%= controlPrefix %>CollectionFilter" aria-label="Collection">
+                          <option value="all" selected>All collections</option>
+                        </select>
+                      </div>
+                      <div class="plex-select plex-icon plex-filter-media" title="Media type">
+                        <select id="<%= controlPrefix %>TypeFilter" aria-label="Media type">
+                          <option value="all" selected>All</option>
+                          <option value="movie">Movies</option>
+                          <option value="show">TV</option>
+                        </select>
+                      </div>
+                      <div class="plex-select plex-xsmall" title="Limit">
+                        <select id="<%= controlPrefix %>LimitSelect" aria-label="Limit">
+                          <option value="20">20</option>
+                          <option value="50" selected>50</option>
+                          <option value="100">100</option>
+                          <option value="200">200</option>
+                        </select>
+                      </div>
+                      <button class="plex-iconbtn" id="<%= controlPrefix %>PrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
+                      <button class="plex-iconbtn" id="<%= controlPrefix %>NextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
+                    <% } %>
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="<%= moduleId %>" data-collapse-global="true">
+                      <div class="plex-doublechev">
+                        <div class="plex-chev plex-up"></div>
+                        <div class="plex-chev plex-down"></div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+                <div class="plex-panel">
+                  <div id="<%= controlPrefix %>Viewport" class="plex-carousel-viewport">
+                    <div id="<%= controlPrefix %>Track" class="plex-carousel-track">
+                      <div class="plex-empty">Loading…</div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            <% } %>
             <% if (['transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(resolveAppBaseId(item.app.id)) && item.element.id === 'activity-queue') { %>
               <%
                 const isCombined = Boolean(item.downloaderCombined);
@@ -2003,25 +2108,39 @@
       const isCategoryTrigger = trigger.classList.contains('nav-accordion-trigger--category');
       let longPressTimer = null;
       let longPressTriggered = false;
+      const supportsPointerEvents = typeof window !== 'undefined' && 'PointerEvent' in window;
       const clearLongPressTimer = () => {
         if (longPressTimer) {
           window.clearTimeout(longPressTimer);
           longPressTimer = null;
         }
       };
-      trigger.addEventListener('pointerdown', (event) => {
-        if (isCategoryTrigger) return;
-        if (event.button !== undefined && event.button !== 0) return;
+      const startLongPressTimer = () => {
         longPressTriggered = false;
         clearLongPressTimer();
         longPressTimer = window.setTimeout(() => {
           longPressTriggered = true;
           handlePressAction(item, longPressAction, false);
         }, LONG_PRESS_DELAY_MS);
-      });
-      ['pointerup', 'pointerleave', 'pointercancel'].forEach((eventName) => {
-        trigger.addEventListener(eventName, clearLongPressTimer);
-      });
+      };
+      if (supportsPointerEvents) {
+        trigger.addEventListener('pointerdown', (event) => {
+          if (isCategoryTrigger) return;
+          if (event.button !== undefined && event.button !== 0) return;
+          startLongPressTimer();
+        });
+        ['pointerup', 'pointerleave', 'pointercancel'].forEach((eventName) => {
+          trigger.addEventListener(eventName, clearLongPressTimer);
+        });
+      } else {
+        trigger.addEventListener('touchstart', () => {
+          if (isCategoryTrigger) return;
+          startLongPressTimer();
+        }, { passive: true });
+        ['touchend', 'touchcancel', 'touchmove'].forEach((eventName) => {
+          trigger.addEventListener(eventName, clearLongPressTimer, { passive: true });
+        });
+      }
       trigger.addEventListener('contextmenu', (event) => {
         if (longPressTriggered) event.preventDefault();
       });
@@ -2674,6 +2793,39 @@
         window.ROMM_OVERVIEW_CONFIGS = <%- JSON.stringify(rommOverviewConfigs) %>;
       </script>
       <script src="/romm-overview.js?v=<%= assetVersion %>"></script>
+    <% } %>
+  <% } %>
+  <% if (dashboardModules.some((item) => item.app.id === 'maintainerr' && ['library-media', 'rules', 'collections-media'].includes(item.element.id))) { %>
+    <%
+      const maintainerrOverviewConfigs = dashboardModules
+        .filter((item) => item.app.id === 'maintainerr' && ['library-media', 'rules', 'collections-media'].includes(item.element.id))
+        .map((item) => {
+          const isLibraryMedia = item.element.id === 'library-media';
+          const isRules = item.element.id === 'rules';
+          return {
+            appId: item.app.id,
+            appName: item.app.name || 'Maintainerr',
+            sectionId: item.element.id,
+            controlPrefix: `${item.app.id}${isLibraryMedia ? 'LibraryMedia' : (isRules ? 'Rules' : 'CollectionsMedia')}`,
+            endpoint: isLibraryMedia
+              ? '/api/maintainerr/library-media?limit=all'
+              : (isRules ? '/api/maintainerr/rules' : '/api/maintainerr/collections-media?limit=200'),
+            displaySettings: {
+              showSubtitle: item.element.showSubtitle !== false,
+              showMeta: item.element.showMeta !== false,
+              showPill: item.element.showPill !== false,
+              showTypeIcon: item.element.showTypeIcon !== false,
+              showViewIcon: item.element.showViewIcon !== false,
+              showUsername: item.element.showUsername !== false,
+            },
+          };
+        });
+    %>
+    <% if (maintainerrOverviewConfigs.length) { %>
+      <script>
+        window.MAINTAINERR_OVERVIEW_CONFIGS = <%- JSON.stringify(maintainerrOverviewConfigs) %>;
+      </script>
+      <script src="/maintainerr-overview.js?v=<%= assetVersion %>"></script>
     <% } %>
   <% } %>
   <% if (dashboardModules.some((item) => (item.app.id === 'bazarr' && item.element.id === 'subtitle-queue') || (item.app.id === 'autobrr' && ['recent-matches', 'delivery-queue'].includes(item.element.id)))) { %>

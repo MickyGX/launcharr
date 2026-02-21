@@ -8753,3 +8753,211 @@ body.arr-calendar-overlay-open{
   border:0;
   background:#0b1118 !important;
 }
+
+/* Maintainerr overview cards */
+.maintainerr-rules-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+  gap:14px;
+}
+
+.maintainerr-rule-desc{
+  color:#aab8cd;
+  line-height:1.35;
+  font-size:.92rem;
+  display:-webkit-box;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+  overflow:hidden;
+  min-height:2.6em;
+}
+
+.maintainerr-rule-plex-card .maintainerr-rule-footer{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+.maintainerr-rule-poster .plex-placeholder{
+  background:
+    radial-gradient(900px 500px at 16% 0%, rgba(52,117,153,.42), transparent 58%),
+    radial-gradient(800px 480px at 86% 12%, rgba(62,91,168,.24), transparent 55%),
+    linear-gradient(180deg, #0b0c12, #0b0c12);
+}
+
+.maintainerr-rule-pill{
+  right:0;
+  left:auto;
+  top:0;
+  font-size:11px;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  border-width:1px;
+  background:rgba(19,24,32,.9);
+}
+
+.maintainerr-rule-pill--active{
+  color:#9df2ca;
+  border-color:rgba(88,205,142,.45);
+}
+
+.maintainerr-rule-pill--paused{
+  color:#ffd7a3;
+  border-color:rgba(239,165,55,.45);
+}
+
+.maintainerr-rule-run{
+  appearance:none;
+  border:1px solid rgba(247,170,40,.55);
+  background:linear-gradient(180deg,#e88f11,#c97207);
+  color:#10131a;
+  border-radius:10px;
+  padding:8px 14px;
+  font-weight:700;
+  cursor:pointer;
+}
+
+.maintainerr-rule-run:hover{
+  filter:brightness(1.08);
+}
+
+.maintainerr-rule-run:disabled{
+  opacity:.72;
+  cursor:default;
+}
+
+.maintainerr-rule-run--overlay{
+  position:absolute;
+  left:3px;
+  bottom:3px;
+  z-index:6;
+  width:28px;
+  height:24px;
+  padding:0;
+  border-radius:8px;
+  display:inline-grid;
+  place-items:center;
+  border:2px solid rgba(255,255,255,.22);
+  background:rgba(20,24,36,.92);
+}
+
+.maintainerr-rule-run--overlay svg{
+  width:15px;
+  height:15px;
+}
+
+.maintainerr-rule-poster .plex-placeholder-small{
+  display:none;
+}
+
+.maintainerr-fallback{
+  padding:3px;
+}
+
+.maintainerr-fallback--card{
+  padding:1px;
+}
+
+.maintainerr-fallback--modal{
+  padding:6px;
+}
+
+.maintainerr-fallback .plex-placeholder-small{
+  display:none;
+}
+
+.maintainerr-fallback .plex-placeholder-romm-icon{
+  width:44px !important;
+  height:44px !important;
+  max-width:none !important;
+  max-height:none !important;
+  object-fit:contain !important;
+  display:block !important;
+}
+
+.maintainerr-fallback--modal .plex-placeholder-romm-icon{
+  width:68px !important;
+  height:68px !important;
+}
+
+.maintainerr-fallback--card .plex-placeholder-romm-icon{
+  width:132px !important;
+  height:132px !important;
+}
+
+.maintainerr-fallback-icon{
+  width:52px;
+  max-width:44%;
+}
+
+.maintainerr-fallback-icon--card{
+  width:44px;
+  max-width:32%;
+}
+
+.maintainerr-fallback-icon--modal{
+  width:62px;
+  max-width:50%;
+}
+
+.maintainerr-card-art.maintainerr-fallback-art{
+  object-fit:contain;
+  object-position:center center;
+  filter:none;
+}
+
+.maintainerr-card-art.maintainerr-fallback-art--card{
+  padding:2px !important;
+}
+
+.maintainerr-card-art.maintainerr-fallback-art--modal{
+  padding:8px !important;
+}
+
+/* If fallback icon is set directly as src, force card-style fallback rendering. */
+.maintainerr-media-card .maintainerr-card-art[src*="/icons/maintainerr.svg"],
+.maintainerr-media-card .maintainerr-card-art[src*="/icons/app.svg"],
+.maintainerr-rule-plex-card .maintainerr-card-art[src*="/icons/maintainerr.svg"],
+.maintainerr-rule-plex-card .maintainerr-card-art[src*="/icons/app.svg"]{
+  object-fit:contain !important;
+  object-position:center center !important;
+  padding:2px !important;
+  filter:none !important;
+}
+
+.maintainerr-media-card .plex-footer{
+  justify-content:flex-start;
+}
+
+.maintainerr-media-card .plex-name{
+  min-height:0;
+  line-height:1.22;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
+
+.maintainerr-rule-plex-card .plex-name{
+  min-height:0;
+  line-height:1.22;
+  display:block;
+  overflow:visible;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
+
+.maintainerr-modal-rule-list{
+  margin:8px 0 0 18px;
+  padding:0;
+  display:grid;
+  gap:6px;
+}
+
+.maintainerr-modal-rule-list li{
+  color:#d8e4f6;
+  font-weight:700;
+  line-height:1.35;
+}
+
+[data-theme="day"] .maintainerr-modal-rule-list li{
+  color:#1f2b38;
+}

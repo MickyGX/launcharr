@@ -90,7 +90,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/styles.css?v=<%= assetVersion %>" />
   <link rel="stylesheet" href="/table-cards-overrides.css?v=<%= assetVersion %>" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" type="image/png" href="/icons/launcharr-icon.png" />
@@ -1333,6 +1333,136 @@
         </div>
       <% } %>
 
+      <% if (appBaseId === 'maintainerr') { %>
+        <%
+          const overviewItems = Array.isArray(overviewElements) ? overviewElements : [];
+          const overviewById = new Map(overviewItems.map((item) => [item.id, item]));
+          const libraryMediaSettings = overviewById.get('library-media') || { enable: true, order: 1 };
+          const rulesSettings = overviewById.get('rules') || { enable: true, order: 2 };
+          const collectionsMediaSettings = overviewById.get('collections-media') || { enable: true, order: 3 };
+          const appPrefix = app.id;
+          const orderedMaintainerrSections = [
+            { id: 'library-media', settings: libraryMediaSettings },
+            { id: 'rules', settings: rulesSettings },
+            { id: 'collections-media', settings: collectionsMediaSettings },
+          ]
+            .filter((item) => item.settings?.enable !== false)
+            .sort((a, b) => {
+              const favouriteDelta = (b.settings?.favourite ? 1 : 0) - (a.settings?.favourite ? 1 : 0);
+              if (favouriteDelta !== 0) return favouriteDelta;
+              const orderDelta = (a.settings?.order || 0) - (b.settings?.order || 0);
+              if (orderDelta !== 0) return orderDelta;
+              return a.id.localeCompare(b.id);
+            });
+        %>
+        <div class="plex-overview">
+          <% orderedMaintainerrSections.forEach((section) => { %>
+            <%
+              const isLibraryMedia = section.id === 'library-media';
+              const isRules = section.id === 'rules';
+              const controlPrefix = `${appPrefix}${isLibraryMedia ? 'LibraryMedia' : (isRules ? 'Rules' : 'CollectionsMedia')}`;
+            %>
+            <section class="plex-module plex-module--no-subtitle" id="<%= appPrefix %>-<%= section.id %>">
+              <div class="plex-topbar">
+                <div class="plex-title-wrap">
+                  <div class="plex-title">
+                    <img class="plex-logo" src="<%= resolveAppIconPath(app) %>" alt="<%= app.name %>" loading="eager" onerror="this.src='/icons/app.svg'" />
+                    <span><%= isLibraryMedia ? 'Library Media' : (isRules ? 'Rules' : 'Collections Media') %></span>
+                  </div>
+                  <div class="plex-subtitle"></div>
+                </div>
+                <div class="plex-spacer"></div>
+                <div class="plex-controls-right">
+                  <% if (isLibraryMedia) { %>
+                    <div class="plex-select plex-icon plex-filter-media" title="Media type">
+                      <select id="<%= controlPrefix %>TypeFilter" aria-label="Media type">
+                        <option value="all" selected>All</option>
+                        <option value="movie">Movies</option>
+                        <option value="show">TV</option>
+                      </select>
+                    </div>
+                    <div class="plex-select plex-xsmall" title="Title initial">
+                      <select id="<%= controlPrefix %>LetterFilter" aria-label="Title initial">
+                        <option value="all" selected>All</option>
+                        <option value="#">#</option>
+                        <% 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').forEach((letter) => { %>
+                          <option value="<%= letter %>"><%= letter %></option>
+                        <% }) %>
+                      </select>
+                    </div>
+                    <div class="plex-select plex-xsmall" title="Limit">
+                      <select id="<%= controlPrefix %>LimitSelect" aria-label="Limit">
+                        <option value="20">20</option>
+                        <option value="50" selected>50</option>
+                        <option value="100">100</option>
+                        <option value="200">200</option>
+                      </select>
+                    </div>
+                    <button class="plex-iconbtn" id="<%= controlPrefix %>PrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
+                    <button class="plex-iconbtn" id="<%= controlPrefix %>NextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
+                  <% } %>
+                  <% if (isRules) { %>
+                    <div class="plex-select plex-icon plex-filter-media" title="Media type">
+                      <select id="<%= controlPrefix %>TypeFilter" aria-label="Media type">
+                        <option value="all" selected>All</option>
+                        <option value="movie">Movies</option>
+                        <option value="show">TV</option>
+                      </select>
+                    </div>
+                    <div class="plex-select plex-icon plex-filter-status" title="Rule status">
+                      <select id="<%= controlPrefix %>StatusFilter" aria-label="Rule status">
+                        <option value="all" selected>All</option>
+                        <option value="active">Active</option>
+                        <option value="paused">Paused</option>
+                      </select>
+                    </div>
+                    <button class="plex-iconbtn" id="<%= controlPrefix %>PrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
+                    <button class="plex-iconbtn" id="<%= controlPrefix %>NextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
+                  <% } %>
+                  <% if (!isLibraryMedia && !isRules) { %>
+                    <div class="plex-select plex-icon plex-filter-source" title="Collection">
+                      <select id="<%= controlPrefix %>CollectionFilter" aria-label="Collection">
+                        <option value="all" selected>All collections</option>
+                      </select>
+                    </div>
+                    <div class="plex-select plex-icon plex-filter-media" title="Media type">
+                      <select id="<%= controlPrefix %>TypeFilter" aria-label="Media type">
+                        <option value="all" selected>All</option>
+                        <option value="movie">Movies</option>
+                        <option value="show">TV</option>
+                      </select>
+                    </div>
+                    <div class="plex-select plex-xsmall" title="Limit">
+                      <select id="<%= controlPrefix %>LimitSelect" aria-label="Limit">
+                        <option value="20">20</option>
+                        <option value="50" selected>50</option>
+                        <option value="100">100</option>
+                        <option value="200">200</option>
+                      </select>
+                    </div>
+                    <button class="plex-iconbtn" id="<%= controlPrefix %>PrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
+                    <button class="plex-iconbtn" id="<%= controlPrefix %>NextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
+                  <% } %>
+                  <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="<%= appPrefix %>-<%= section.id %>" data-collapse-global="true">
+                    <div class="plex-doublechev">
+                      <div class="plex-chev plex-up"></div>
+                      <div class="plex-chev plex-down"></div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+              <div class="plex-panel">
+                <div id="<%= controlPrefix %>Viewport" class="plex-carousel-viewport">
+                  <div id="<%= controlPrefix %>Track" class="plex-carousel-track">
+                    <div class="plex-empty">Loading…</div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          <% }) %>
+        </div>
+      <% } %>
+
       <% if (['pulsarr', 'seerr'].includes(appBaseId)) { %>
         <%
           const requestAppId = app.id;
@@ -1587,7 +1717,7 @@
         </div>
       <% } %>
 
-      <% if (appBaseId !== 'plex' && appBaseId !== 'jellyfin' && appBaseId !== 'emby' && appBaseId !== 'tautulli' && !isArrAppId(app.id) && !['pulsarr', 'seerr', 'prowlarr', 'jackett', 'bazarr', 'autobrr', 'romm', 'transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(appBaseId)) { %>
+      <% if (appBaseId !== 'plex' && appBaseId !== 'jellyfin' && appBaseId !== 'emby' && appBaseId !== 'tautulli' && !isArrAppId(app.id) && !['pulsarr', 'seerr', 'prowlarr', 'jackett', 'bazarr', 'autobrr', 'romm', 'maintainerr', 'transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(appBaseId)) { %>
         <div class="dash-panel overview-panel">
           <div class="panel-header">
             <h2>App Overview</h2>
@@ -1802,25 +1932,39 @@
       const isCategoryTrigger = trigger.classList.contains('nav-accordion-trigger--category');
       let longPressTimer = null;
       let longPressTriggered = false;
+      const supportsPointerEvents = typeof window !== 'undefined' && 'PointerEvent' in window;
       const clearLongPressTimer = () => {
         if (longPressTimer) {
           window.clearTimeout(longPressTimer);
           longPressTimer = null;
         }
       };
-      trigger.addEventListener('pointerdown', (event) => {
-        if (isCategoryTrigger) return;
-        if (event.button !== undefined && event.button !== 0) return;
+      const startLongPressTimer = () => {
         longPressTriggered = false;
         clearLongPressTimer();
         longPressTimer = window.setTimeout(() => {
           longPressTriggered = true;
           handlePressAction(item, longPressAction, false);
         }, LONG_PRESS_DELAY_MS);
-      });
-      ['pointerup', 'pointerleave', 'pointercancel'].forEach((eventName) => {
-        trigger.addEventListener(eventName, clearLongPressTimer);
-      });
+      };
+      if (supportsPointerEvents) {
+        trigger.addEventListener('pointerdown', (event) => {
+          if (isCategoryTrigger) return;
+          if (event.button !== undefined && event.button !== 0) return;
+          startLongPressTimer();
+        });
+        ['pointerup', 'pointerleave', 'pointercancel'].forEach((eventName) => {
+          trigger.addEventListener(eventName, clearLongPressTimer);
+        });
+      } else {
+        trigger.addEventListener('touchstart', () => {
+          if (isCategoryTrigger) return;
+          startLongPressTimer();
+        }, { passive: true });
+        ['touchend', 'touchcancel', 'touchmove'].forEach((eventName) => {
+          trigger.addEventListener(eventName, clearLongPressTimer, { passive: true });
+        });
+      }
       trigger.addEventListener('contextmenu', (event) => {
         if (longPressTriggered) event.preventDefault();
       });
@@ -2340,6 +2484,52 @@
     </script>
     <script src="/romm-overview.js?v=<%= assetVersion %>"></script>
   <% } %>
+  <% if (appBaseId === 'maintainerr') { %>
+    <%
+      const maintainerrDisplaySettings = (Array.isArray(overviewElements) ? overviewElements : []).reduce((acc, item) => {
+        if (!item?.id) return acc;
+        acc[item.id] = {
+          showSubtitle: item.showSubtitle !== false,
+          showMeta: item.showMeta !== false,
+          showPill: item.showPill !== false,
+          showTypeIcon: item.showTypeIcon !== false,
+          showViewIcon: item.showViewIcon !== false,
+          showUsername: item.showUsername !== false,
+        };
+        return acc;
+      }, {});
+      const maintainerrOverviewConfigs = [
+        {
+          appId: app.id,
+          appName: app.name || 'Maintainerr',
+          sectionId: 'library-media',
+          controlPrefix: `${app.id}LibraryMedia`,
+          endpoint: '/api/maintainerr/library-media?limit=all',
+          displaySettings: maintainerrDisplaySettings['library-media'] || {},
+        },
+        {
+          appId: app.id,
+          appName: app.name || 'Maintainerr',
+          sectionId: 'rules',
+          controlPrefix: `${app.id}Rules`,
+          endpoint: '/api/maintainerr/rules',
+          displaySettings: maintainerrDisplaySettings.rules || {},
+        },
+        {
+          appId: app.id,
+          appName: app.name || 'Maintainerr',
+          sectionId: 'collections-media',
+          controlPrefix: `${app.id}CollectionsMedia`,
+          endpoint: '/api/maintainerr/collections-media?limit=200',
+          displaySettings: maintainerrDisplaySettings['collections-media'] || {},
+        },
+      ];
+    %>
+    <script>
+      window.MAINTAINERR_OVERVIEW_CONFIGS = <%- JSON.stringify(maintainerrOverviewConfigs) %>;
+    </script>
+    <script src="/maintainerr-overview.js?v=<%= assetVersion %>"></script>
+  <% } %>
   <% if (['bazarr', 'autobrr'].includes(appBaseId)) { %>
     <%
       let queueCardConfigs = [];
@@ -2382,9 +2572,9 @@
     <script src="/indexer-table-sort.js?v=<%= assetVersion %>"></script>
   <% } %>
   <script src="/table-pagination.js?v=<%= assetVersion %>"></script>
-  <script src="/version-badge.js"></script>
+  <script src="/version-badge.js?v=<%= assetVersion %>"></script>
   <script src="/brand-menu.js?v=<%= assetVersion %>"></script>
   <script src="/starfield-3d.js"></script>
-  <script src="/pwa.js"></script>
+  <script src="/pwa.js?v=<%= assetVersion %>"></script>
 </body>
 </html>

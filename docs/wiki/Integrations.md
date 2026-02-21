@@ -18,6 +18,7 @@
 | Pulsarr | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/pulsarr.png" alt="Pulsarr" width="20" /> | `pulsarr` | `Arr Suite` | `http://localhost:3030` | Yes |
 | Seerr | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/seerr.png" alt="Seerr" width="20" /> | `seerr` | `Arr Suite` | `http://localhost:5055` | Yes |
 | Autobrr | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/autobrr.png" alt="Autobrr" width="20" /> | `autobrr` | `Arr Suite` | `http://localhost:7474` | Yes |
+| Maintainerr | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/maintainerr.svg" alt="Maintainerr" width="20" /> | `maintainerr` | `Arr Suite` | `http://localhost:6246` | Yes |
 | Cleanuparr | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/cleanuparr.png" alt="Cleanuparr" width="20" /> | `cleanuparr` | `Arr Suite` | `http://localhost:11011` | No (launch/settings only by default) |
 | Huntarr | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/huntarr.png" alt="Huntarr" width="20" /> | `huntarr` | `Arr Suite` | `http://localhost:9705` | No (launch/settings only by default) |
 | Transmission | <img src="https://raw.githubusercontent.com/MickyGX/launcharr/main/public/icons/transmission.png" alt="Transmission" width="20" /> | `transmission` | `Downloaders` | `http://localhost:9091` | Yes |
@@ -49,6 +50,7 @@ For each app:
 - Downloader queue modules are available for Transmission/qBittorrent/SABnzbd/NZBGet.
 - Indexer search modules are available for Prowlarr/Jackett.
 - Romm has integrated overview cards for `Recently Added` and `Consoles`.
+- Maintainerr has integrated overview cards for `Library Media`, `Rules` (with execute), and `Collections Media`.
 - Combined Arr/downloader sections can be toggled in display settings.
 
 ## Custom Apps

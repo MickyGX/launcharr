@@ -24,6 +24,8 @@ const SESSION_SECRET = process.env.SESSION_SECRET || 'change-me';
 const LOCAL_AUTH_MIN_PASSWORD = 6;
 const CONFIG_PATH = process.env.CONFIG_PATH || path.join(__dirname, '..', 'config', 'config.json');
 const APP_VERSION = process.env.APP_VERSION || loadPackageVersion();
+const ASSET_VERSION_BASE = normalizeVersionTag(APP_VERSION || '') || String(APP_VERSION || 'dev');
+const ASSET_VERSION = `${ASSET_VERSION_BASE}-${String(process.env.ASSET_BUILD_ID || Date.now().toString(36))}`;
 const RELEASE_NOTES_BASE_URL = 'https://github.com/MickyGX/launcharr/releases/tag/';
 const RELEASE_NOTES_DIR = path.join(__dirname, '..', 'docs', 'release', 'releases');
 const RELEASE_HIGHLIGHT_SECTIONS = ['Added', 'Changed', 'Fixed'];
@@ -146,6 +148,11 @@ const APP_OVERVIEW_ELEMENTS = {
   romm: [
     { id: 'recently-added', name: 'Recently Added' },
     { id: 'consoles', name: 'Consoles' },
+  ],
+  maintainerr: [
+    { id: 'library-media', name: 'Library Media' },
+    { id: 'rules', name: 'Rules' },
+    { id: 'collections-media', name: 'Collections Media' },
   ],
   transmission: [
     { id: 'activity-queue', name: 'Download Queue' },
@@ -1115,7 +1122,7 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use(express.urlencoded({ extended: false, limit: '25mb' }));
 app.use(express.json({ limit: '25mb' }));
 app.use((req, res, next) => {
-  res.locals.assetVersion = normalizeVersionTag(APP_VERSION || '') || String(APP_VERSION || 'dev');
+  res.locals.assetVersion = ASSET_VERSION;
   const generalSettings = resolveGeneralSettings(loadConfig());
   res.locals.autoOpenSingleAppMenuItem = Boolean(generalSettings.autoOpenSingleAppMenuItem);
   res.locals.sidebarButtonPressActions = generalSettings.sidebarButtonPressActions;
@@ -1884,6 +1891,7 @@ app.get('/apps/:id/launch', requireUser, async (req, res) => {
   if (launchMode === 'iframe') {
     const navApps = getNavApps(apps, role, req, categoryOrder);
     const navCategories = buildNavCategories(navApps, categoryEntries, role);
+    const iframeLaunchUrl = resolveIframeLaunchUrl(req, launchUrl);
     return res.render('app-launch', {
       user: req.session.user,
       role,
@@ -1891,7 +1899,7 @@ app.get('/apps/:id/launch', requireUser, async (req, res) => {
       page: 'launch',
       navCategories,
       app: appWithIcon,
-      launchUrl,
+      launchUrl: iframeLaunchUrl || launchUrl,
     });
   }
 
@@ -6997,6 +7005,352 @@ function mapAutobrrQueueItem(entry, mode = 'recent-matches') {
   };
 }
 
+function parseMaintainerrTimestamp(value) {
+  if (value === null || value === undefined || value === '') return 0;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    if (numeric > 1e11) return Math.round(numeric); // milliseconds
+    return Math.round(numeric * 1000); // seconds
+  }
+  const parsed = Date.parse(String(value || '').trim());
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatMaintainerrDateLabel(value) {
+  const timestamp = parseMaintainerrTimestamp(value);
+  if (!timestamp) return '';
+  try {
+    return new Date(timestamp).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  } catch (err) {
+    return '';
+  }
+}
+
+function formatMaintainerrRelativePill(value) {
+  const timestamp = parseMaintainerrTimestamp(value);
+  if (!timestamp) return '';
+  const diffMs = Date.now() - timestamp;
+  const diffMinutes = Math.max(1, Math.round(diffMs / 60000));
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 48) return `${diffHours}h ago`;
+  const diffDays = Math.round(diffHours / 24);
+  return `${diffDays}d ago`;
+}
+
+function normalizeMaintainerrMediaKind(value, fallback = 'movie') {
+  const text = String(value || '').trim().toLowerCase();
+  if (!text) return fallback;
+  if (text === 'movie' || text === 'movies') return 'movie';
+  if (text === 'show' || text === 'shows' || text === 'tv' || text === 'series') return 'show';
+  if (text === 'season' || text === 'episode') return 'show';
+  if (text === '1') return 'movie';
+  if (text === '2') return 'show';
+  return fallback;
+}
+
+function normalizeMaintainerrInitial(value) {
+  const text = String(value || '').trim();
+  if (!text) return '#';
+  const first = text[0].toUpperCase();
+  return /[A-Z]/.test(first) ? first : '#';
+}
+
+function resolveMaintainerrAssetUrl(baseUrl, candidate = '') {
+  const value = String(candidate || '').trim();
+  if (!value) return '';
+  if (/^https?:\/\//i.test(value)) return value;
+  if (/^\/\//.test(value)) return `https:${value}`;
+  try {
+    const normalizedBase = normalizeBaseUrl(baseUrl || '');
+    const relativeBase = normalizedBase || baseUrl;
+    return new URL(value, relativeBase).toString();
+  } catch (err) {
+    return value;
+  }
+}
+
+function isMaintainerrPlaceholderArtwork(value = '') {
+  const text = String(value || '').trim();
+  if (!text) return false;
+  const normalized = decodeURIComponent(text).toLowerCase();
+  if (normalized.includes('/icons/maintainerr.svg') || normalized.includes('/icons/app.svg')) return true;
+  if (!normalized.includes('maintainerr')) {
+    return /(placeholder|fallback|no[-_ ]?art(?:work)?|no[-_ ]?poster|default[-_ ]?(poster|art|image)|missing[-_ ]?(poster|art|image))/i.test(normalized);
+  }
+  return /(placeholder|fallback|no[-_ ]?art(?:work)?|no[-_ ]?poster|default[-_ ]?(poster|art|image)|missing[-_ ]?(poster|art|image))/i.test(normalized);
+}
+
+function isMaintainerrPlexLibraryAssetPath(value = '') {
+  return /^\/library\/metadata\/\d+\/(?:thumb|art|clearLogo)(?:\/\d+)?$/i.test(String(value || '').trim());
+}
+
+function normalizeMaintainerrTmdbKind(value, fallback = 'movie') {
+  const text = String(value || '').trim().toLowerCase();
+  if (text === 'tv' || text === 'show' || text === 'shows' || text === 'series') return 'tv';
+  if (text === 'movie' || text === 'movies') return 'movie';
+  return fallback;
+}
+
+function extractMaintainerrTmdbId(source = {}) {
+  const direct = parseFiniteNumber(
+    source?.tmdbId
+    ?? source?.tmdbID
+    ?? source?.tmdb_id
+    ?? source?.metadata?.tmdbId
+    ?? source?.metadata?.tmdb_id
+    ?? source?.parentTmdbId
+    ?? source?.parentTmdbID,
+    0
+  );
+  if (direct > 0) return direct;
+
+  const guidCandidates = [];
+  const pushGuid = (value) => {
+    const text = String(value || '').trim();
+    if (!text) return;
+    guidCandidates.push(text);
+  };
+  pushGuid(source?.guid);
+  if (Array.isArray(source?.Guid)) {
+    source.Guid.forEach((entry) => {
+      if (entry && typeof entry === 'object') {
+        pushGuid(entry.id || entry.guid || entry.url || '');
+      } else {
+        pushGuid(entry);
+      }
+    });
+  }
+  if (Array.isArray(source?.guids)) {
+    source.guids.forEach((entry) => {
+      if (entry && typeof entry === 'object') {
+        pushGuid(entry.id || entry.guid || entry.url || '');
+      } else {
+        pushGuid(entry);
+      }
+    });
+  }
+  for (let index = 0; index < guidCandidates.length; index += 1) {
+    const match = guidCandidates[index].match(/tmdb:\/\/(\d+)/i);
+    if (match && match[1]) {
+      const parsed = parseFiniteNumber(match[1], 0);
+      if (parsed > 0) return parsed;
+    }
+  }
+  return 0;
+}
+
+function buildMaintainerrTmdbImageUrl(path = '', size = 'w500') {
+  const value = String(path || '').trim();
+  if (!value) return '';
+  if (/^https?:\/\//i.test(value)) return value;
+  if (/^\/\//.test(value)) return `https:${value}`;
+  if (value.startsWith('/')) return `https://image.tmdb.org/t/p/${size}${value}`;
+  if (/^[\w-]+\.(jpg|jpeg|png|webp)$/i.test(value)) return `https://image.tmdb.org/t/p/${size}/${value}`;
+  return '';
+}
+
+function parseMaintainerrRuleJson(value) {
+  if (!value && value !== 0) return {};
+  if (typeof value === 'object') return value || {};
+  const text = String(value || '').trim();
+  if (!text) return {};
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (err) {
+    return {};
+  }
+}
+
+function formatMaintainerrRuleValue(value) {
+  if (Array.isArray(value)) {
+    const normalized = value
+      .map((entry) => String(entry ?? '').trim())
+      .filter(Boolean);
+    return normalized.join(', ');
+  }
+  if (value && typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch (err) {
+      return '';
+    }
+  }
+  return String(value ?? '').trim();
+}
+
+function summarizeMaintainerrRuleCondition(condition = {}) {
+  const sectionValue = String(condition.section ?? '').trim();
+  const actionValue = String(condition.action ?? '').trim();
+  const operatorValue = String(condition.operator ?? '').trim();
+  const firstValue = formatMaintainerrRuleValue(condition.firstVal);
+  const lastValue = formatMaintainerrRuleValue(condition.lastVal);
+  const pieces = [];
+
+  if (sectionValue) pieces.push(`Section ${sectionValue}`);
+  if (actionValue) pieces.push(`Action ${actionValue}`);
+  if (operatorValue === '0') pieces.push('AND');
+  if (operatorValue === '1') pieces.push('OR');
+  if (firstValue) pieces.push(`Value A: ${firstValue}`);
+  if (lastValue) pieces.push(`Value B: ${lastValue}`);
+  return pieces.join(' • ');
+}
+
+function mapMaintainerrLibraryItem(entry, options = {}) {
+  const source = entry && typeof entry === 'object' ? entry : {};
+  const imageList = Array.isArray(source.Image) ? source.Image : [];
+  const posterFromImage = imageList.find((item) => String(item?.type || '').toLowerCase().includes('cover'))?.url || '';
+  const artFromImage = imageList.find((item) => String(item?.type || '').toLowerCase().includes('background'))?.url || '';
+  const kind = normalizeMaintainerrMediaKind(source.type || options.libraryType, 'movie');
+  const tmdbKind = normalizeMaintainerrTmdbKind(kind, 'movie');
+  const tmdbId = extractMaintainerrTmdbId(source);
+  const rawThumbCandidate = pickFirstNonEmpty([source.thumb, source.poster, posterFromImage]);
+  const rawArtCandidate = pickFirstNonEmpty([source.art, source.background, artFromImage]);
+  const resolvedThumb = resolveMaintainerrAssetUrl(options.baseUrl, rawThumbCandidate);
+  const resolvedArt = resolveMaintainerrAssetUrl(options.baseUrl, rawArtCandidate);
+  const thumb = isMaintainerrPlexLibraryAssetPath(rawThumbCandidate)
+    || isMaintainerrPlexLibraryAssetPath(resolvedThumb)
+    || isMaintainerrPlaceholderArtwork(rawThumbCandidate)
+    || isMaintainerrPlaceholderArtwork(resolvedThumb)
+    ? ''
+    : resolvedThumb;
+  const art = isMaintainerrPlexLibraryAssetPath(rawArtCandidate)
+    || isMaintainerrPlexLibraryAssetPath(resolvedArt)
+    || isMaintainerrPlaceholderArtwork(rawArtCandidate)
+    || isMaintainerrPlaceholderArtwork(resolvedArt)
+    ? ''
+    : resolvedArt;
+  const posterProxy = tmdbId > 0 ? `/api/maintainerr-poster/${tmdbKind}/${tmdbId}` : '';
+  const backdropProxy = tmdbId > 0 ? `/api/maintainerr-backdrop/${tmdbKind}/${tmdbId}` : '';
+  const year = parseFiniteNumber(source.year, 0);
+  const addedAt = source.addedAt || source.updatedAt || source.originallyAvailableAt || source.lastViewedAt;
+  const addedLabel = formatMaintainerrDateLabel(addedAt);
+  const subtitle = pickFirstNonEmpty([options.libraryTitle, kind === 'show' ? 'TV' : 'Movies']);
+  const metaParts = [];
+  if (year > 0) metaParts.push(String(year));
+  if (subtitle) metaParts.push(subtitle);
+  return {
+    id: pickFirstNonEmpty([source.ratingKey, source.guid, source.key, source.title]),
+    title: pickFirstNonEmpty([source.title, 'Untitled']),
+    kind,
+    subtitle,
+    meta: metaParts.join(' • '),
+    pill: formatMaintainerrRelativePill(addedAt),
+    sortTs: parseMaintainerrTimestamp(addedAt),
+    addedLabel: addedLabel ? `Added ${addedLabel}` : '',
+    year: year || undefined,
+    letter: normalizeMaintainerrInitial(source.title),
+    thumb: pickFirstNonEmpty([posterProxy, thumb]),
+    art: pickFirstNonEmpty([backdropProxy, art]),
+    overview: pickFirstNonEmpty([source.summary, source.tagline]),
+    libraryId: parseFiniteNumber(options.libraryId, 0),
+    libraryTitle: subtitle,
+    tmdbId: tmdbId || undefined,
+  };
+}
+
+function mapMaintainerrRuleItem(entry) {
+  const source = entry && typeof entry === 'object' ? entry : {};
+  const dataType = parseFiniteNumber(source.dataType || source.collection?.type, 0);
+  const kind = normalizeMaintainerrMediaKind(String(dataType || ''), 'movie');
+  const statusLabel = source.isActive === false ? 'Paused' : 'Active';
+  const rules = Array.isArray(source.rules) ? source.rules : [];
+  const ruleConditions = rules
+    .map((ruleEntry) => {
+      const parsed = parseMaintainerrRuleJson(ruleEntry?.ruleJson);
+      const summary = summarizeMaintainerrRuleCondition(parsed);
+      if (!summary) return '';
+      return summary;
+    })
+    .filter(Boolean);
+  return {
+    id: parseFiniteNumber(source.id, 0),
+    name: pickFirstNonEmpty([source.name, source.collection?.title, `Rule ${source.id || ''}`]).trim(),
+    description: pickFirstNonEmpty([source.description, source.collection?.description]),
+    isActive: source.isActive !== false,
+    status: statusLabel,
+    kind,
+    libraryId: parseFiniteNumber(source.libraryId || source.collection?.libraryId, 0),
+    libraryLabel: kind === 'show' ? 'TV' : 'Movies',
+    collectionId: parseFiniteNumber(source.collection?.id || source.collectionId, 0),
+    collectionTitle: pickFirstNonEmpty([source.collection?.title, source.manualCollectionName]),
+    rulesCount: rules.length,
+    ruleConditions,
+    useRules: source.useRules !== false,
+    cronSchedule: pickFirstNonEmpty([source.ruleHandlerCronSchedule]),
+    handledMediaAmount: parseFiniteNumber(source.collection?.handledMediaAmount, 0),
+    deleteAfterDays: parseFiniteNumber(source.collection?.deleteAfterDays, 0),
+    keepLogsForMonths: parseFiniteNumber(source.collection?.keepLogsForMonths, 0),
+    arrAction: pickFirstNonEmpty([source.collection?.arrAction]),
+    lastDurationSeconds: parseFiniteNumber(source.collection?.lastDurationInSeconds, 0),
+  };
+}
+
+function mapMaintainerrCollectionMediaItem(entry, options = {}) {
+  const source = entry && typeof entry === 'object' ? entry : {};
+  const plexData = source.plexData && typeof source.plexData === 'object'
+    ? source.plexData
+    : {};
+  const imageList = Array.isArray(plexData.Image) ? plexData.Image : [];
+  const posterFromImage = imageList.find((item) => String(item?.type || '').toLowerCase().includes('cover'))?.url || '';
+  const artFromImage = imageList.find((item) => String(item?.type || '').toLowerCase().includes('background'))?.url || '';
+  const kind = normalizeMaintainerrMediaKind(plexData.type || options.type, 'movie');
+  const tmdbKind = normalizeMaintainerrTmdbKind(kind, 'movie');
+  const tmdbId = extractMaintainerrTmdbId({
+    ...source,
+    ...plexData,
+    tmdbId: source.tmdbId ?? plexData.tmdbId,
+  });
+  const imagePathPoster = isMaintainerrPlaceholderArtwork(source.image_path)
+    ? ''
+    : buildMaintainerrTmdbImageUrl(source.image_path, 'w500');
+  const rawThumbCandidate = pickFirstNonEmpty([plexData.thumb, source.thumb, posterFromImage]);
+  const rawArtCandidate = pickFirstNonEmpty([plexData.art, plexData.background, artFromImage]);
+  const resolvedThumb = resolveMaintainerrAssetUrl(options.baseUrl, rawThumbCandidate);
+  const resolvedArt = resolveMaintainerrAssetUrl(options.baseUrl, rawArtCandidate);
+  const thumb = isMaintainerrPlexLibraryAssetPath(rawThumbCandidate)
+    || isMaintainerrPlexLibraryAssetPath(resolvedThumb)
+    || isMaintainerrPlaceholderArtwork(rawThumbCandidate)
+    || isMaintainerrPlaceholderArtwork(resolvedThumb)
+    ? ''
+    : resolvedThumb;
+  const art = isMaintainerrPlexLibraryAssetPath(rawArtCandidate)
+    || isMaintainerrPlexLibraryAssetPath(resolvedArt)
+    || isMaintainerrPlaceholderArtwork(rawArtCandidate)
+    || isMaintainerrPlaceholderArtwork(resolvedArt)
+    ? ''
+    : resolvedArt;
+  const posterProxy = tmdbId > 0 ? `/api/maintainerr-poster/${tmdbKind}/${tmdbId}` : '';
+  const backdropProxy = tmdbId > 0 ? `/api/maintainerr-backdrop/${tmdbKind}/${tmdbId}` : '';
+  const title = pickFirstNonEmpty([plexData.title, source.title, plexData.parentTitle, 'Untitled']);
+  const year = parseFiniteNumber(plexData.year, 0);
+  const addedAt = source.addDate || source.addedAt || plexData.addedAt || plexData.updatedAt;
+  const addedLabel = formatMaintainerrDateLabel(addedAt);
+  return {
+    id: pickFirstNonEmpty([source.id, plexData.ratingKey, title]),
+    title,
+    kind,
+    subtitle: pickFirstNonEmpty([options.collectionTitle, source.collectionTitle]),
+    meta: year > 0 ? String(year) : '',
+    pill: formatMaintainerrRelativePill(addedAt),
+    sortTs: parseMaintainerrTimestamp(addedAt),
+    addedLabel: addedLabel ? `Added ${addedLabel}` : '',
+    year: year || undefined,
+    letter: normalizeMaintainerrInitial(title),
+    thumb: pickFirstNonEmpty([imagePathPoster, posterProxy, thumb]),
+    art: pickFirstNonEmpty([backdropProxy, art]),
+    overview: pickFirstNonEmpty([plexData.summary, plexData.tagline]),
+    collectionId: parseFiniteNumber(options.collectionId || source.collectionId, 0),
+    collectionTitle: pickFirstNonEmpty([options.collectionTitle, source.collectionTitle]),
+    tmdbId: tmdbId || undefined,
+  };
+}
+
 function normalizeRommMediaKind(value, fallback = 'game') {
   const text = String(value || '').trim().toLowerCase();
   if (!text) return fallback;
@@ -8465,6 +8819,467 @@ app.get('/api/autobrr/:kind', requireUser, async (req, res) => {
   }
 
   return res.status(502).json({ error: lastError || 'Failed to fetch Autobrr data.' });
+});
+
+const maintainerrTmdbAssetCache = new Map();
+
+app.get('/api/maintainerr-poster/:kind/:id', requireUser, async (req, res) => {
+  const rawKind = String(req.params.kind || '').trim().toLowerCase();
+  const kind = normalizeMaintainerrTmdbKind(rawKind, '');
+  const tmdbId = parseFiniteNumber(req.params.id, 0);
+  if (!['movie', 'tv'].includes(kind) || !tmdbId) {
+    return res.status(400).json({ error: 'Invalid poster request.' });
+  }
+
+  const config = loadConfig();
+  const apps = config.apps || [];
+  const maintainerrApp = apps.find((appItem) => normalizeAppId(appItem?.id) === 'maintainerr');
+  if (!maintainerrApp) return res.status(404).json({ error: 'Maintainerr app is not configured.' });
+  if (!canAccessDashboardApp(config, maintainerrApp, getEffectiveRole(req))) {
+    return res.status(403).json({ error: 'Maintainerr dashboard access denied.' });
+  }
+
+  const cacheKey = `poster:${kind}:${tmdbId}`;
+  const cached = maintainerrTmdbAssetCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now() && cached.url) {
+    return res.redirect(302, cached.url);
+  }
+
+  const candidates = resolveAppApiCandidates(maintainerrApp, req);
+  if (!candidates.length) return res.status(400).json({ error: 'Missing Maintainerr URL.' });
+
+  const apiKey = String(maintainerrApp.apiKey || '').trim();
+  const authHeader = buildBasicAuthHeader(maintainerrApp.username || '', maintainerrApp.password || '');
+  const headers = { Accept: 'text/plain,application/json' };
+  if (apiKey) {
+    headers['X-Api-Key'] = apiKey;
+    headers['X-API-KEY'] = apiKey;
+    if (!authHeader) headers.Authorization = /^bearer\s+/i.test(apiKey) ? apiKey : `Bearer ${apiKey}`;
+  }
+  if (authHeader) headers.Authorization = authHeader;
+
+  let lastError = '';
+  for (let index = 0; index < candidates.length; index += 1) {
+    const baseUrl = candidates[index];
+    if (!baseUrl) continue;
+    try {
+      const url = buildAppApiUrl(baseUrl, `api/moviedb/image/${kind}/${tmdbId}`);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      let response;
+      try {
+        response = await fetch(url.toString(), {
+          headers,
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+      const text = (await response.text()).trim();
+      if (!response.ok) {
+        lastError = `Poster lookup failed (${response.status}) via ${baseUrl}.`;
+        continue;
+      }
+      const resolved = buildMaintainerrTmdbImageUrl(text, 'w500');
+      if (!resolved) {
+        lastError = `Poster lookup returned empty path via ${baseUrl}.`;
+        continue;
+      }
+      maintainerrTmdbAssetCache.set(cacheKey, {
+        url: resolved,
+        expiresAt: Date.now() + (6 * 60 * 60 * 1000),
+      });
+      return res.redirect(302, resolved);
+    } catch (err) {
+      lastError = safeMessage(err) || `Failed to reach Maintainerr via ${baseUrl}.`;
+    }
+  }
+
+  return res.status(404).json({ error: lastError || 'Poster not found.' });
+});
+
+app.get('/api/maintainerr-backdrop/:kind/:id', requireUser, async (req, res) => {
+  const rawKind = String(req.params.kind || '').trim().toLowerCase();
+  const kind = normalizeMaintainerrTmdbKind(rawKind, '');
+  const tmdbId = parseFiniteNumber(req.params.id, 0);
+  if (!['movie', 'tv'].includes(kind) || !tmdbId) {
+    return res.status(400).json({ error: 'Invalid backdrop request.' });
+  }
+
+  const config = loadConfig();
+  const apps = config.apps || [];
+  const maintainerrApp = apps.find((appItem) => normalizeAppId(appItem?.id) === 'maintainerr');
+  if (!maintainerrApp) return res.status(404).json({ error: 'Maintainerr app is not configured.' });
+  if (!canAccessDashboardApp(config, maintainerrApp, getEffectiveRole(req))) {
+    return res.status(403).json({ error: 'Maintainerr dashboard access denied.' });
+  }
+
+  const cacheKey = `backdrop:${kind}:${tmdbId}`;
+  const cached = maintainerrTmdbAssetCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now() && cached.url) {
+    return res.redirect(302, cached.url);
+  }
+
+  const candidates = resolveAppApiCandidates(maintainerrApp, req);
+  if (!candidates.length) return res.status(400).json({ error: 'Missing Maintainerr URL.' });
+
+  const apiKey = String(maintainerrApp.apiKey || '').trim();
+  const authHeader = buildBasicAuthHeader(maintainerrApp.username || '', maintainerrApp.password || '');
+  const headers = { Accept: 'text/plain,application/json' };
+  if (apiKey) {
+    headers['X-Api-Key'] = apiKey;
+    headers['X-API-KEY'] = apiKey;
+    if (!authHeader) headers.Authorization = /^bearer\s+/i.test(apiKey) ? apiKey : `Bearer ${apiKey}`;
+  }
+  if (authHeader) headers.Authorization = authHeader;
+
+  let lastError = '';
+  for (let index = 0; index < candidates.length; index += 1) {
+    const baseUrl = candidates[index];
+    if (!baseUrl) continue;
+    try {
+      const url = buildAppApiUrl(baseUrl, `api/moviedb/backdrop/${kind}/${tmdbId}`);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      let response;
+      try {
+        response = await fetch(url.toString(), {
+          headers,
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+      const text = (await response.text()).trim();
+      if (!response.ok) {
+        lastError = `Backdrop lookup failed (${response.status}) via ${baseUrl}.`;
+        continue;
+      }
+      const resolved = buildMaintainerrTmdbImageUrl(text, 'w1280');
+      if (!resolved) {
+        lastError = `Backdrop lookup returned empty path via ${baseUrl}.`;
+        continue;
+      }
+      maintainerrTmdbAssetCache.set(cacheKey, {
+        url: resolved,
+        expiresAt: Date.now() + (6 * 60 * 60 * 1000),
+      });
+      return res.redirect(302, resolved);
+    } catch (err) {
+      lastError = safeMessage(err) || `Failed to reach Maintainerr via ${baseUrl}.`;
+    }
+  }
+
+  return res.status(404).json({ error: lastError || 'Backdrop not found.' });
+});
+
+app.get('/api/maintainerr/:kind', requireUser, async (req, res) => {
+  const kind = String(req.params.kind || '').trim().toLowerCase();
+  if (!['library-media', 'rules', 'collections-media'].includes(kind)) {
+    return res.status(400).json({ error: 'Unsupported Maintainerr endpoint.' });
+  }
+
+  const config = loadConfig();
+  const apps = config.apps || [];
+  const maintainerrApp = apps.find((appItem) => normalizeAppId(appItem?.id) === 'maintainerr');
+  if (!maintainerrApp) return res.status(404).json({ error: 'Maintainerr app is not configured.' });
+  if (!canAccessDashboardApp(config, maintainerrApp, getEffectiveRole(req))) {
+    return res.status(403).json({ error: 'Maintainerr dashboard access denied.' });
+  }
+
+  const candidates = resolveAppApiCandidates(maintainerrApp, req);
+  if (!candidates.length) return res.status(400).json({ error: 'Missing Maintainerr URL.' });
+
+  const apiKey = String(maintainerrApp.apiKey || '').trim();
+  const authHeader = buildBasicAuthHeader(maintainerrApp.username || '', maintainerrApp.password || '');
+  const headers = {
+    Accept: 'application/json',
+  };
+  if (apiKey) {
+    headers['X-Api-Key'] = apiKey;
+    headers['X-API-KEY'] = apiKey;
+    if (!authHeader) headers.Authorization = /^bearer\s+/i.test(apiKey) ? apiKey : `Bearer ${apiKey}`;
+  }
+  if (authHeader) headers.Authorization = authHeader;
+
+  const fetchMaintainerrJson = async (baseUrl, path, query = {}) => {
+    const url = buildAppApiUrl(baseUrl, path);
+    Object.entries(query || {}).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        url.searchParams.set(key, String(value));
+      }
+    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await fetch(url.toString(), {
+        headers,
+        signal: controller.signal,
+      });
+      const text = await response.text();
+      let payload = {};
+      try {
+        payload = text ? JSON.parse(text) : {};
+      } catch (err) {
+        payload = {};
+      }
+      if (!response.ok) {
+        const message = String(payload?.message || payload?.error || '').trim();
+        throw new Error(message || `Maintainerr request failed (${response.status}).`);
+      }
+      return payload;
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
+  const mediaFilterRaw = String(req.query?.media || 'all').trim().toLowerCase();
+  const mediaFilter = mediaFilterRaw === 'movie' || mediaFilterRaw === 'show' ? mediaFilterRaw : 'all';
+  const requestedLimitRaw = String(req.query?.limit || '').trim().toLowerCase();
+  const maxCap = kind === 'library-media' ? 8000 : 1200;
+  let itemLimit = kind === 'library-media' ? 2000 : 200;
+  if (requestedLimitRaw === 'all') {
+    itemLimit = maxCap;
+  } else if (requestedLimitRaw) {
+    const parsed = Number(requestedLimitRaw);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      itemLimit = Math.min(maxCap, Math.max(1, Math.round(parsed)));
+    }
+  }
+
+  let lastError = '';
+  for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex += 1) {
+    const baseUrl = candidates[candidateIndex];
+    if (!baseUrl) continue;
+    try {
+      if (kind === 'rules') {
+        const payload = await fetchMaintainerrJson(baseUrl, 'api/rules');
+        const list = Array.isArray(payload)
+          ? payload
+          : (Array.isArray(payload?.items) ? payload.items : []);
+        let items = list.map((entry) => mapMaintainerrRuleItem(entry)).filter((entry) => Boolean(entry?.id));
+        if (mediaFilter !== 'all') {
+          items = items.filter((entry) => String(entry?.kind || '').toLowerCase() === mediaFilter);
+        }
+        items = items.sort((left, right) => String(left?.name || '').localeCompare(String(right?.name || '')));
+        return res.json({ items: items.slice(0, itemLimit) });
+      }
+
+      if (kind === 'library-media') {
+        const librariesPayload = await fetchMaintainerrJson(baseUrl, 'api/plex/libraries');
+        const librariesList = Array.isArray(librariesPayload)
+          ? librariesPayload
+          : (Array.isArray(librariesPayload?.items) ? librariesPayload.items : []);
+        const libraries = librariesList
+          .map((library) => {
+            const libraryId = parseFiniteNumber(library?.id || library?.key || library?.librarySectionID, 0);
+            const mediaKind = normalizeMaintainerrMediaKind(library?.type, '');
+            if (!libraryId || !['movie', 'show'].includes(mediaKind)) return null;
+            return {
+              id: libraryId,
+              title: pickFirstNonEmpty([library?.title, `Library ${libraryId}`]),
+              kind: mediaKind,
+            };
+          })
+          .filter(Boolean)
+          .filter((library) => mediaFilter === 'all' || library.kind === mediaFilter);
+
+        const perPage = Math.max(50, Math.min(500, parseFiniteNumber(req.query?.pageSize || 200, 200)));
+        const maxPages = Math.max(1, Math.min(100, parseFiniteNumber(req.query?.maxPages || 50, 50)));
+        const items = [];
+
+        for (let libraryIndex = 0; libraryIndex < libraries.length; libraryIndex += 1) {
+          const library = libraries[libraryIndex];
+          let page = 1;
+          let loaded = 0;
+          let expectedTotal = Number.POSITIVE_INFINITY;
+          while (
+            items.length < itemLimit
+            && page <= maxPages
+            && loaded < expectedTotal
+          ) {
+            const pagePayload = await fetchMaintainerrJson(baseUrl, `api/plex/library/${library.id}/content/${page}`, {
+              amount: perPage,
+            });
+            const pageItems = Array.isArray(pagePayload?.items)
+              ? pagePayload.items
+              : (Array.isArray(pagePayload) ? pagePayload : []);
+            if (!pageItems.length) break;
+            expectedTotal = Math.max(loaded + pageItems.length, parseFiniteNumber(pagePayload?.totalSize, loaded + pageItems.length));
+            pageItems.forEach((entry) => {
+              const mapped = mapMaintainerrLibraryItem(entry, {
+                baseUrl,
+                libraryId: library.id,
+                libraryTitle: library.title,
+                libraryType: library.kind,
+              });
+              if (mediaFilter !== 'all' && mapped.kind !== mediaFilter) return;
+              items.push(mapped);
+            });
+            loaded += pageItems.length;
+            page += 1;
+            if (items.length >= itemLimit) break;
+          }
+          if (items.length >= itemLimit) break;
+        }
+
+        const ordered = items
+          .sort((left, right) => String(left?.title || '').localeCompare(String(right?.title || '')));
+        return res.json({
+          libraries,
+          items: ordered.slice(0, itemLimit),
+        });
+      }
+
+      const collectionsPayload = await fetchMaintainerrJson(baseUrl, 'api/collections');
+      const collectionList = Array.isArray(collectionsPayload)
+        ? collectionsPayload
+        : (Array.isArray(collectionsPayload?.items) ? collectionsPayload.items : []);
+      const collections = collectionList
+        .map((entry) => {
+          const collectionId = parseFiniteNumber(entry?.id, 0);
+          const kind = normalizeMaintainerrMediaKind(entry?.type, '');
+          if (!collectionId || !['movie', 'show'].includes(kind)) return null;
+          return {
+            id: collectionId,
+            title: pickFirstNonEmpty([entry?.title, `Collection ${collectionId}`]),
+            kind,
+            isActive: entry?.isActive !== false,
+            mediaCount: Array.isArray(entry?.media) ? entry.media.length : 0,
+          };
+        })
+        .filter(Boolean)
+        .filter((entry) => mediaFilter === 'all' || entry.kind === mediaFilter);
+
+      const selectedRaw = String(req.query?.collectionIds || req.query?.collectionId || 'all').trim().toLowerCase();
+      let selectedCollectionIds = [];
+      if (!selectedRaw || selectedRaw === 'all') {
+        selectedCollectionIds = collections.map((entry) => entry.id);
+      } else {
+        selectedCollectionIds = selectedRaw
+          .split(',')
+          .map((value) => parseFiniteNumber(value, 0))
+          .filter((value) => value > 0)
+          .filter((value, index, array) => array.indexOf(value) === index);
+      }
+      if (!selectedCollectionIds.length) selectedCollectionIds = collections.map((entry) => entry.id);
+      selectedCollectionIds = selectedCollectionIds.filter((value) => collections.some((entry) => entry.id === value));
+
+      const perCollectionSize = Math.max(
+        20,
+        Math.min(
+          250,
+          parseFiniteNumber(
+            req.query?.collectionSize,
+            Math.ceil(itemLimit / Math.max(1, selectedCollectionIds.length)) + 25
+          )
+        )
+      );
+      const combined = [];
+      for (let index = 0; index < selectedCollectionIds.length; index += 1) {
+        const collectionId = selectedCollectionIds[index];
+        const collection = collections.find((entry) => entry.id === collectionId);
+        if (!collection) continue;
+        const mediaPayload = await fetchMaintainerrJson(baseUrl, `api/collections/media/${collectionId}/content/1`, {
+          size: perCollectionSize,
+        });
+        const list = Array.isArray(mediaPayload?.items)
+          ? mediaPayload.items
+          : (Array.isArray(mediaPayload) ? mediaPayload : []);
+        list.forEach((entry) => {
+          const mapped = mapMaintainerrCollectionMediaItem(entry, {
+            baseUrl,
+            collectionId,
+            collectionTitle: collection.title,
+            type: collection.kind,
+          });
+          if (mediaFilter !== 'all' && mapped.kind !== mediaFilter) return;
+          combined.push(mapped);
+        });
+      }
+
+      const ordered = combined
+        .sort((left, right) => parseFiniteNumber(right?.sortTs, 0) - parseFiniteNumber(left?.sortTs, 0));
+      return res.json({
+        collections,
+        selectedCollectionIds,
+        items: ordered.slice(0, itemLimit),
+      });
+    } catch (err) {
+      lastError = safeMessage(err) || `Failed to reach Maintainerr via ${baseUrl}.`;
+    }
+  }
+
+  return res.status(502).json({ error: lastError || 'Failed to fetch Maintainerr data.' });
+});
+
+app.post('/api/maintainerr/rules/:id/execute', requireUser, async (req, res) => {
+  const ruleId = parseFiniteNumber(req.params.id, 0);
+  if (!ruleId) return res.status(400).json({ error: 'Invalid rule id.' });
+
+  const config = loadConfig();
+  const apps = config.apps || [];
+  const maintainerrApp = apps.find((appItem) => normalizeAppId(appItem?.id) === 'maintainerr');
+  if (!maintainerrApp) return res.status(404).json({ error: 'Maintainerr app is not configured.' });
+  if (!canAccessDashboardApp(config, maintainerrApp, getEffectiveRole(req))) {
+    return res.status(403).json({ error: 'Maintainerr dashboard access denied.' });
+  }
+
+  const candidates = resolveAppApiCandidates(maintainerrApp, req);
+  if (!candidates.length) return res.status(400).json({ error: 'Missing Maintainerr URL.' });
+
+  const apiKey = String(maintainerrApp.apiKey || '').trim();
+  const authHeader = buildBasicAuthHeader(maintainerrApp.username || '', maintainerrApp.password || '');
+  const headers = {
+    Accept: 'application/json',
+  };
+  if (apiKey) {
+    headers['X-Api-Key'] = apiKey;
+    headers['X-API-KEY'] = apiKey;
+    if (!authHeader) headers.Authorization = /^bearer\s+/i.test(apiKey) ? apiKey : `Bearer ${apiKey}`;
+  }
+  if (authHeader) headers.Authorization = authHeader;
+
+  let lastError = '';
+  for (let index = 0; index < candidates.length; index += 1) {
+    const baseUrl = candidates[index];
+    if (!baseUrl) continue;
+    try {
+      const url = buildAppApiUrl(baseUrl, `api/rules/${ruleId}/execute`);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      let response;
+      try {
+        response = await fetch(url.toString(), {
+          method: 'POST',
+          headers,
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+      const text = await response.text();
+      let payload = {};
+      try {
+        payload = text ? JSON.parse(text) : {};
+      } catch (err) {
+        payload = {};
+      }
+      if (!response.ok) {
+        const message = String(payload?.message || payload?.error || '').trim();
+        if ([400, 404, 409].includes(response.status)) {
+          return res.status(response.status).json({ error: message || `Rule execute failed (${response.status}).` });
+        }
+        lastError = message || `Rule execute failed (${response.status}) via ${baseUrl}.`;
+        continue;
+      }
+      return res.json({ ok: true, id: ruleId, status: response.status });
+    } catch (err) {
+      lastError = safeMessage(err) || `Failed to reach Maintainerr via ${baseUrl}.`;
+    }
+  }
+
+  return res.status(502).json({ error: lastError || 'Failed to execute Maintainerr rule.' });
 });
 
 app.get('/api/romm/:kind', requireUser, async (req, res) => {
@@ -10365,6 +11180,40 @@ function resolveLaunchUrl(appItem, req) {
 
   if (isLocal) return localUrl || remoteUrl;
   return remoteUrl || localUrl;
+}
+
+function extractHostNameFromHostHeader(hostValue) {
+  const raw = String(hostValue || '').trim();
+  if (!raw) return '';
+  if (raw.startsWith('[')) {
+    const closingIndex = raw.indexOf(']');
+    if (closingIndex > 1) return raw.slice(1, closingIndex);
+    return raw.replace(/^\[|\]$/g, '');
+  }
+  const colonIndex = raw.indexOf(':');
+  if (colonIndex > 0) return raw.slice(0, colonIndex);
+  return raw;
+}
+
+function resolveIframeLaunchUrl(req, launchUrl) {
+  const baseLaunchUrl = String(launchUrl || '').trim();
+  if (!baseLaunchUrl) return '';
+  try {
+    const parsedLaunchUrl = new URL(baseLaunchUrl);
+    const requestHostName = extractHostNameFromHostHeader(getRequestHost(req));
+    const targetHostName = String(parsedLaunchUrl.hostname || '').trim();
+    if (!requestHostName || !targetHostName) return baseLaunchUrl;
+    if (targetHostName.toLowerCase() === requestHostName.toLowerCase()) return baseLaunchUrl;
+
+    const isLocalPair = (isPrivateIp(targetHostName) || isLocalHost(targetHostName))
+      && (isPrivateIp(requestHostName) || isLocalHost(requestHostName));
+    if (!isLocalPair) return baseLaunchUrl;
+
+    parsedLaunchUrl.hostname = requestHostName;
+    return parsedLaunchUrl.toString();
+  } catch (err) {
+    return baseLaunchUrl;
+  }
 }
 
 async function resolveDeepLaunchUrl(appItem, req, options = {}) {

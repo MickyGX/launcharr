@@ -35,6 +35,7 @@ This page lists Launcharr supported integrations, grouped by type, starting with
 | <img src="../../public/icons/pulsarr.png" alt="Pulsarr" width="20" /> | Pulsarr | `pulsarr` | Recent requests card<br>Most watchlisted card |
 | <img src="../../public/icons/seerr.png" alt="Seerr" width="20" /> | Seerr | `seerr` | Recent requests card<br>Most watchlisted card |
 | <img src="../../public/icons/autobrr.png" alt="Autobrr" width="20" /> | Autobrr | `autobrr` | Major default integration (v0.2.14)<br>Recent matches + Delivery queue table cards<br>Status filtering support |
+| <img src="../../public/icons/maintainerr.svg" alt="Maintainerr" width="20" /> | Maintainerr | `maintainerr` | Library media carousel card (Movie/TV + A-Z filters)<br>Rules card with execute action<br>Collections media carousel card with in-card collection filter |
 | <img src="../../public/icons/cleanuparr.png" alt="Cleanuparr" width="20" /> | Cleanuparr | `cleanuparr` | App launch + settings integration |
 | <img src="../../public/icons/huntarr.png" alt="Huntarr" width="20" /> | Huntarr | `huntarr` | App launch + settings integration |
 

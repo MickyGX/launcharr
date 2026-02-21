@@ -1062,6 +1062,64 @@
     "plexToken": ""
   },
   {
+    "id": "maintainerr",
+    "name": "Maintainerr",
+    "icon": "/icons/maintainerr.svg",
+    "url": "http://localhost:6246",
+    "description": "Library cleanup automation",
+    "category": "Arr Suite",
+    "roles": [
+      "admin",
+      "user"
+    ],
+    "apiKey": "",
+    "username": "",
+    "password": "",
+    "menu": {
+      "overview": {
+        "user": true,
+        "admin": true
+      },
+      "launch": {
+        "user": true,
+        "admin": true
+      },
+      "settings": {
+        "user": false,
+        "admin": true
+      }
+    },
+    "order": 4,
+    "favourite": false,
+    "launchMode": "iframe",
+    "localUrl": "http://localhost:6246",
+    "remoteUrl": "",
+    "overviewElements": [
+      {
+        "id": "library-media",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "order": 1
+      },
+      {
+        "id": "rules",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "order": 2
+      },
+      {
+        "id": "collections-media",
+        "enable": true,
+        "dashboard": true,
+        "favourite": false,
+        "order": 3
+      }
+    ],
+    "plexToken": ""
+  },
+  {
     "id": "romm",
     "name": "Romm",
     "icon": "/icons/romm.svg",

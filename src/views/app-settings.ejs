@@ -90,7 +90,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/styles.css?v=<%= assetVersion %>" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" type="image/png" href="/icons/launcharr-icon.png" />
   <meta name="theme-color" content="#1cc6c2" />
@@ -292,7 +292,7 @@
         const requiresApiKey = isArrSuite || apiKeyAppBaseIds.has(appBaseId);
         const hasToken = appBaseId === 'plex'
           ? Boolean(app.plexToken)
-          : (requiresApiKey ? Boolean(app.apiKey) : true);
+          : ((requiresApiKey && appBaseId !== 'maintainerr') ? Boolean(app.apiKey) : true);
         const statusOk = enabled && hasUrl && hasToken;
       %>
       <div class="main-window-bar">
@@ -380,6 +380,8 @@
                   Use the API key from Prowlarr Settings -> General.
                 <% } else if (app.id === 'sabnzbd') { %>
                   Use the API key from SABnzbd Config -> General.
+                <% } else if (appBaseId === 'maintainerr') { %>
+                  Optional: Use the API key from Maintainerr Settings -> Generate API key.
                 <% } else { %>
                   Use the API key from <%= app.name %> settings.
                 <% } %>
@@ -393,7 +395,7 @@
               <div class="plex-settings-note">Tip: Keep this key private.</div>
             </div>
           <% } %>
-          <% if (['nzbget', 'transmission', 'qbittorrent', 'sabnzbd', 'romm'].includes(appBaseId)) { %>
+          <% if (['nzbget', 'transmission', 'qbittorrent', 'sabnzbd', 'romm', 'maintainerr'].includes(appBaseId)) { %>
             <div class="settings-card plex-settings-card">
               <div class="settings-card-title"><%= app.name %> Access</div>
               <div class="settings-card-sub">Credentials for local or remote access.</div>
@@ -604,25 +606,39 @@
       const isCategoryTrigger = trigger.classList.contains('nav-accordion-trigger--category');
       let longPressTimer = null;
       let longPressTriggered = false;
+      const supportsPointerEvents = typeof window !== 'undefined' && 'PointerEvent' in window;
       const clearLongPressTimer = () => {
         if (longPressTimer) {
           window.clearTimeout(longPressTimer);
           longPressTimer = null;
         }
       };
-      trigger.addEventListener('pointerdown', (event) => {
-        if (isCategoryTrigger) return;
-        if (event.button !== undefined && event.button !== 0) return;
+      const startLongPressTimer = () => {
         longPressTriggered = false;
         clearLongPressTimer();
         longPressTimer = window.setTimeout(() => {
           longPressTriggered = true;
           handlePressAction(item, longPressAction, false);
         }, LONG_PRESS_DELAY_MS);
-      });
-      ['pointerup', 'pointerleave', 'pointercancel'].forEach((eventName) => {
-        trigger.addEventListener(eventName, clearLongPressTimer);
-      });
+      };
+      if (supportsPointerEvents) {
+        trigger.addEventListener('pointerdown', (event) => {
+          if (isCategoryTrigger) return;
+          if (event.button !== undefined && event.button !== 0) return;
+          startLongPressTimer();
+        });
+        ['pointerup', 'pointerleave', 'pointercancel'].forEach((eventName) => {
+          trigger.addEventListener(eventName, clearLongPressTimer);
+        });
+      } else {
+        trigger.addEventListener('touchstart', () => {
+          if (isCategoryTrigger) return;
+          startLongPressTimer();
+        }, { passive: true });
+        ['touchend', 'touchcancel', 'touchmove'].forEach((eventName) => {
+          trigger.addEventListener(eventName, clearLongPressTimer, { passive: true });
+        });
+      }
       trigger.addEventListener('contextmenu', (event) => {
         if (longPressTriggered) event.preventDefault();
       });
@@ -845,9 +861,9 @@
     }
 
   </script>
-  <script src="/version-badge.js"></script>
+  <script src="/version-badge.js?v=<%= assetVersion %>"></script>
   <script src="/brand-menu.js?v=<%= assetVersion %>"></script>
   <script src="/starfield-3d.js"></script>
-  <script src="/pwa.js"></script>
+  <script src="/pwa.js?v=<%= assetVersion %>"></script>
 </body>
 </html>

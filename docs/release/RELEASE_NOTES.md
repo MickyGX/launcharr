@@ -1,4 +1,13 @@
-# Release Notes (v0.1.0 -> v0.2.34)
+# Release Notes (v0.1.0 -> v0.2.35)
+
+## v0.2.35 (2026-02-21)
+
+- Added default Maintainerr integration (`Arr Suite`) with Launcharr-native Dashboard/App Overview modules: `Library Media`, `Rules`, and `Collections Media`.
+- Added Maintainerr API integration routes for media/rules/collections, rule execute action, and TMDB poster/backdrop proxying.
+- Updated Maintainerr cards to Launcharr style, including fallback-art handling and rules-card metadata updates.
+- Fixed touch fallback for sidebar short/long-press actions when Pointer Events are unavailable.
+- Fixed stale asset behavior by versioning `styles.css`, `version-badge.js`, and `pwa.js` across app views plus runtime cache-busted `assetVersion`.
+- Fixed local-network iframe host mismatch/login-loop scenario (including Romm) by normalizing iframe target host to the active Launcharr LAN host.
 
 ## v0.2.34 (2026-02-21)
 

@@ -27,6 +27,7 @@
     { "id": "nzbget", "removed": true },
     { "id": "jackett", "removed": true },
     { "id": "autobrr", "removed": true },
+    { "id": "maintainerr", "removed": true },
     { "id": "romm", "removed": true }
   ],
   "categories": [
