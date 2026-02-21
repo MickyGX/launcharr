@@ -1,4 +1,11 @@
-# Release Notes (v0.1.0 -> v0.2.33)
+# Release Notes (v0.1.0 -> v0.2.34)
+
+## v0.2.34 (2026-02-21)
+
+- Fixed Romm `Recently Added` ordering mismatch between Dashboard and App Overview cards.
+- Updated Romm `Recently Added` rendering to sort newest-first explicitly instead of relying on upstream response order.
+- Improved consistency for recent Romm content visibility across Launcharr surfaces.
+
 
 ## v0.2.33 (2026-02-21)
 

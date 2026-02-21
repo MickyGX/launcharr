@@ -618,6 +618,21 @@
           if (rightCount !== leftCount) return rightCount - leftCount;
           return leftTitle.localeCompare(rightTitle);
         });
+      } else {
+        filtered = filtered.sort(function (left, right) {
+          var leftTitle = String(left && left.title || '');
+          var rightTitle = String(right && right.title || '');
+          var leftSort = parseTs(left && left.sortTs || 0);
+          var rightSort = parseTs(right && right.sortTs || 0);
+          if (selectedSort === 'oldest') {
+            if (leftSort !== rightSort) return leftSort - rightSort;
+            return leftTitle.localeCompare(rightTitle);
+          }
+          if (selectedSort === 'a-z') return leftTitle.localeCompare(rightTitle);
+          if (selectedSort === 'z-a') return rightTitle.localeCompare(leftTitle);
+          if (rightSort !== leftSort) return rightSort - leftSort;
+          return leftTitle.localeCompare(rightTitle);
+        });
       }
       if (!showAll) filtered = filtered.slice(0, limit);
       renderTrack(
