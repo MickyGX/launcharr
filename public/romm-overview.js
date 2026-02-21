@@ -461,7 +461,7 @@
     return '/apps/' + appId + '/launch?q=' + title;
   }
 
-  function normalizeItem(item, config) {
+  function normalizeItem(item, config, fallbackIndex) {
     var raw = item && typeof item === 'object' ? item : {};
     var sectionId = String(config.sectionId || '').trim().toLowerCase();
     var defaultKind = sectionId === 'consoles' ? 'console' : 'game';
@@ -470,6 +470,10 @@
     var meta = String(raw.meta || raw.episodeTitle || raw.quality || '').trim();
     var kind = normalizeKind(raw.kind || raw.type, defaultKind);
     var sortTs = parseTs(raw.sortTs || raw.sortValue || 0);
+    var parsedSourceIndex = Number(raw.sourceIndex);
+    var sourceIndex = Number.isFinite(parsedSourceIndex) && parsedSourceIndex >= 0
+      ? Math.round(parsedSourceIndex)
+      : (Number.isFinite(Number(fallbackIndex)) && Number(fallbackIndex) >= 0 ? Math.round(Number(fallbackIndex)) : 0);
     var romCount = parseCount(raw.romCount || raw.romsCount || raw.rom_count || raw.roms_count || raw.totalRoms || raw.total_roms || (defaultKind === 'console' ? raw.sortTs : 0));
     var stats = normalizeStats(raw.stats);
     if (defaultKind === 'console' && !stats.length && romCount > 0) {
@@ -495,6 +499,7 @@
       romCount: romCount,
       stats: stats,
       sortTs: sortTs,
+      sourceIndex: sourceIndex,
       launchUrl: buildLaunchUrl(config, { title: title, launchUrl: raw.launchUrl }),
     };
   }
@@ -624,12 +629,18 @@
           var rightTitle = String(right && right.title || '');
           var leftSort = parseTs(left && left.sortTs || 0);
           var rightSort = parseTs(right && right.sortTs || 0);
+          var leftSourceIndex = Number(left && left.sourceIndex);
+          var rightSourceIndex = Number(right && right.sourceIndex);
+          if (!Number.isFinite(leftSourceIndex)) leftSourceIndex = 0;
+          if (!Number.isFinite(rightSourceIndex)) rightSourceIndex = 0;
           if (selectedSort === 'oldest') {
+            if (leftSourceIndex !== rightSourceIndex) return rightSourceIndex - leftSourceIndex;
             if (leftSort !== rightSort) return leftSort - rightSort;
             return leftTitle.localeCompare(rightTitle);
           }
           if (selectedSort === 'a-z') return leftTitle.localeCompare(rightTitle);
           if (selectedSort === 'z-a') return rightTitle.localeCompare(leftTitle);
+          if (leftSourceIndex !== rightSourceIndex) return leftSourceIndex - rightSourceIndex;
           if (rightSort !== leftSort) return rightSort - leftSort;
           return leftTitle.localeCompare(rightTitle);
         });
@@ -651,7 +662,7 @@
     fetchJson(endpoint)
       .then(function (payload) {
         var rows = Array.isArray(payload && payload.items) ? payload.items : [];
-        track.__rommItems = rows.map(function (item) { return normalizeItem(item, config); });
+        track.__rommItems = rows.map(function (item, index) { return normalizeItem(item, config, index); });
         applyFilters();
       })
       .catch(function (err) {

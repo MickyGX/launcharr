@@ -9327,6 +9327,8 @@ app.get('/api/romm/:kind', requireUser, async (req, res) => {
       { path: 'api/v1/games/recently-added', query: { limit: '200' } },
       { path: 'api/roms/recent', query: { limit: '200' } },
       { path: 'api/roms/recently-added', query: { limit: '200' } },
+      { path: 'api/roms', query: { order_by: 'id', order_dir: 'desc', with_char_index: 'false', with_filter_values: 'false', limit: '200' } },
+      { path: 'api/roms', query: { order_by: 'updated_at', order_dir: 'desc', with_char_index: 'false', with_filter_values: 'false', limit: '200' } },
       { path: 'api/roms', query: { order_by: 'created_at', order_dir: 'desc', with_char_index: 'false', with_filter_values: 'false', limit: '200' } },
       { path: 'api/roms', query: { sort: 'created_at', order: 'desc', limit: '200' } },
       { path: 'api/v1/roms', query: { sort: 'created_at', order: 'desc', limit: '200' } },
@@ -12672,7 +12674,12 @@ function mergeAppDefaults(defaultApps, overrideApps) {
     .filter((app) => normalizeAppId(app?.id))
     .map((app) => {
       const override = overrideMap.get(normalizeAppId(app.id));
-      return override ? { ...app, ...override } : app;
+      if (!override) return app;
+      const hasExplicitRemoved = Object.prototype.hasOwnProperty.call(override, 'removed');
+      if (hasExplicitRemoved) {
+        return { ...app, ...override };
+      }
+      return { ...app, ...override, removed: false };
     });
 
   const defaultIds = new Set(defaults.map((app) => normalizeAppId(app?.id)).filter(Boolean));

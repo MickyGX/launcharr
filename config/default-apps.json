@@ -36,7 +36,7 @@
       {
         "id": "active",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "showSubtitle": true,
         "showMeta": true,
@@ -49,7 +49,7 @@
       {
         "id": "recent",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "showSubtitle": true,
         "showMeta": true,
@@ -62,7 +62,7 @@
       {
         "id": "watchlisted",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "showSubtitle": true,
         "showMeta": true,
@@ -73,7 +73,8 @@
         "order": 3
       }
     ],
-    "launchMode": "iframe"
+    "launchMode": "iframe",
+    "removed": true
   },
   {
     "id": "jellyfin",
@@ -111,7 +112,7 @@
       {
         "id": "active",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "showSubtitle": true,
         "showMeta": true,
@@ -124,7 +125,7 @@
       {
         "id": "recent",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "showSubtitle": true,
         "showMeta": true,
@@ -135,7 +136,8 @@
         "order": 2
       }
     ],
-    "launchMode": "iframe"
+    "launchMode": "iframe",
+    "removed": true
   },
   {
     "id": "emby",
@@ -173,7 +175,7 @@
       {
         "id": "active",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "showSubtitle": true,
         "showMeta": true,
@@ -186,7 +188,7 @@
       {
         "id": "recent",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "showSubtitle": true,
         "showMeta": true,
@@ -197,7 +199,8 @@
         "order": 2
       }
     ],
-    "launchMode": "iframe"
+    "launchMode": "iframe",
+    "removed": true
   },
   {
     "id": "tautulli",
@@ -292,13 +295,14 @@
       {
         "id": "watch-stats",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "tautulliStatsView": "list",
         "favourite": false,
         "order": 1
       }
     ],
-    "launchMode": "iframe"
+    "launchMode": "iframe",
+    "removed": true
   },
   {
     "id": "radarr",
@@ -340,7 +344,7 @@
       {
         "id": "downloading-soon",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "showSubtitle": true,
         "showMeta": true,
@@ -353,7 +357,7 @@
       {
         "id": "recently-downloaded",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "showSubtitle": true,
         "showMeta": true,
@@ -366,7 +370,7 @@
       {
         "id": "activity-queue",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "showSubtitle": true,
         "showMeta": true,
@@ -379,7 +383,7 @@
       {
         "id": "calendar",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "showSubtitle": true,
         "showMeta": true,
@@ -389,7 +393,8 @@
         "showUsername": true,
         "order": 4
       }
-    ]
+    ],
+    "removed": true
   },
   {
     "id": "sonarr",
@@ -431,25 +436,26 @@
       {
         "id": "downloading-soon",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "order": 1
       },
       {
         "id": "recently-downloaded",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "order": 2
       },
       {
         "id": "calendar",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "order": 4
       }
-    ]
+    ],
+    "removed": true
   },
   {
     "id": "lidarr",
@@ -484,25 +490,26 @@
       {
         "id": "downloading-soon",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "order": 1
       },
       {
         "id": "recently-downloaded",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "order": 2
       },
       {
         "id": "calendar",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "order": 4
       }
-    ]
+    ],
+    "removed": true
   },
   {
     "id": "readarr",
@@ -538,32 +545,33 @@
       {
         "id": "downloading-soon",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "order": 1
       },
       {
         "id": "recently-downloaded",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "order": 2
       },
       {
         "id": "activity-queue",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "order": 3
       },
       {
         "id": "calendar",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "order": 4
       }
-    ]
+    ],
+    "removed": true
   },
   {
     "id": "bazarr",
@@ -604,12 +612,13 @@
       {
         "id": "subtitle-queue",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "order": 1
       }
     ],
-    "plexToken": ""
+    "plexToken": "",
+    "removed": true
   },
   {
     "id": "prowlarr",
@@ -643,7 +652,8 @@
     "launchMode": "iframe",
     "localUrl": "http://localhost:9696",
     "remoteUrl": "",
-    "plexToken": ""
+    "plexToken": "",
+    "removed": true
   },
   {
     "id": "pulsarr",
@@ -678,7 +688,7 @@
       {
         "id": "recent-requests",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "showSubtitle": true,
         "showMeta": true,
@@ -691,7 +701,7 @@
       {
         "id": "most-watchlisted",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "showSubtitle": true,
         "showMeta": true,
@@ -704,7 +714,8 @@
     ],
     "localUrl": "http://localhost:3030",
     "remoteUrl": "",
-    "plexToken": ""
+    "plexToken": "",
+    "removed": true
   },
   {
     "id": "seerr",
@@ -739,7 +750,7 @@
       {
         "id": "recent-requests",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "showSubtitle": true,
         "showMeta": true,
@@ -752,7 +763,7 @@
       {
         "id": "most-watchlisted",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "showSubtitle": true,
         "showMeta": true,
@@ -765,7 +776,8 @@
     ],
     "localUrl": "http://localhost:5055",
     "remoteUrl": "",
-    "plexToken": ""
+    "plexToken": "",
+    "removed": true
   },
   {
     "id": "cleanuparr",
@@ -795,7 +807,8 @@
     },
     "order": 6,
     "favourite": false,
-    "launchMode": "iframe"
+    "launchMode": "iframe",
+    "removed": true
   },
   {
     "id": "huntarr",
@@ -825,7 +838,8 @@
     },
     "order": 7,
     "favourite": false,
-    "launchMode": "iframe"
+    "launchMode": "iframe",
+    "removed": true
   },
   {
     "id": "transmission",
@@ -861,7 +875,8 @@
     "launchMode": "iframe",
     "localUrl": "http://localhost:9091",
     "remoteUrl": "",
-    "plexToken": ""
+    "plexToken": "",
+    "removed": true
   },
   {
     "id": "qbittorrent",
@@ -897,7 +912,8 @@
     "launchMode": "iframe",
     "localUrl": "http://localhost:8080",
     "remoteUrl": "",
-    "plexToken": ""
+    "plexToken": "",
+    "removed": true
   },
   {
     "id": "sabnzbd",
@@ -930,7 +946,8 @@
     "launchMode": "iframe",
     "localUrl": "http://localhost:8085",
     "remoteUrl": "",
-    "plexToken": ""
+    "plexToken": "",
+    "removed": true
   },
   {
     "id": "nzbget",
@@ -963,9 +980,9 @@
     "launchMode": "iframe",
     "localUrl": "http://localhost:6789",
     "remoteUrl": "",
-    "plexToken": ""
-  }
-,
+    "plexToken": "",
+    "removed": true
+  },
   {
     "id": "jackett",
     "name": "Jackett",
@@ -1003,12 +1020,13 @@
       {
         "id": "search",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "order": 1
       }
     ],
-    "plexToken": ""
+    "plexToken": "",
+    "removed": true
   },
   {
     "id": "autobrr",
@@ -1047,19 +1065,20 @@
       {
         "id": "recent-matches",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "order": 1
       },
       {
         "id": "delivery-queue",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "order": 2
       }
     ],
-    "plexToken": ""
+    "plexToken": "",
+    "removed": true
   },
   {
     "id": "maintainerr",
@@ -1090,6 +1109,7 @@
       }
     },
     "order": 4,
+    "removed": true,
     "favourite": false,
     "launchMode": "iframe",
     "localUrl": "http://localhost:6246",
@@ -1098,21 +1118,21 @@
       {
         "id": "library-media",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "order": 1
       },
       {
         "id": "rules",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "order": 2
       },
       {
         "id": "collections-media",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "order": 3
       }
@@ -1156,18 +1176,19 @@
       {
         "id": "recently-added",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "order": 1
       },
       {
         "id": "consoles",
         "enable": true,
-        "dashboard": true,
+        "dashboard": false,
         "favourite": false,
         "order": 2
       }
     ],
-    "plexToken": ""
+    "plexToken": "",
+    "removed": true
   }
 ]
