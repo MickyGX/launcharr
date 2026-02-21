@@ -171,7 +171,7 @@
                               </a>
                             <% } %>
                             <% if (appItem.menuAccess.launch) { %>
-                              <a class="nav-subitem" href="/apps/<%= appItem.id %>/launch" <%= appItem.effectiveLaunchMode === 'new-tab' ? 'target="_blank" rel="noreferrer"' : '' %>>
+                              <a class="nav-subitem" href="/apps/<%= appItem.id %>/launch" data-launch-mode="<%= appItem.effectiveLaunchMode %>" <%= appItem.effectiveLaunchMode === 'new-tab' ? 'target="_blank" rel="noreferrer"' : '' %>>
                                 <img class="nav-subicon" src="/icons/launch.svg" alt="" />
                                 <span>Launch</span>
                               </a>
@@ -209,7 +209,7 @@
                         </a>
                       <% } %>
                       <% if (appItem.menuAccess.launch) { %>
-                        <a class="nav-subitem" href="/apps/<%= appItem.id %>/launch" <%= appItem.effectiveLaunchMode === 'new-tab' ? 'target="_blank" rel="noreferrer"' : '' %>>
+                        <a class="nav-subitem" href="/apps/<%= appItem.id %>/launch" data-launch-mode="<%= appItem.effectiveLaunchMode %>" <%= appItem.effectiveLaunchMode === 'new-tab' ? 'target="_blank" rel="noreferrer"' : '' %>>
                           <img class="nav-subicon" src="/icons/launch.svg" alt="" />
                           <span>Launch</span>
                         </a>
@@ -1875,36 +1875,165 @@
     applySidebarState();
     mobileQuery.addEventListener('change', applySidebarState);
     const autoOpenSingleAppMenuItem = <%= autoOpenSingleAppMenuItem ? 'true' : 'false' %>;
+    const sidebarButtonPressActions = <%- JSON.stringify(sidebarButtonPressActions || {}) %>;
+    const currentSidebarRole = String('<%= role || 'user' %>').trim().toLowerCase();
+    const normalizeSidebarRole = (value) => {
+      const raw = String(value || '').trim().toLowerCase();
+      if (raw === 'guest' || raw === 'user' || raw === 'co-admin' || raw === 'admin') return raw;
+      return 'user';
+    };
+    const normalizePressAction = (value, fallback = 'default') => {
+      const raw = String(value || '').trim().toLowerCase();
+      if (raw === 'default' || raw === 'launch' || raw === 'settings' || raw === 'activity') return raw;
+      return fallback;
+    };
+    const rolePressConfig = (sidebarButtonPressActions && typeof sidebarButtonPressActions === 'object')
+      ? (sidebarButtonPressActions[normalizeSidebarRole(currentSidebarRole)] || sidebarButtonPressActions.user || {})
+      : {};
+    const shortPressAction = normalizePressAction(rolePressConfig.short, 'default');
+    const longPressAction = normalizePressAction(rolePressConfig.long, 'default');
+    const LONG_PRESS_DELAY_MS = 450;
+    const openSubmenuLink = (link) => {
+      if (!link) return false;
+      const rawHref = typeof link.getAttribute === 'function'
+        ? (link.getAttribute('href') || link.href || '')
+        : (link.href || '');
+      const href = String(rawHref || '').trim();
+      if (!href) return false;
+      const rawTargetAttr = typeof link.getAttribute === 'function'
+        ? (link.getAttribute('target') || '')
+        : (link.target || '');
+      const targetAttr = String(rawTargetAttr || '').trim().toLowerCase();
+      const targetProp = String(link.target || '').trim().toLowerCase();
+      const launchMode = String((link.dataset && link.dataset.launchMode) || link.launchMode || '').trim().toLowerCase();
+      const isLaunchRoute = /\/apps\/[^/?#]+\/launch(?:$|[/?#])/i.test(href);
+      const shouldOpenBlank = targetAttr === '_blank'
+        || targetProp === '_blank'
+        || (isLaunchRoute && launchMode === 'new-tab');
+      if (shouldOpenBlank) {
+        window.open(href, '_blank', 'noopener,noreferrer');
+      } else {
+        window.location.href = href;
+      }
+      return true;
+    };
+    const getDirectLinks = (item) => {
+      const panel = Array.from(item.children).find((child) => child.classList && child.classList.contains('nav-accordion-panel'));
+      return panel
+        ? Array.from(panel.children).filter((child) => typeof child.matches === 'function' && child.matches('a.nav-subitem[href]'))
+        : [];
+    };
+    const resolveAppIdFromItem = (item, links = []) => {
+      const pool = Array.isArray(links) && links.length ? links : getDirectLinks(item);
+      for (let index = 0; index < pool.length; index += 1) {
+        const href = String((pool[index] && pool[index].getAttribute && pool[index].getAttribute('href')) || '').trim();
+        const match = href.match(/\/apps\/([^/?#]+)/i);
+        if (match && match[1]) return decodeURIComponent(String(match[1]));
+      }
+      return '';
+    };
+    const buildVirtualActionLink = (appId, action, links = []) => {
+      const normalizedId = String(appId || '').trim();
+      if (!normalizedId) return null;
+      const encodedId = encodeURIComponent(normalizedId);
+      if (action === 'launch') {
+        const launchLink = links.find((link) => /\/launch(?:$|[/?#])/.test(String(link.getAttribute('href') || '')));
+        const launchMode = String((launchLink?.dataset && launchLink.dataset.launchMode) || '').trim().toLowerCase();
+        return {
+          href: '/apps/' + encodedId + '/launch',
+          target: launchMode === 'new-tab' ? '_blank' : '',
+          launchMode,
+        };
+      }
+      if (action === 'settings') return { href: '/apps/' + encodedId + '/settings', target: '', launchMode: '' };
+      if (action === 'activity') return { href: '/apps/' + encodedId + '/activity', target: '', launchMode: '' };
+      return null;
+    };
+    const getActionLink = (item, action) => {
+      const links = getDirectLinks(item);
+      if (action === 'launch') {
+        const direct = links.find((link) => /\/launch(?:$|[/?#])/.test(String(link.getAttribute('href') || '')));
+        return direct || buildVirtualActionLink(resolveAppIdFromItem(item, links), action, links);
+      }
+      if (action === 'settings') {
+        const direct = links.find((link) => /\/settings(?:$|[/?#])/.test(String(link.getAttribute('href') || '')));
+        return direct || buildVirtualActionLink(resolveAppIdFromItem(item, links), action, links);
+      }
+      if (action === 'activity') {
+        const direct = links.find((link) => /\/activity(?:$|[/?#])/.test(String(link.getAttribute('href') || '')));
+        return direct || buildVirtualActionLink(resolveAppIdFromItem(item, links), action, links);
+      }
+      return null;
+    };
+    const toggleAccordionItem = (item) => {
+      const parentAccordion = item.closest('.nav-accordion');
+      const siblings = parentAccordion
+        ? Array.from(parentAccordion.children).filter((child) => child.classList.contains('nav-accordion-item'))
+        : [];
+      siblings.forEach((other) => {
+        if (other !== item) other.classList.remove('open');
+      });
+      item.classList.toggle('open');
+    };
+    const handleDefaultPress = (item, isCategoryTrigger) => {
+      if (autoOpenSingleAppMenuItem && !isCategoryTrigger) {
+        const links = getDirectLinks(item);
+        if (links.length === 1 && openSubmenuLink(links[0])) return;
+      }
+      toggleAccordionItem(item);
+    };
+    const handlePressAction = (item, action, isCategoryTrigger) => {
+      if (isCategoryTrigger) {
+        toggleAccordionItem(item);
+        return;
+      }
+      const resolvedAction = normalizePressAction(action, 'default');
+      if (resolvedAction === 'default') {
+        handleDefaultPress(item, false);
+        return;
+      }
+      const link = getActionLink(item, resolvedAction);
+      if (openSubmenuLink(link)) return;
+      handleDefaultPress(item, false);
+    };
     const accordion = document.querySelectorAll('.nav-accordion-item');
     accordion.forEach((item) => {
       const trigger = item.querySelector('.nav-accordion-trigger');
       if (!trigger) return;
+      const isCategoryTrigger = trigger.classList.contains('nav-accordion-trigger--category');
+      let longPressTimer = null;
+      let longPressTriggered = false;
+      const clearLongPressTimer = () => {
+        if (longPressTimer) {
+          window.clearTimeout(longPressTimer);
+          longPressTimer = null;
+        }
+      };
+      trigger.addEventListener('pointerdown', (event) => {
+        if (isCategoryTrigger) return;
+        if (event.button !== undefined && event.button !== 0) return;
+        longPressTriggered = false;
+        clearLongPressTimer();
+        longPressTimer = window.setTimeout(() => {
+          longPressTriggered = true;
+          handlePressAction(item, longPressAction, false);
+        }, LONG_PRESS_DELAY_MS);
+      });
+      ['pointerup', 'pointerleave', 'pointercancel'].forEach((eventName) => {
+        trigger.addEventListener(eventName, clearLongPressTimer);
+      });
+      trigger.addEventListener('contextmenu', (event) => {
+        if (longPressTriggered) event.preventDefault();
+      });
       trigger.addEventListener('click', (event) => {
         event.stopPropagation();
-        const isCategoryTrigger = trigger.classList.contains('nav-accordion-trigger--category');
-        if (autoOpenSingleAppMenuItem && !isCategoryTrigger) {
-          const panel = Array.from(item.children).find((child) => child.classList && child.classList.contains('nav-accordion-panel'));
-          const directLinks = panel
-            ? Array.from(panel.children).filter((child) => typeof child.matches === 'function' && child.matches('a.nav-subitem[href]'))
-            : [];
-          if (directLinks.length === 1) {
-            const [onlyLink] = directLinks;
-            if (onlyLink.target === '_blank') {
-              window.open(onlyLink.href, '_blank', 'noopener,noreferrer');
-            } else {
-              window.location.href = onlyLink.href;
-            }
-            return;
-          }
+        clearLongPressTimer();
+        if (longPressTriggered) {
+          event.preventDefault();
+          longPressTriggered = false;
+          return;
         }
-        const parentAccordion = item.closest('.nav-accordion');
-        const siblings = parentAccordion
-          ? Array.from(parentAccordion.children).filter((child) => child.classList.contains('nav-accordion-item'))
-          : [];
-        siblings.forEach((other) => {
-          if (other !== item) other.classList.remove('open');
-        });
-        item.classList.toggle('open');
+        handlePressAction(item, shortPressAction, isCategoryTrigger);
       });
     });
     function handleSidebarToggle() {

@@ -1,4 +1,12 @@
-# Release Notes (v0.1.0 -> v0.2.32)
+# Release Notes (v0.1.0 -> v0.2.33)
+
+## v0.2.33 (2026-02-21)
+
+- Added `Settings -> About` with support links, build/version context, and release history with changelog modal + full release links.
+- Added role-based sidebar app-button `Short Press` / `Long Press` actions (`Default`, `Launch`, `App settings`, `Activity`) with compact filter-popover controls in `Settings -> General`.
+- Fixed sidebar press-action routing in dashboard and app/info pages so launch-mode behavior is consistent, including `new-tab` handling.
+- Fixed hidden-sidebar-link interaction so configured `App settings` and `Activity` press actions still open even when those submenu links are hidden.
+- Updated settings tab labels/icons (`Logs`, `About`) and improved release modal centering/z-index behavior.
 
 ## v0.2.32 (2026-02-20)
 

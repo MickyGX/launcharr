@@ -141,7 +141,7 @@
                               </a>
                             <% } %>
                             <% if (appItem.menuAccess.launch) { %>
-                              <a class="nav-subitem" href="/apps/<%= appItem.id %>/launch" <%= appItem.effectiveLaunchMode === 'new-tab' ? 'target="_blank" rel="noreferrer"' : '' %>>
+                              <a class="nav-subitem" href="/apps/<%= appItem.id %>/launch" data-launch-mode="<%= appItem.effectiveLaunchMode %>" <%= appItem.effectiveLaunchMode === 'new-tab' ? 'target="_blank" rel="noreferrer"' : '' %>>
                                 <img class="nav-subicon" src="/icons/launch.svg" alt="" />
                                 <span>Launch</span>
                               </a>
@@ -179,7 +179,7 @@
                         </a>
                       <% } %>
                       <% if (appItem.menuAccess.launch) { %>
-                        <a class="nav-subitem" href="/apps/<%= appItem.id %>/launch" <%= appItem.effectiveLaunchMode === 'new-tab' ? 'target="_blank" rel="noreferrer"' : '' %>>
+                        <a class="nav-subitem" href="/apps/<%= appItem.id %>/launch" data-launch-mode="<%= appItem.effectiveLaunchMode %>" <%= appItem.effectiveLaunchMode === 'new-tab' ? 'target="_blank" rel="noreferrer"' : '' %>>
                           <img class="nav-subicon" src="/icons/launch.svg" alt="" />
                           <span>Launch</span>
                         </a>
@@ -341,7 +341,11 @@
         </button>
         <button class="settings-tab-btn" type="button" data-tab="log">
           <img class="settings-tab-icon" src="/icons/activity-queue.svg" alt="" />
-          <span class="settings-tab-text">Log</span>
+          <span class="settings-tab-text">Logs</span>
+        </button>
+        <button class="settings-tab-btn" type="button" data-tab="about">
+          <img class="settings-tab-icon" src="/icons/about.svg" alt="" />
+          <span class="settings-tab-text">About</span>
         </button>
       </div>
 
@@ -407,6 +411,72 @@
                 <span class="settings-toggle-slider" aria-hidden="true"></span>
                 <span class="settings-toggle-text">Hide Activity link in sidebar</span>
               </label>
+              <%
+                const sidebarPressRoles = [
+                  { key: 'guest', label: 'Guest' },
+                  { key: 'user', label: 'User' },
+                  { key: 'co-admin', label: 'Co-admin' },
+                  { key: 'admin', label: 'Admin' },
+                ];
+                const sidebarPressActionOptions = [
+                  { value: 'default', label: 'Default' },
+                  { value: 'launch', label: 'Launch' },
+                  { value: 'settings', label: 'App settings' },
+                  { value: 'activity', label: 'Activity' },
+                ];
+                const sidebarPressActions = (generalSettings?.sidebarButtonPressActions && typeof generalSettings.sidebarButtonPressActions === 'object')
+                  ? generalSettings.sidebarButtonPressActions
+                  : {};
+                const normalizeSidebarPressAction = (value, fallback = 'default') => {
+                  const raw = String(value || '').trim().toLowerCase();
+                  if (['default', 'launch', 'settings', 'activity'].includes(raw)) return raw;
+                  return fallback;
+                };
+              %>
+              <div class="settings-card-sub settings-general-press-sub">Sidebar app-button press actions by role. Configured actions still work when sidebar links are hidden.</div>
+              <div class="settings-general-press-grid" id="settingsGeneralPressGrid">
+                <% sidebarPressRoles.forEach((roleEntry) => { %>
+                  <% const shortSelected = normalizeSidebarPressAction(sidebarPressActions?.[roleEntry.key]?.short, 'default'); %>
+                  <% const longSelected = normalizeSidebarPressAction(sidebarPressActions?.[roleEntry.key]?.long, 'default'); %>
+                  <div class="settings-general-press-row">
+                    <div class="settings-general-press-role"><%= roleEntry.label %></div>
+                    <div class="settings-general-press-cell">
+                      <span class="settings-general-press-label">Short Press</span>
+                      <div class="settings-general-press-control settings-visibility-popover" data-general-press-popover>
+                        <button class="settings-visibility-trigger settings-general-press-trigger" type="button" aria-label="Select short press action for <%= roleEntry.label %>" aria-expanded="false" aria-haspopup="true"></button>
+                        <div class="settings-visibility-menu settings-general-press-menu" hidden>
+                          <% sidebarPressActionOptions.forEach((option) => { %>
+                            <button
+                              class="settings-general-press-option<%= option.value === shortSelected ? ' is-active' : '' %>"
+                              type="button"
+                              data-general-press-option
+                              data-value="<%= option.value %>"
+                            ><%= option.label %></button>
+                          <% }) %>
+                        </div>
+                        <input type="hidden" name="sidebar_button_short_press_action_<%= roleEntry.key %>" value="<%= shortSelected %>" data-general-press-input />
+                      </div>
+                    </div>
+                    <div class="settings-general-press-cell">
+                      <span class="settings-general-press-label">Long Press</span>
+                      <div class="settings-general-press-control settings-visibility-popover" data-general-press-popover>
+                        <button class="settings-visibility-trigger settings-general-press-trigger" type="button" aria-label="Select long press action for <%= roleEntry.label %>" aria-expanded="false" aria-haspopup="true"></button>
+                        <div class="settings-visibility-menu settings-general-press-menu" hidden>
+                          <% sidebarPressActionOptions.forEach((option) => { %>
+                            <button
+                              class="settings-general-press-option<%= option.value === longSelected ? ' is-active' : '' %>"
+                              type="button"
+                              data-general-press-option
+                              data-value="<%= option.value %>"
+                            ><%= option.label %></button>
+                          <% }) %>
+                        </div>
+                        <input type="hidden" name="sidebar_button_long_press_action_<%= roleEntry.key %>" value="<%= longSelected %>" data-general-press-input />
+                      </div>
+                    </div>
+                  </div>
+                <% }) %>
+              </div>
             </div>
             <button class="primary-button" type="submit">Save general settings</button>
           </form>
@@ -1949,6 +2019,126 @@
       </div>
       </div>
 
+      <div class="settings-tab-panel" data-tab="about">
+      <div class="dash-panel">
+        <div class="settings-card">
+          <div class="settings-card-title">About Launcharr</div>
+          <div class="settings-card-sub">Build, support links, and recent release notes.</div>
+          <div class="settings-about-table">
+            <div class="settings-about-row">
+              <span>Version</span>
+              <div class="settings-about-value">
+                <span class="settings-about-version" id="settingsAboutVersion"><%= aboutCurrentVersion || 'Unknown' %></span>
+                <span class="settings-about-pill" id="settingsAboutVersionState">Checking...</span>
+              </div>
+            </div>
+            <div class="settings-about-row">
+              <span>Latest Release</span>
+              <div class="settings-about-value">
+                <span id="settingsAboutLatest"><%= aboutLatestVersion || 'Unknown' %></span>
+              </div>
+            </div>
+            <div class="settings-about-row">
+              <span>Data Directory</span>
+              <div class="settings-about-value">
+                <code class="settings-about-code"><%= aboutDataDirectory || '/data' %></code>
+              </div>
+            </div>
+            <div class="settings-about-row">
+              <span>Time Zone</span>
+              <div class="settings-about-value">
+                <span id="settingsAboutTimeZone">Detecting...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="dash-panel">
+        <div class="settings-card">
+          <div class="settings-card-title">Getting Support</div>
+          <div class="settings-about-link-grid">
+            <div class="settings-about-link-row">
+              <span>Documentation</span>
+              <a href="https://github.com/MickyGX/launcharr/wiki" target="_blank" rel="noreferrer noopener">https://github.com/MickyGX/launcharr/wiki</a>
+            </div>
+            <div class="settings-about-link-row">
+              <span>Discussions</span>
+              <a href="https://github.com/MickyGX/launcharr/discussions" target="_blank" rel="noreferrer noopener">https://github.com/MickyGX/launcharr/discussions</a>
+            </div>
+            <div class="settings-about-link-row">
+              <span>Discord</span>
+              <a href="https://discord.gg/sTsmy7db" target="_blank" rel="noreferrer noopener">https://discord.gg/sTsmy7db</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="dash-panel">
+        <div class="settings-card">
+          <div class="settings-card-title">Support Launcharr</div>
+          <div class="settings-about-link-grid">
+            <div class="settings-about-link-row">
+              <span>Buy Me a Coffee</span>
+              <a href="https://buymeacoffee.com/mickygx" target="_blank" rel="noreferrer noopener">https://buymeacoffee.com/mickygx</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="dash-panel">
+        <div class="settings-card">
+          <div class="settings-card-title">Releases</div>
+          <div class="settings-card-sub">Click a release to view a short changelog summary.</div>
+          <% const aboutReleaseEntries = Array.isArray(aboutReleases) ? aboutReleases : []; %>
+          <div class="settings-release-list" id="settingsReleaseList">
+            <% if (aboutReleaseEntries.length) { %>
+              <% aboutReleaseEntries.forEach((release, index) => { %>
+                <div class="settings-release-row">
+                  <div class="settings-release-copy">
+                    <div class="settings-release-head">
+                      <span class="settings-release-age" data-release-published-at="<%= release.publishedAt || '' %>">Recently</span>
+                      <strong class="settings-release-title">Release <%= release.tag %></strong>
+                      <% if (release.isLatest) { %>
+                        <span class="settings-about-pill settings-about-pill--ok">Latest</span>
+                      <% } %>
+                      <% if (release.isCurrent) { %>
+                        <span class="settings-about-pill">Current</span>
+                      <% } %>
+                    </div>
+                    <div class="settings-release-summary"><%= release.summary || 'Release notes are available.' %></div>
+                  </div>
+                  <button class="primary-button settings-release-open" type="button" data-release-index="<%= index %>">View Changelog</button>
+                </div>
+              <% }) %>
+            <% } else { %>
+              <div class="settings-release-empty">No release notes were found in <code>docs/release/releases</code>.</div>
+            <% } %>
+          </div>
+        </div>
+      </div>
+
+      <div id="settingsReleaseModalBackdrop" class="plex-modal-backdrop plex-hidden">
+        <div class="plex-modal settings-release-modal" role="dialog" aria-modal="true" aria-labelledby="settingsReleaseModalTitle">
+          <button class="plex-modal-close" type="button" aria-label="Close">✕</button>
+          <div class="plex-modal-header">
+            <div class="plex-modal-title" id="settingsReleaseModalTitle">Release Notes</div>
+            <div class="plex-modal-subtitle" id="settingsReleaseModalSubtitle">Changelog summary</div>
+          </div>
+          <div class="plex-modal-body settings-release-modal-body">
+            <div class="plex-modal-scroll settings-release-modal-scroll">
+              <div class="settings-release-modal-summary" id="settingsReleaseModalSummary"></div>
+              <ul class="settings-release-modal-list" id="settingsReleaseModalList"></ul>
+            </div>
+          </div>
+          <div class="plex-modal-footer">
+            <a class="plex-modal-link" id="settingsReleaseModalLink" href="#" target="_blank" rel="noreferrer noopener">Full Release</a>
+            <button class="plex-modal-link settings-release-modal-close" type="button">Close</button>
+          </div>
+        </div>
+      </div>
+      </div>
+
       <div class="settings-tab-panel" data-tab="app">
       <div class="dash-panel">
         <div class="panel-header">
@@ -2913,36 +3103,165 @@
     applySidebarState();
     mobileQuery.addEventListener('change', applySidebarState);
     const autoOpenSingleAppMenuItem = <%= autoOpenSingleAppMenuItem ? 'true' : 'false' %>;
+    const sidebarButtonPressActions = <%- JSON.stringify(sidebarButtonPressActions || {}) %>;
+    const currentSidebarRole = String('<%= role || 'user' %>').trim().toLowerCase();
+    const normalizeSidebarRole = (value) => {
+      const raw = String(value || '').trim().toLowerCase();
+      if (raw === 'guest' || raw === 'user' || raw === 'co-admin' || raw === 'admin') return raw;
+      return 'user';
+    };
+    const normalizePressAction = (value, fallback = 'default') => {
+      const raw = String(value || '').trim().toLowerCase();
+      if (raw === 'default' || raw === 'launch' || raw === 'settings' || raw === 'activity') return raw;
+      return fallback;
+    };
+    const rolePressConfig = (sidebarButtonPressActions && typeof sidebarButtonPressActions === 'object')
+      ? (sidebarButtonPressActions[normalizeSidebarRole(currentSidebarRole)] || sidebarButtonPressActions.user || {})
+      : {};
+    const shortPressAction = normalizePressAction(rolePressConfig.short, 'default');
+    const longPressAction = normalizePressAction(rolePressConfig.long, 'default');
+    const LONG_PRESS_DELAY_MS = 450;
+    const openSubmenuLink = (link) => {
+      if (!link) return false;
+      const rawHref = typeof link.getAttribute === 'function'
+        ? (link.getAttribute('href') || link.href || '')
+        : (link.href || '');
+      const href = String(rawHref || '').trim();
+      if (!href) return false;
+      const rawTargetAttr = typeof link.getAttribute === 'function'
+        ? (link.getAttribute('target') || '')
+        : (link.target || '');
+      const targetAttr = String(rawTargetAttr || '').trim().toLowerCase();
+      const targetProp = String(link.target || '').trim().toLowerCase();
+      const launchMode = String((link.dataset && link.dataset.launchMode) || link.launchMode || '').trim().toLowerCase();
+      const isLaunchRoute = /\/apps\/[^/?#]+\/launch(?:$|[/?#])/i.test(href);
+      const shouldOpenBlank = targetAttr === '_blank'
+        || targetProp === '_blank'
+        || (isLaunchRoute && launchMode === 'new-tab');
+      if (shouldOpenBlank) {
+        window.open(href, '_blank', 'noopener,noreferrer');
+      } else {
+        window.location.href = href;
+      }
+      return true;
+    };
+    const getDirectLinks = (item) => {
+      const panel = Array.from(item.children).find((child) => child.classList && child.classList.contains('nav-accordion-panel'));
+      return panel
+        ? Array.from(panel.children).filter((child) => typeof child.matches === 'function' && child.matches('a.nav-subitem[href]'))
+        : [];
+    };
+    const resolveAppIdFromItem = (item, links = []) => {
+      const pool = Array.isArray(links) && links.length ? links : getDirectLinks(item);
+      for (let index = 0; index < pool.length; index += 1) {
+        const href = String((pool[index] && pool[index].getAttribute && pool[index].getAttribute('href')) || '').trim();
+        const match = href.match(/\/apps\/([^/?#]+)/i);
+        if (match && match[1]) return decodeURIComponent(String(match[1]));
+      }
+      return '';
+    };
+    const buildVirtualActionLink = (appId, action, links = []) => {
+      const normalizedId = String(appId || '').trim();
+      if (!normalizedId) return null;
+      const encodedId = encodeURIComponent(normalizedId);
+      if (action === 'launch') {
+        const launchLink = links.find((link) => /\/launch(?:$|[/?#])/.test(String(link.getAttribute('href') || '')));
+        const launchMode = String((launchLink?.dataset && launchLink.dataset.launchMode) || '').trim().toLowerCase();
+        return {
+          href: '/apps/' + encodedId + '/launch',
+          target: launchMode === 'new-tab' ? '_blank' : '',
+          launchMode,
+        };
+      }
+      if (action === 'settings') return { href: '/apps/' + encodedId + '/settings', target: '', launchMode: '' };
+      if (action === 'activity') return { href: '/apps/' + encodedId + '/activity', target: '', launchMode: '' };
+      return null;
+    };
+    const getActionLink = (item, action) => {
+      const links = getDirectLinks(item);
+      if (action === 'launch') {
+        const direct = links.find((link) => /\/launch(?:$|[/?#])/.test(String(link.getAttribute('href') || '')));
+        return direct || buildVirtualActionLink(resolveAppIdFromItem(item, links), action, links);
+      }
+      if (action === 'settings') {
+        const direct = links.find((link) => /\/settings(?:$|[/?#])/.test(String(link.getAttribute('href') || '')));
+        return direct || buildVirtualActionLink(resolveAppIdFromItem(item, links), action, links);
+      }
+      if (action === 'activity') {
+        const direct = links.find((link) => /\/activity(?:$|[/?#])/.test(String(link.getAttribute('href') || '')));
+        return direct || buildVirtualActionLink(resolveAppIdFromItem(item, links), action, links);
+      }
+      return null;
+    };
+    const toggleAccordionItem = (item) => {
+      const parentAccordion = item.closest('.nav-accordion');
+      const siblings = parentAccordion
+        ? Array.from(parentAccordion.children).filter((child) => child.classList.contains('nav-accordion-item'))
+        : [];
+      siblings.forEach((other) => {
+        if (other !== item) other.classList.remove('open');
+      });
+      item.classList.toggle('open');
+    };
+    const handleDefaultPress = (item, isCategoryTrigger) => {
+      if (autoOpenSingleAppMenuItem && !isCategoryTrigger) {
+        const links = getDirectLinks(item);
+        if (links.length === 1 && openSubmenuLink(links[0])) return;
+      }
+      toggleAccordionItem(item);
+    };
+    const handlePressAction = (item, action, isCategoryTrigger) => {
+      if (isCategoryTrigger) {
+        toggleAccordionItem(item);
+        return;
+      }
+      const resolvedAction = normalizePressAction(action, 'default');
+      if (resolvedAction === 'default') {
+        handleDefaultPress(item, false);
+        return;
+      }
+      const link = getActionLink(item, resolvedAction);
+      if (openSubmenuLink(link)) return;
+      handleDefaultPress(item, false);
+    };
     const accordion = document.querySelectorAll('.nav-accordion-item');
     accordion.forEach((item) => {
       const trigger = item.querySelector('.nav-accordion-trigger');
       if (!trigger) return;
+      const isCategoryTrigger = trigger.classList.contains('nav-accordion-trigger--category');
+      let longPressTimer = null;
+      let longPressTriggered = false;
+      const clearLongPressTimer = () => {
+        if (longPressTimer) {
+          window.clearTimeout(longPressTimer);
+          longPressTimer = null;
+        }
+      };
+      trigger.addEventListener('pointerdown', (event) => {
+        if (isCategoryTrigger) return;
+        if (event.button !== undefined && event.button !== 0) return;
+        longPressTriggered = false;
+        clearLongPressTimer();
+        longPressTimer = window.setTimeout(() => {
+          longPressTriggered = true;
+          handlePressAction(item, longPressAction, false);
+        }, LONG_PRESS_DELAY_MS);
+      });
+      ['pointerup', 'pointerleave', 'pointercancel'].forEach((eventName) => {
+        trigger.addEventListener(eventName, clearLongPressTimer);
+      });
+      trigger.addEventListener('contextmenu', (event) => {
+        if (longPressTriggered) event.preventDefault();
+      });
       trigger.addEventListener('click', (event) => {
         event.stopPropagation();
-        const isCategoryTrigger = trigger.classList.contains('nav-accordion-trigger--category');
-        if (autoOpenSingleAppMenuItem && !isCategoryTrigger) {
-          const panel = Array.from(item.children).find((child) => child.classList && child.classList.contains('nav-accordion-panel'));
-          const directLinks = panel
-            ? Array.from(panel.children).filter((child) => typeof child.matches === 'function' && child.matches('a.nav-subitem[href]'))
-            : [];
-          if (directLinks.length === 1) {
-            const [onlyLink] = directLinks;
-            if (onlyLink.target === '_blank') {
-              window.open(onlyLink.href, '_blank', 'noopener,noreferrer');
-            } else {
-              window.location.href = onlyLink.href;
-            }
-            return;
-          }
+        clearLongPressTimer();
+        if (longPressTriggered) {
+          event.preventDefault();
+          longPressTriggered = false;
+          return;
         }
-        const parentAccordion = item.closest('.nav-accordion');
-        const siblings = parentAccordion
-          ? Array.from(parentAccordion.children).filter((child) => child.classList.contains('nav-accordion-item'))
-          : [];
-        siblings.forEach((other) => {
-          if (other !== item) other.classList.remove('open');
-        });
-        item.classList.toggle('open');
+        handlePressAction(item, shortPressAction, isCategoryTrigger);
       });
     });
     function handleSidebarToggle() {
@@ -3097,6 +3416,257 @@
     loadSettingsLogs();
     } catch (err) {
       console.error('[Launcharr] Settings logs init failed', err);
+    }
+
+    try {
+      const pressGrid = document.getElementById('settingsGeneralPressGrid');
+      if (pressGrid) {
+        let openPressPopover = null;
+        const closePressPopover = (popover) => {
+          if (!popover) return;
+          const trigger = popover.querySelector('.settings-general-press-trigger');
+          const menu = popover.querySelector('.settings-general-press-menu');
+          if (!trigger || !menu) return;
+          trigger.setAttribute('aria-expanded', 'false');
+          menu.hidden = true;
+          if (openPressPopover === popover) openPressPopover = null;
+        };
+        const openPressPopoverMenu = (popover) => {
+          if (!popover) return;
+          if (openPressPopover && openPressPopover !== popover) {
+            closePressPopover(openPressPopover);
+          }
+          const trigger = popover.querySelector('.settings-general-press-trigger');
+          const menu = popover.querySelector('.settings-general-press-menu');
+          if (!trigger || !menu) return;
+          trigger.setAttribute('aria-expanded', 'true');
+          menu.hidden = false;
+          openPressPopover = popover;
+        };
+        const updatePressValue = (popover, value) => {
+          if (!popover) return;
+          const input = popover.querySelector('[data-general-press-input]');
+          const trigger = popover.querySelector('.settings-general-press-trigger');
+          const valueNode = popover.querySelector('[data-general-press-value]');
+          if (!input) return;
+          const options = Array.from(popover.querySelectorAll('[data-general-press-option]'));
+          const selectedOption = options.find((option) => String(option.dataset.value || '').trim() === String(value || '').trim());
+          if (!selectedOption) return;
+          input.value = String(selectedOption.dataset.value || '').trim();
+          const selectedLabel = String(selectedOption.textContent || '').trim();
+          if (valueNode) valueNode.textContent = selectedLabel;
+          if (trigger) trigger.title = selectedLabel;
+          options.forEach((option) => {
+            option.classList.toggle('is-active', option === selectedOption);
+          });
+        };
+        const popovers = Array.from(pressGrid.querySelectorAll('[data-general-press-popover]'));
+        popovers.forEach((popover) => {
+          const trigger = popover.querySelector('.settings-general-press-trigger');
+          const menu = popover.querySelector('.settings-general-press-menu');
+          const input = popover.querySelector('[data-general-press-input]');
+          if (!trigger || !menu || !input) return;
+          menu.hidden = true;
+          trigger.setAttribute('aria-expanded', 'false');
+          updatePressValue(popover, input.value);
+          trigger.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const isOpen = trigger.getAttribute('aria-expanded') === 'true';
+            if (isOpen) closePressPopover(popover);
+            else openPressPopoverMenu(popover);
+          });
+          menu.addEventListener('click', (event) => {
+            const option = event.target.closest('[data-general-press-option]');
+            if (!option) return;
+            event.preventDefault();
+            updatePressValue(popover, option.dataset.value || '');
+            closePressPopover(popover);
+          });
+        });
+        document.addEventListener('click', (event) => {
+          if (!openPressPopover) return;
+          if (openPressPopover.contains(event.target)) return;
+          closePressPopover(openPressPopover);
+        });
+        document.addEventListener('keydown', (event) => {
+          if (event.key !== 'Escape') return;
+          closePressPopover(openPressPopover);
+        });
+      }
+    } catch (err) {
+      console.error('[Launcharr] General press controls init failed', err);
+    }
+
+    try {
+      const settingsAboutVersion = document.getElementById('settingsAboutVersion');
+      const settingsAboutLatest = document.getElementById('settingsAboutLatest');
+      const settingsAboutVersionState = document.getElementById('settingsAboutVersionState');
+      const settingsAboutTimeZone = document.getElementById('settingsAboutTimeZone');
+      const settingsReleaseModalBackdrop = document.getElementById('settingsReleaseModalBackdrop');
+      const settingsReleaseModalTitle = document.getElementById('settingsReleaseModalTitle');
+      const settingsReleaseModalSubtitle = document.getElementById('settingsReleaseModalSubtitle');
+      const settingsReleaseModalSummary = document.getElementById('settingsReleaseModalSummary');
+      const settingsReleaseModalList = document.getElementById('settingsReleaseModalList');
+      const settingsReleaseModalLink = document.getElementById('settingsReleaseModalLink');
+      const settingsReleaseOpenButtons = Array.from(document.querySelectorAll('.settings-release-open'));
+      const releaseModalCloseButtons = settingsReleaseModalBackdrop
+        ? Array.from(settingsReleaseModalBackdrop.querySelectorAll('.settings-release-modal-close, .plex-modal-close'))
+        : [];
+      const aboutReleaseEntriesRaw = <%- safeJson(aboutReleases || []) %>;
+      const aboutReleaseEntries = Array.isArray(aboutReleaseEntriesRaw) ? aboutReleaseEntriesRaw : [];
+
+      // Move the release modal backdrop out of the tab panel stacking context.
+      if (settingsReleaseModalBackdrop && settingsReleaseModalBackdrop.parentElement !== document.body) {
+        document.body.appendChild(settingsReleaseModalBackdrop);
+      }
+
+      const normalizeVersionTag = (value) => {
+        const raw = String(value || '').trim();
+        if (!raw) return '';
+        return raw.startsWith('v') ? raw : `v${raw}`;
+      };
+      const escapeHtml = (value) => String(value || '').replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;',
+      }[char]));
+      const parseHighlight = (value) => {
+        const raw = String(value || '').trim();
+        if (!raw) return null;
+        const match = raw.match(/^([A-Za-z][A-Za-z\s]+):\s*(.+)$/);
+        if (!match) return { section: 'Update', detail: raw };
+        return {
+          section: String(match[1] || '').trim() || 'Update',
+          detail: String(match[2] || '').trim() || raw,
+        };
+      };
+      const formatRelativeTime = (value) => {
+        const date = value ? new Date(value) : null;
+        if (!date || Number.isNaN(date.getTime())) return 'Recently';
+        const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
+        if (seconds < 60) return 'Just now';
+        const minutes = Math.floor(seconds / 60);
+        if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+        const days = Math.floor(hours / 24);
+        if (days < 30) return `${days} day${days === 1 ? '' : 's'} ago`;
+        const months = Math.floor(days / 30);
+        if (months < 12) return `${months} month${months === 1 ? '' : 's'} ago`;
+        const years = Math.floor(months / 12);
+        return `${years} year${years === 1 ? '' : 's'} ago`;
+      };
+      const updateReleaseRelativeTimes = () => {
+        document.querySelectorAll('[data-release-published-at]').forEach((node) => {
+          const publishedAt = String(node.getAttribute('data-release-published-at') || '').trim();
+          node.textContent = formatRelativeTime(publishedAt);
+        });
+      };
+      const setVersionState = (text, tone = '') => {
+        if (!settingsAboutVersionState) return;
+        settingsAboutVersionState.textContent = String(text || '').trim();
+        settingsAboutVersionState.classList.remove('settings-about-pill--ok', 'settings-about-pill--warn');
+        if (tone === 'ok') settingsAboutVersionState.classList.add('settings-about-pill--ok');
+        if (tone === 'warn') settingsAboutVersionState.classList.add('settings-about-pill--warn');
+      };
+      const closeReleaseModal = () => {
+        if (!settingsReleaseModalBackdrop) return;
+        settingsReleaseModalBackdrop.classList.add('plex-hidden');
+        window.removeEventListener('keydown', onReleaseModalKeydown);
+      };
+      const onReleaseModalKeydown = (event) => {
+        if (event.key === 'Escape') closeReleaseModal();
+      };
+      const openReleaseModal = (release) => {
+        if (!settingsReleaseModalBackdrop || !release) return;
+        const releaseTag = normalizeVersionTag(release.tag || 'Release');
+        const subtitle = release.publishedAt
+          ? `${formatRelativeTime(release.publishedAt)}`
+          : 'Changelog summary';
+        const highlights = (Array.isArray(release.highlights) ? release.highlights : [])
+          .map(parseHighlight)
+          .filter(Boolean)
+          .slice(0, 3);
+        const summary = String(release.summary || '').trim()
+          || (highlights[0] ? highlights[0].detail : 'Release notes are available.');
+        if (settingsReleaseModalTitle) settingsReleaseModalTitle.textContent = `Release ${releaseTag}`;
+        if (settingsReleaseModalSubtitle) settingsReleaseModalSubtitle.textContent = subtitle;
+        if (settingsReleaseModalSummary) settingsReleaseModalSummary.textContent = summary;
+        if (settingsReleaseModalList) {
+          settingsReleaseModalList.innerHTML = highlights.length
+            ? highlights.map((item) => (
+              '<li class="settings-release-modal-item">' +
+                `<span class="settings-release-modal-tag">${escapeHtml(item.section)}</span>` +
+                `<span class="settings-release-modal-text">${escapeHtml(item.detail)}</span>` +
+              '</li>'
+            )).join('')
+            : '<li class="settings-release-modal-item"><span class="settings-release-modal-text">No highlight entries were found for this release.</span></li>';
+        }
+        if (settingsReleaseModalLink) {
+          settingsReleaseModalLink.href = String(release.releaseNotesUrl || '#').trim() || '#';
+        }
+        settingsReleaseModalBackdrop.classList.remove('plex-hidden');
+        window.addEventListener('keydown', onReleaseModalKeydown);
+      };
+
+      settingsReleaseOpenButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+          const index = Number(button.dataset.releaseIndex);
+          if (!Number.isFinite(index)) return;
+          const release = aboutReleaseEntries[index];
+          if (!release) return;
+          openReleaseModal(release);
+        });
+      });
+      settingsReleaseModalBackdrop?.addEventListener('click', (event) => {
+        if (event.target === settingsReleaseModalBackdrop) closeReleaseModal();
+      });
+      releaseModalCloseButtons.forEach((button) => {
+        button.addEventListener('click', closeReleaseModal);
+      });
+
+      updateReleaseRelativeTimes();
+      if (settingsAboutTimeZone) {
+        const tz = String(Intl.DateTimeFormat().resolvedOptions().timeZone || '').trim();
+        settingsAboutTimeZone.textContent = tz || 'Unknown';
+      }
+
+      const fallbackCurrent = normalizeVersionTag(settingsAboutVersion?.textContent || '');
+      const fallbackLatest = normalizeVersionTag(settingsAboutLatest?.textContent || '');
+      if (fallbackLatest && settingsAboutLatest) settingsAboutLatest.textContent = fallbackLatest;
+      if (fallbackCurrent && settingsAboutVersion) settingsAboutVersion.textContent = fallbackCurrent;
+      if (fallbackCurrent && fallbackLatest && fallbackCurrent === fallbackLatest) {
+        setVersionState('Up to Date', 'ok');
+      } else if (fallbackLatest) {
+        setVersionState('Update Available', 'warn');
+      } else {
+        setVersionState('Unknown');
+      }
+
+      fetch('/api/version')
+        .then((response) => (response.ok ? response.json() : null))
+        .then((payload) => {
+          if (!payload) return;
+          const current = normalizeVersionTag(payload.current || fallbackCurrent);
+          const latest = normalizeVersionTag(payload.latest || fallbackLatest);
+          if (settingsAboutVersion && current) settingsAboutVersion.textContent = current;
+          if (settingsAboutLatest && latest) settingsAboutLatest.textContent = latest;
+          if (current && latest && current === latest) {
+            setVersionState('Up to Date', 'ok');
+          } else if (current && latest && current !== latest) {
+            setVersionState('Update Available', 'warn');
+          } else {
+            setVersionState('Version Info', '');
+          }
+        })
+        .catch(() => {
+          setVersionState('Version Info', '');
+        });
+    } catch (err) {
+      console.error('[Launcharr] About settings init failed', err);
     }
 
     try {

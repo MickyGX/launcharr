@@ -211,6 +211,14 @@ const DEFAULT_GENERAL_SETTINGS = {
   basePath: '',
   restrictGuests: false,
   autoOpenSingleAppMenuItem: false,
+  sidebarButtonShortPressAction: 'default',
+  sidebarButtonLongPressAction: 'default',
+  sidebarButtonPressActions: {
+    guest: { short: 'default', long: 'default' },
+    user: { short: 'default', long: 'default' },
+    'co-admin': { short: 'default', long: 'default' },
+    admin: { short: 'default', long: 'default' },
+  },
   hideSidebarAppSettingsLink: false,
   hideSidebarActivityLink: false,
 };
@@ -255,6 +263,38 @@ const VISIBILITY_ROLE_RANK = {
   'co-admin': 2,
   admin: 3,
 };
+const SIDEBAR_APP_BUTTON_ACTIONS = new Set(['default', 'launch', 'settings', 'activity']);
+
+function normalizeSidebarAppButtonAction(value, fallback = 'default') {
+  const raw = String(value || '').trim().toLowerCase();
+  if (SIDEBAR_APP_BUTTON_ACTIONS.has(raw)) return raw;
+  const fallbackRaw = String(fallback || '').trim().toLowerCase();
+  if (SIDEBAR_APP_BUTTON_ACTIONS.has(fallbackRaw)) return fallbackRaw;
+  return 'default';
+}
+
+function normalizeSidebarButtonPressActions(value, fallback = DEFAULT_GENERAL_SETTINGS.sidebarButtonPressActions) {
+  const source = value && typeof value === 'object' ? value : {};
+  const fallbackSource = fallback && typeof fallback === 'object'
+    ? fallback
+    : DEFAULT_GENERAL_SETTINGS.sidebarButtonPressActions;
+  const resolveRoleActions = (roleKey) => {
+    const roleSource = source[roleKey] && typeof source[roleKey] === 'object' ? source[roleKey] : {};
+    const roleFallback = fallbackSource[roleKey] && typeof fallbackSource[roleKey] === 'object'
+      ? fallbackSource[roleKey]
+      : DEFAULT_GENERAL_SETTINGS.sidebarButtonPressActions[roleKey];
+    return {
+      short: normalizeSidebarAppButtonAction(roleSource.short, roleFallback.short),
+      long: normalizeSidebarAppButtonAction(roleSource.long, roleFallback.long),
+    };
+  };
+  return {
+    guest: resolveRoleActions('guest'),
+    user: resolveRoleActions('user'),
+    'co-admin': resolveRoleActions('co-admin'),
+    admin: resolveRoleActions('admin'),
+  };
+}
 
 function resolveGeneralSettings(config) {
   const raw = config && typeof config.general === 'object' ? config.general : {};
@@ -264,6 +304,24 @@ function resolveGeneralSettings(config) {
   const autoOpenSingleAppMenuItem = raw.autoOpenSingleAppMenuItem === undefined
     ? DEFAULT_GENERAL_SETTINGS.autoOpenSingleAppMenuItem
     : Boolean(raw.autoOpenSingleAppMenuItem);
+  const sidebarButtonShortPressAction = normalizeSidebarAppButtonAction(
+    raw.sidebarButtonShortPressAction,
+    DEFAULT_GENERAL_SETTINGS.sidebarButtonShortPressAction
+  );
+  const sidebarButtonLongPressAction = normalizeSidebarAppButtonAction(
+    raw.sidebarButtonLongPressAction,
+    DEFAULT_GENERAL_SETTINGS.sidebarButtonLongPressAction
+  );
+  const legacyRolePressActions = {
+    guest: { short: sidebarButtonShortPressAction, long: sidebarButtonLongPressAction },
+    user: { short: sidebarButtonShortPressAction, long: sidebarButtonLongPressAction },
+    'co-admin': { short: sidebarButtonShortPressAction, long: sidebarButtonLongPressAction },
+    admin: { short: sidebarButtonShortPressAction, long: sidebarButtonLongPressAction },
+  };
+  const sidebarButtonPressActions = normalizeSidebarButtonPressActions(
+    raw.sidebarButtonPressActions,
+    legacyRolePressActions
+  );
   const hideSidebarAppSettingsLink = raw.hideSidebarAppSettingsLink === undefined
     ? DEFAULT_GENERAL_SETTINGS.hideSidebarAppSettingsLink
     : Boolean(raw.hideSidebarAppSettingsLink);
@@ -277,6 +335,9 @@ function resolveGeneralSettings(config) {
     basePath: normalizeBasePath(raw.basePath || DEFAULT_GENERAL_SETTINGS.basePath || ''),
     restrictGuests,
     autoOpenSingleAppMenuItem,
+    sidebarButtonShortPressAction: sidebarButtonPressActions.user.short,
+    sidebarButtonLongPressAction: sidebarButtonPressActions.user.long,
+    sidebarButtonPressActions,
     hideSidebarAppSettingsLink,
     hideSidebarActivityLink,
   };
@@ -1057,6 +1118,7 @@ app.use((req, res, next) => {
   res.locals.assetVersion = normalizeVersionTag(APP_VERSION || '') || String(APP_VERSION || 'dev');
   const generalSettings = resolveGeneralSettings(loadConfig());
   res.locals.autoOpenSingleAppMenuItem = Boolean(generalSettings.autoOpenSingleAppMenuItem);
+  res.locals.sidebarButtonPressActions = generalSettings.sidebarButtonPressActions;
   next();
 });
 app.use(
@@ -1899,6 +1961,9 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
   const defaultAppResult = String(req.query?.defaultAppResult || '').trim();
   const defaultAppError = String(req.query?.defaultAppError || '').trim();
   const selectedSettingsAppId = normalizeAppId(req.query?.instance || req.query?.app || '');
+  const aboutCurrentVersion = normalizeVersionTag(APP_VERSION || '');
+  const aboutReleases = loadSettingsReleases({ limit: 12, currentVersion: aboutCurrentVersion });
+  const aboutLatestVersion = String(aboutReleases[0]?.tag || '').trim();
   const localUsersResult = String(req.query?.localUsersResult || '').trim();
   const localUsersError = String(req.query?.localUsersError || '').trim();
   const localLoginStore = resolveUserLogins(config).launcharr || {};
@@ -2640,6 +2705,10 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     defaultCategoryCatalog,
     defaultAppResult,
     defaultAppError,
+    aboutCurrentVersion,
+    aboutLatestVersion,
+    aboutReleases,
+    aboutDataDirectory: DATA_DIR,
     selectedSettingsAppId,
     localUsers,
     localUsersResult,
@@ -4457,6 +4526,16 @@ app.post('/settings/general', requireSettingsAdmin, (req, res) => {
   const basePath = normalizeBasePath(req.body?.base_path || '');
   const restrictGuests = Boolean(req.body?.restrictGuests);
   const autoOpenSingleAppMenuItem = Boolean(req.body?.autoOpenSingleAppMenuItem);
+  const parseRolePressActions = (roleKey) => ({
+    short: normalizeSidebarAppButtonAction(req.body?.[`sidebar_button_short_press_action_${roleKey}`], 'default'),
+    long: normalizeSidebarAppButtonAction(req.body?.[`sidebar_button_long_press_action_${roleKey}`], 'default'),
+  });
+  const sidebarButtonPressActions = normalizeSidebarButtonPressActions({
+    guest: parseRolePressActions('guest'),
+    user: parseRolePressActions('user'),
+    'co-admin': parseRolePressActions('co-admin'),
+    admin: parseRolePressActions('admin'),
+  });
   const hideSidebarAppSettingsLink = Boolean(req.body?.hideSidebarAppSettingsLink);
   const hideSidebarActivityLink = Boolean(req.body?.hideSidebarActivityLink);
   const nextGeneral = {
@@ -4466,6 +4545,9 @@ app.post('/settings/general', requireSettingsAdmin, (req, res) => {
     basePath,
     restrictGuests,
     autoOpenSingleAppMenuItem,
+    sidebarButtonShortPressAction: sidebarButtonPressActions.user.short,
+    sidebarButtonLongPressAction: sidebarButtonPressActions.user.long,
+    sidebarButtonPressActions,
     hideSidebarAppSettingsLink,
     hideSidebarActivityLink,
   };
@@ -9132,6 +9214,61 @@ function compareSemver(a, b) {
   if (a.major !== b.major) return a.major - b.major;
   if (a.minor !== b.minor) return a.minor - b.minor;
   return a.patch - b.patch;
+}
+
+function loadSettingsReleases(options = {}) {
+  const limitRaw = Number(options.limit);
+  const limit = Number.isFinite(limitRaw)
+    ? Math.max(1, Math.min(30, Math.floor(limitRaw)))
+    : 12;
+  const currentVersion = normalizeVersionTag(options.currentVersion || '');
+  let filenames = [];
+  try {
+    filenames = fs.readdirSync(RELEASE_NOTES_DIR);
+  } catch (err) {
+    return [];
+  }
+  const releases = filenames
+    .filter((filename) => /^v\d+\.\d+\.\d+\.md$/i.test(String(filename || '').trim()))
+    .map((filename) => {
+      const tag = normalizeVersionTag(String(filename || '').replace(/\.md$/i, ''));
+      const semver = parseSemver(tag);
+      if (!semver) return null;
+      const fullPath = path.join(RELEASE_NOTES_DIR, filename);
+      let publishedAt = '';
+      try {
+        const stats = fs.statSync(fullPath);
+        publishedAt = stats?.mtime ? stats.mtime.toISOString() : '';
+      } catch (err) {
+        publishedAt = '';
+      }
+      const highlights = loadReleaseHighlights(tag, { maxItems: 3 });
+      const primaryHighlight = String(highlights[0] || '').trim();
+      const summary = primaryHighlight
+        ? primaryHighlight.replace(/^[A-Za-z][A-Za-z\s]+:\s*/, '').trim()
+        : 'Release notes are available.';
+      return {
+        tag,
+        semver,
+        publishedAt,
+        releaseNotesUrl: buildReleaseNotesUrl(tag),
+        summary,
+        highlights,
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => compareSemver(right.semver, left.semver))
+    .slice(0, limit)
+    .map((entry, index) => ({
+      tag: entry.tag,
+      publishedAt: entry.publishedAt,
+      releaseNotesUrl: entry.releaseNotesUrl,
+      summary: entry.summary,
+      highlights: entry.highlights,
+      isLatest: index === 0,
+      isCurrent: Boolean(currentVersion && entry.tag === currentVersion),
+    }));
+  return releases;
 }
 
 function getNavApps(apps, role, req, categoryOrder = DEFAULT_CATEGORY_ORDER, generalSettings = resolveGeneralSettings(loadConfig())) {
