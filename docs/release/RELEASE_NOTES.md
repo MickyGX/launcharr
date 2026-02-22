@@ -1,4 +1,10 @@
-# Release Notes (v0.1.0 -> v0.2.37)
+# Release Notes (v0.1.0 -> v0.2.38)
+
+## v0.2.38 (2026-02-22)
+
+- [Added]
+- [Changed]
+- Reverted Romm admin auto-launch credential injection/bootstrap so admin launches follow the normal launch path again (avoids unexpected fallback to new-window when admin Romm bootstrap fails).
 
 ## v0.2.37 (2026-02-22)
 
