@@ -10698,11 +10698,6 @@ function resolveRoleAwareLaunchUrl(appItem, req, launchUrl, roleOverride = '') {
     const viewerPassword = String(appItem?.viewerPassword || '');
     return injectBasicAuthIntoUrl(resolved, viewerUsername, viewerPassword);
   }
-  if (role === 'admin') {
-    const adminUsername = String(appItem?.username || '').trim();
-    const adminPassword = String(appItem?.password || '');
-    return injectBasicAuthIntoUrl(resolved, adminUsername, adminPassword);
-  }
   return resolved;
 }
 
