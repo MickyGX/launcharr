@@ -7,6 +7,7 @@ import {
   exportJWK,
   calculateJwkThumbprint,
 } from 'jose';
+import { format as formatConsoleArgs } from 'node:util';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -45,6 +46,13 @@ const USER_AVATAR_DIR = path.join(ICONS_DIR, 'custom', 'avatars');
 const USER_AVATAR_BASE = '/icons/custom/avatars';
 const MAX_USER_AVATAR_BYTES = 2 * 1024 * 1024;
 const USER_AVATAR_ALLOWED_MIME = new Set(['image/png', 'image/jpeg', 'image/webp']);
+const HTTP_ACCESS_LOGS = parseEnvFlag(process.env.HTTP_ACCESS_LOGS, true);
+const HTTP_ACCESS_LOGS_SKIP_STATIC = parseEnvFlag(process.env.HTTP_ACCESS_LOGS_SKIP_STATIC, false);
+const LOG_MIRROR_STDERR_TO_STDOUT = parseEnvFlag(process.env.LOG_MIRROR_STDERR_TO_STDOUT, false);
+const LOG_REDACT_HOSTS = parseEnvFlag(process.env.LOG_REDACT_HOSTS, false);
+const LOG_REDACT_IPS = parseEnvFlag(process.env.LOG_REDACT_IPS, false);
+const LOG_HOST_ALIAS_CACHE = new Map();
+const LOG_IP_ALIAS_CACHE = new Map();
 
 const ADMIN_USERS = parseCsv(process.env.ADMIN_USERS || '');
 const ARR_APP_IDS = ['radarr', 'sonarr', 'lidarr', 'readarr'];
@@ -170,6 +178,9 @@ const DASHBOARD_WIDGET_DEFAULTS = {
     status: 'all',
   },
 };
+
+setupConsoleLogRedaction();
+setupConsoleStderrMirrorToStdout();
 const APP_OVERVIEW_ELEMENTS = {
   plex: [
     { id: 'active', name: 'Active Streams' },
@@ -1207,6 +1218,7 @@ app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.set('trust proxy', true);
 
+app.use(httpAccessLogMiddleware);
 app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use(express.urlencoded({ extended: false, limit: '25mb' }));
 app.use(express.json({ limit: '25mb' }));
@@ -1985,17 +1997,77 @@ app.get('/apps/:id/launch', requireUser, async (req, res) => {
       mediaType: String(req.query?.type || '').trim().toLowerCase(),
       plexToken: String(req.session?.authToken || appWithIcon.plexToken || '').trim(),
     });
-    if (deepUrl) return res.redirect(deepUrl);
+    if (deepUrl) {
+      const roleAwareDeepUrl = resolveRoleAwareLaunchUrl(appWithIcon, req, deepUrl, role);
+      return res.redirect(roleAwareDeepUrl || deepUrl);
+    }
   }
 
-  const launchUrl = resolveLaunchUrl(appWithIcon, req);
+  const launchUrl = resolveRoleAwareLaunchUrl(appWithIcon, req, resolveLaunchUrl(appWithIcon, req), role);
   if (!launchUrl) return res.status(400).send('Launch URL not configured.');
 
   const launchMode = resolveEffectiveLaunchMode(appWithIcon, req, normalizeMenu(appWithIcon));
   if (launchMode === 'iframe') {
+    let iframeLaunchTarget = launchUrl;
+    if (hasEmbeddedUrlCredentials(launchUrl)) {
+      const browserLaunchTarget = stripUrlEmbeddedCredentials(launchUrl) || launchUrl;
+      const primingPlan = buildRommCookiePrimingPlan({
+        config,
+        req,
+        browserUrl: browserLaunchTarget,
+      });
+      const rommBootstrap = await bootstrapRommIframeSession({
+        req,
+        launchUrl,
+        authBaseCandidates: resolveAppApiCandidates(appWithIcon, req),
+      });
+      if (rommBootstrap?.ok) {
+        iframeLaunchTarget = rommBootstrap.launchUrl || browserLaunchTarget;
+        const primedCookies = prepareRommPrimedSetCookies(rommBootstrap.setCookies, primingPlan);
+        logRommLaunchServerDiagnostic(req, {
+          route: 'launch',
+          launchMode: 'iframe',
+          stage: 'bootstrap-ok',
+          role,
+          browserLaunchTarget,
+          primingPlan,
+          rommBootstrap,
+          primedCookies,
+        });
+        if (primedCookies.length) {
+          res.append('Set-Cookie', primedCookies);
+        } else if (!primingPlan.canPrime) {
+          logRommLaunchServerDiagnostic(req, {
+            route: 'launch',
+            launchMode: 'iframe',
+            stage: 'fallback-top-level-no-cookie-priming',
+            role,
+            browserLaunchTarget,
+            primingPlan,
+            rommBootstrap,
+            primedCookies,
+          });
+          return res.redirect(launchUrl);
+        }
+      } else {
+        logRommLaunchServerDiagnostic(req, {
+          route: 'launch',
+          launchMode: 'iframe',
+          stage: 'bootstrap-failed-fallback-top-level',
+          role,
+          browserLaunchTarget,
+          primingPlan,
+          rommBootstrap,
+          primedCookies: [],
+        });
+        // Chromium blocks iframe URLs with embedded credentials (user:pass@host),
+        // so the fallback is a top-level navigation when bootstrap cannot complete.
+        return res.redirect(launchUrl);
+      }
+    }
     const navApps = getNavApps(apps, role, req, categoryOrder);
     const navCategories = buildNavCategories(navApps, categoryEntries, role);
-    const iframeLaunchUrl = resolveIframeLaunchUrl(req, launchUrl);
+    const iframeLaunchUrl = resolveIframeLaunchUrl(req, iframeLaunchTarget);
     return res.render('app-launch', {
       user: req.session.user,
       role,
@@ -2003,7 +2075,52 @@ app.get('/apps/:id/launch', requireUser, async (req, res) => {
       page: 'launch',
       navCategories,
       app: appWithIcon,
-      launchUrl: iframeLaunchUrl || launchUrl,
+      launchUrl: iframeLaunchUrl || iframeLaunchTarget,
+    });
+  }
+
+  if (hasEmbeddedUrlCredentials(launchUrl)) {
+    const browserLaunchTarget = stripUrlEmbeddedCredentials(launchUrl) || launchUrl;
+    const primingPlan = buildRommCookiePrimingPlan({
+      config,
+      req,
+      browserUrl: browserLaunchTarget,
+    });
+    const rommBootstrap = await bootstrapRommIframeSession({
+      req,
+      launchUrl,
+      authBaseCandidates: resolveAppApiCandidates(appWithIcon, req),
+    });
+    if (rommBootstrap?.ok) {
+      const primedCookies = prepareRommPrimedSetCookies(rommBootstrap.setCookies, primingPlan);
+      logRommLaunchServerDiagnostic(req, {
+        route: 'launch',
+        launchMode: 'new-tab',
+        stage: 'bootstrap-ok',
+        role,
+        browserLaunchTarget,
+        primingPlan,
+        rommBootstrap,
+        primedCookies,
+      });
+      if (primedCookies.length) {
+        res.append('Set-Cookie', primedCookies);
+        return sendClientLaunchRedirectPage(res, browserLaunchTarget, {
+          title: `${String(appWithIcon?.name || 'App').trim() || 'App'} Launch`,
+          message: 'Starting app...',
+        });
+      }
+    }
+
+    logRommLaunchServerDiagnostic(req, {
+      route: 'launch',
+      launchMode: 'new-tab',
+      stage: 'fallback-direct-redirect',
+      role,
+      browserLaunchTarget,
+      primingPlan,
+      rommBootstrap,
+      primedCookies: [],
     });
   }
 
@@ -2036,6 +2153,7 @@ app.get('/apps/:id/settings', requireAdmin, (req, res) => {
     page: 'settings',
     navCategories,
     multiInstanceBaseIds: getMultiInstanceBaseIds(),
+    multiInstancePlaceholderMap: getMultiInstancePlaceholderMap(config.apps || []),
     app: appWithIcon,
     overviewElements: mergeOverviewElementSettings(appWithIcon),
     tautulliCards: mergeTautulliCardSettings(appWithIcon),
@@ -4664,10 +4782,16 @@ app.post('/settings/default-apps/remove', requireSettingsAdmin, (req, res) => {
   }
 
   const current = apps[appIndex];
+  const defaultCatalogIdSet = new Set(
+    (Array.isArray(loadDefaultApps()) ? loadDefaultApps() : [])
+      .map((appItem) => normalizeAppId(appItem?.id))
+      .filter(Boolean)
+  );
+  const isDefaultCatalogApp = defaultCatalogIdSet.has(normalizeAppId(current?.id));
   if (current?.custom) {
     return replyError('Custom apps must be removed with the custom app delete action.');
   }
-  if (!canManageWithDefaultAppManager(current)) {
+  if (!canManageWithDefaultAppManager(current) && !isDefaultCatalogApp) {
     return replyError('Only built-in primary apps can be removed here.');
   }
 
@@ -5163,6 +5287,12 @@ app.post('/apps/:id/settings', requireAdmin, (req, res) => {
       password: isDisplayOnlyUpdate
         ? appItem.password || ''
         : (req.body.password !== undefined ? req.body.password : (appItem.password || '')),
+      viewerUsername: isDisplayOnlyUpdate
+        ? appItem.viewerUsername || ''
+        : (req.body.viewerUsername !== undefined ? req.body.viewerUsername : (appItem.viewerUsername || '')),
+      viewerPassword: isDisplayOnlyUpdate
+        ? appItem.viewerPassword || ''
+        : (req.body.viewerPassword !== undefined ? req.body.viewerPassword : (appItem.viewerPassword || '')),
       plexToken: (() => {
         if (isDisplayOnlyUpdate) return appItem.plexToken || '';
         const nextToken = req.body.plexToken !== undefined ? req.body.plexToken : (appItem.plexToken || '');
@@ -5274,6 +5404,146 @@ app.get('/api/plex/machine', requireAdmin, async (req, res) => {
   }
 
   return res.status(502).json({ error: lastError || 'Failed to reach Plex.' });
+});
+
+app.post('/api/romm/viewer-session-test', requireAdmin, async (req, res) => {
+  const config = loadConfig();
+  const apps = Array.isArray(config?.apps) ? config.apps : [];
+  const requestedAppId = String(req.body?.appId || '').trim();
+  const rommApp = apps.find((appItem) => {
+    if (requestedAppId && String(appItem?.id || '') === requestedAppId) return true;
+    return getAppBaseId(appItem?.id) === 'romm';
+  });
+  if (!rommApp) {
+    return res.json({ ok: false, message: 'Romm app is not configured.' });
+  }
+
+  const localUrl = String(req.body?.localUrl !== undefined ? req.body.localUrl : (rommApp.localUrl || '')).trim();
+  const remoteUrl = String(req.body?.remoteUrl !== undefined ? req.body.remoteUrl : (rommApp.remoteUrl || '')).trim();
+  const fallbackUrl = String(req.body?.url !== undefined ? req.body.url : (rommApp.url || '')).trim();
+  const appUsername = String(req.body?.username !== undefined ? req.body.username : (rommApp.username || '')).trim();
+  const appPassword = String(req.body?.password !== undefined ? req.body.password : (rommApp.password || ''));
+  const viewerUsername = String(req.body?.viewerUsername !== undefined ? req.body.viewerUsername : (rommApp.viewerUsername || '')).trim();
+  const viewerPassword = String(req.body?.viewerPassword !== undefined ? req.body.viewerPassword : (rommApp.viewerPassword || ''));
+  const credentialModeRaw = String(req.body?.credentialMode || 'viewer').trim().toLowerCase();
+  const credentialMode = credentialModeRaw === 'admin' ? 'admin' : 'viewer';
+  const usingAdminCredentials = credentialMode === 'admin';
+  const sessionUsername = usingAdminCredentials ? appUsername : viewerUsername;
+  const sessionPassword = usingAdminCredentials ? appPassword : viewerPassword;
+  const sessionLabel = usingAdminCredentials ? 'admin' : 'viewer';
+  const primeBrowserRaw = String(req.body?.primeBrowser ?? 'true').trim().toLowerCase();
+  const primeBrowser = ['1', 'true', 'yes', 'on'].includes(primeBrowserRaw);
+
+  if (!sessionUsername || !sessionPassword) {
+    return res.json({
+      ok: false,
+      message: usingAdminCredentials
+        ? 'Romm admin username and password are required (uses the main Username/Password fields).'
+        : 'Viewer username and password are required.',
+    });
+  }
+
+  const effectiveApp = {
+    ...rommApp,
+    localUrl,
+    remoteUrl,
+    url: fallbackUrl || rommApp.url || '',
+  };
+  const baseLaunchUrl = String(resolveLaunchUrl(effectiveApp, req) || '').trim();
+  if (!baseLaunchUrl) {
+    return res.json({ ok: false, message: 'Missing Romm launch URL (local or remote URL).' });
+  }
+
+  const credentialedLaunchUrl = injectBasicAuthIntoUrl(baseLaunchUrl, sessionUsername, sessionPassword);
+  const cleanLaunchUrl = stripUrlEmbeddedCredentials(credentialedLaunchUrl);
+  const primingPlan = buildRommCookiePrimingPlan({
+    config,
+    req,
+    browserUrl: cleanLaunchUrl,
+  });
+
+  const bootstrap = await bootstrapRommIframeSession({
+    req,
+    launchUrl: credentialedLaunchUrl,
+    authBaseCandidates: resolveAppApiCandidates(effectiveApp, req),
+  });
+
+  let probe = { ok: false };
+  if (bootstrap?.ok) {
+    try {
+      const probeBase = normalizeBaseUrl(bootstrap.authBaseUrl || cleanLaunchUrl);
+      const meUrl = buildAppApiUrl(probeBase, 'api/users/me').toString();
+      const cookieHeader = buildCookieHeaderFromSetCookies(bootstrap.setCookies || []);
+      const csrfToken = (bootstrap.setCookies || [])
+        .map((cookie) => getCookieValueFromSetCookie(cookie, 'romm_csrftoken'))
+        .find(Boolean);
+      const headers = { Accept: 'application/json' };
+      if (cookieHeader) headers.Cookie = cookieHeader;
+      if (csrfToken) headers['x-csrftoken'] = csrfToken;
+      const response = await fetch(meUrl, { headers });
+      const text = await response.text().catch(() => '');
+      let payload = {};
+      try { payload = text ? JSON.parse(text) : {}; } catch (_err) { payload = {}; }
+      probe = {
+        ok: response.ok,
+        status: response.status,
+        user: response.ok ? {
+          username: String(payload?.username || '').trim(),
+          role: String(payload?.role || '').trim(),
+          id: payload?.id,
+        } : null,
+        error: response.ok ? '' : (String(payload?.detail || payload?.error || text || '').trim() || `Status ${response.status}`),
+      };
+    } catch (err) {
+      probe = { ok: false, error: safeMessage(err) || 'Failed to verify /api/users/me.' };
+    }
+  }
+
+  const primedSetCookies = (bootstrap?.ok && primeBrowser)
+    ? prepareRommPrimedSetCookies(bootstrap.setCookies, primingPlan)
+    : [];
+  if (primedSetCookies.length) {
+    res.append('Set-Cookie', primedSetCookies);
+  }
+
+  const cookieNames = Array.isArray(bootstrap?.setCookies)
+    ? Array.from(new Set(bootstrap.setCookies.map((cookie) => String(cookie || '').split('=')[0].trim()).filter(Boolean)))
+    : [];
+  const primedBrowser = Boolean(primedSetCookies.length);
+  const message = (() => {
+    if (!bootstrap?.ok) return bootstrap?.error || `Romm ${sessionLabel} session bootstrap failed.`;
+    if (!primingPlan.canPrime) {
+      return `Romm login succeeded server-side, but browser cookie priming is blocked. ${primingPlan.reason || 'No compatible shared cookie domain found.'} Launcharr host: ${primingPlan.configuredLauncharrHost || primingPlan.requestHost || 'unknown'}; Romm host: ${primingPlan.targetHost || 'unknown'}.`;
+    }
+    if (!probe.ok) {
+      return `Romm login cookies were obtained${primedBrowser ? ' and primed in this browser' : ''}, but /api/users/me verification failed${probe.status ? ` (${probe.status})` : ''}${probe.error ? `: ${probe.error}` : '.'}`;
+    }
+    if (primedBrowser && primingPlan.mode === 'shared-domain' && primingPlan.cookieDomain) {
+      return `Romm ${sessionLabel} session OK and browser cookies primed for ${primingPlan.cookieDomain}. ${probe.user?.username ? `Logged in as ${probe.user.username}` : `${usingAdminCredentials ? 'Admin' : 'Viewer'} user verified`}.`;
+    }
+    return `Romm ${sessionLabel} session OK${primedBrowser ? ' and browser cookies primed' : ''}. ${probe.user?.username ? `Logged in as ${probe.user.username}` : `${usingAdminCredentials ? 'Admin' : 'Viewer'} user verified`}.`;
+  })();
+
+  return res.json({
+    ok: Boolean(bootstrap?.ok && probe.ok),
+    message,
+    diagnostics: {
+      credentialMode,
+      requestHost: primingPlan.requestHost,
+      targetHost: primingPlan.targetHost,
+      configuredLauncharrHost: primingPlan.configuredLauncharrHost,
+      canPrimeBrowserCookies: primingPlan.canPrime,
+      cookiePrimingMode: primingPlan.mode,
+      cookieDomain: primingPlan.cookieDomain,
+      baseLaunchUrl,
+      cleanLaunchUrl,
+      cookieNames,
+      primedBrowser,
+      authBaseUrl: String(bootstrap?.authBaseUrl || '').trim(),
+      attemptedAuthBases: Array.isArray(bootstrap?.attemptedBases) ? bootstrap.attemptedBases : [],
+      probe,
+    },
+  });
 });
 
 app.get('/api/onboarding/quick-start', requireSettingsAdmin, (req, res) => {
@@ -10121,6 +10391,321 @@ function buildBasicAuthHeader(username, password) {
   return `Basic ${Buffer.from(`${user}:${pass}`).toString('base64')}`;
 }
 
+function injectBasicAuthIntoUrl(rawUrl, username, password) {
+  const input = String(rawUrl || '').trim();
+  if (!input) return '';
+  const user = String(username || '').trim();
+  const pass = String(password || '');
+  if (!user && !pass) return input;
+
+  try {
+    const parsed = new URL(input);
+    if (!/^https?:$/i.test(parsed.protocol)) return input;
+    parsed.username = user;
+    parsed.password = pass;
+    return parsed.toString();
+  } catch (err) {
+    return input;
+  }
+}
+
+function hasEmbeddedUrlCredentials(rawUrl) {
+  const input = String(rawUrl || '').trim();
+  if (!input) return false;
+  try {
+    const parsed = new URL(input);
+    return Boolean(parsed.username || parsed.password);
+  } catch (err) {
+    return false;
+  }
+}
+
+function stripUrlEmbeddedCredentials(rawUrl) {
+  const input = String(rawUrl || '').trim();
+  if (!input) return '';
+  try {
+    const parsed = new URL(input);
+    parsed.username = '';
+    parsed.password = '';
+    return parsed.toString();
+  } catch (err) {
+    return input;
+  }
+}
+
+function splitSetCookieHeaderValue(value) {
+  const header = String(value || '').trim();
+  if (!header) return [];
+  return header
+    .split(/,(?=\s*[!#$%&'*+\-.^_`|~0-9A-Za-z]+=)/g)
+    .map((item) => String(item || '').trim())
+    .filter(Boolean);
+}
+
+function getFetchResponseSetCookies(response) {
+  if (!response?.headers) return [];
+  if (typeof response.headers.getSetCookie === 'function') {
+    const values = response.headers.getSetCookie();
+    return Array.isArray(values) ? values.map((item) => String(item || '').trim()).filter(Boolean) : [];
+  }
+  return splitSetCookieHeaderValue(response.headers.get('set-cookie'));
+}
+
+function getCookieValueFromSetCookie(setCookie, cookieName) {
+  const raw = String(setCookie || '').trim();
+  const target = String(cookieName || '').trim();
+  if (!raw || !target) return '';
+  const first = raw.split(';')[0] || '';
+  const eqIndex = first.indexOf('=');
+  if (eqIndex <= 0) return '';
+  const name = first.slice(0, eqIndex).trim();
+  if (name !== target) return '';
+  return first.slice(eqIndex + 1);
+}
+
+function buildCookieHeaderFromSetCookies(setCookies = []) {
+  return (Array.isArray(setCookies) ? setCookies : [])
+    .map((value) => String(value || '').split(';')[0].trim())
+    .filter(Boolean)
+    .join('; ');
+}
+
+function stripCookieDomainAttribute(setCookie) {
+  return String(setCookie || '')
+    .replace(/;\s*Domain=[^;]*/ig, '')
+    .trim();
+}
+
+function rewriteSetCookieDomainAttribute(setCookie, cookieDomain) {
+  const cleaned = stripCookieDomainAttribute(setCookie);
+  const domain = normalizeHostnameForCompare(cookieDomain);
+  if (!cleaned || !domain) return cleaned;
+  return `${cleaned}; Domain=${domain}`;
+}
+
+function normalizeHostnameForCompare(value) {
+  return String(value || '').trim().toLowerCase().replace(/^\[|\]$/g, '');
+}
+
+function extractHostnameFromUrl(value) {
+  const input = String(value || '').trim();
+  if (!input) return '';
+  try {
+    const parsed = new URL(input);
+    return normalizeHostnameForCompare(parsed.hostname);
+  } catch (err) {
+    return '';
+  }
+}
+
+function getRequestHostname(req) {
+  const rawRequestHost = String(getRequestHost(req) || '').trim();
+  return normalizeHostnameForCompare(rawRequestHost.split(':')[0] || rawRequestHost);
+}
+
+function getConfiguredLauncharrHostname(config, req) {
+  const generalSettings = resolveGeneralSettings(config || {});
+  const configuredCandidates = [
+    generalSettings.remoteUrl,
+    generalSettings.localUrl,
+    resolvePublicBaseUrl(req),
+  ];
+  for (let index = 0; index < configuredCandidates.length; index += 1) {
+    const host = extractHostnameFromUrl(configuredCandidates[index]);
+    if (host) return host;
+  }
+  return '';
+}
+
+function buildRommCookiePrimingPlan({ config, req, browserUrl }) {
+  const targetHost = extractHostnameFromUrl(browserUrl);
+  const requestHost = getRequestHostname(req);
+  const configuredLauncharrHost = getConfiguredLauncharrHostname(config, req);
+  if (!targetHost) {
+    return {
+      canPrime: false,
+      mode: 'none',
+      cookieDomain: '',
+      requestHost,
+      targetHost,
+      configuredLauncharrHost,
+      reason: 'Missing Romm browser hostname.',
+    };
+  }
+
+  if (requestHost && requestHost === targetHost) {
+    return {
+      canPrime: true,
+      mode: 'host-only',
+      cookieDomain: '',
+      requestHost,
+      targetHost,
+      configuredLauncharrHost,
+      reason: '',
+    };
+  }
+
+  if (configuredLauncharrHost) {
+    const candidate = configuredLauncharrHost;
+    const targetMatchesShared = targetHost === candidate || targetHost.endsWith(`.${candidate}`);
+    if (targetMatchesShared && candidate.includes('.')) {
+      return {
+        canPrime: true,
+        mode: 'shared-domain',
+        cookieDomain: candidate,
+        requestHost,
+        targetHost,
+        configuredLauncharrHost,
+        reason: '',
+      };
+    }
+  }
+
+  return {
+    canPrime: false,
+    mode: 'none',
+    cookieDomain: '',
+    requestHost,
+    targetHost,
+    configuredLauncharrHost,
+    reason: 'Launcharr and Romm hosts do not share a cookie-priming domain.',
+  };
+}
+
+function prepareRommPrimedSetCookies(setCookies, plan) {
+  const list = Array.isArray(setCookies) ? setCookies : [];
+  if (!list.length) return [];
+  if (!plan?.canPrime) return [];
+  if (plan.mode === 'shared-domain' && plan.cookieDomain) {
+    return list.map((cookie) => rewriteSetCookieDomainAttribute(cookie, plan.cookieDomain)).filter(Boolean);
+  }
+  return list.map((cookie) => stripCookieDomainAttribute(cookie)).filter(Boolean);
+}
+
+async function bootstrapRommIframeSession({ req, launchUrl, authBaseCandidates = [] }) {
+  const input = String(launchUrl || '').trim();
+  if (!input) return { ok: false, error: 'Missing launch URL.' };
+  let parsed;
+  try {
+    parsed = new URL(input);
+  } catch (err) {
+    return { ok: false, error: 'Invalid launch URL.' };
+  }
+
+  const username = String(parsed.username || '');
+  const password = String(parsed.password || '');
+  if (!username && !password) {
+    return { ok: false, error: 'Missing embedded credentials.' };
+  }
+
+  const cleanLaunchUrl = stripUrlEmbeddedCredentials(input);
+  const apiCandidates = uniqueList([
+    ...(Array.isArray(authBaseCandidates) ? authBaseCandidates : []),
+    cleanLaunchUrl,
+  ])
+    .map((candidate) => normalizeBaseUrl(candidate))
+    .filter(Boolean);
+  if (!apiCandidates.length) return { ok: false, error: 'Invalid Romm base URL.' };
+
+  let lastError = '';
+  const attemptedBases = [];
+  for (let index = 0; index < apiCandidates.length; index += 1) {
+    const apiBase = apiCandidates[index];
+    if (!apiBase) continue;
+    attemptedBases.push(apiBase);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+    try {
+      const heartbeatUrl = buildAppApiUrl(apiBase, 'api/heartbeat').toString();
+      const heartbeatResponse = await fetch(heartbeatUrl, {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      });
+      const heartbeatText = await heartbeatResponse.text().catch(() => '');
+      if (!heartbeatResponse.ok) {
+        lastError = `Romm heartbeat failed (${heartbeatResponse.status}) via ${apiBase}. ${heartbeatText || ''}`.trim();
+        continue;
+      }
+      const heartbeatCookies = getFetchResponseSetCookies(heartbeatResponse);
+      const csrfToken = heartbeatCookies
+        .map((cookie) => getCookieValueFromSetCookie(cookie, 'romm_csrftoken'))
+        .find(Boolean);
+      if (!csrfToken) {
+        lastError = `Romm heartbeat via ${apiBase} did not return romm_csrftoken.`;
+        continue;
+      }
+
+      const loginUrl = buildAppApiUrl(apiBase, 'api/login').toString();
+      const loginHeaders = {
+        Accept: 'application/json',
+        'x-csrftoken': csrfToken,
+        Authorization: buildBasicAuthHeader(username, password),
+      };
+      const heartbeatCookieHeader = buildCookieHeaderFromSetCookies(heartbeatCookies);
+      if (heartbeatCookieHeader) loginHeaders.Cookie = heartbeatCookieHeader;
+
+      const loginResponse = await fetch(loginUrl, {
+        method: 'POST',
+        headers: loginHeaders,
+        signal: controller.signal,
+      });
+      const loginText = await loginResponse.text().catch(() => '');
+      if (!loginResponse.ok) {
+        lastError = `Romm login failed (${loginResponse.status}) via ${apiBase}. ${loginText || ''}`.trim();
+        continue;
+      }
+
+      const loginCookies = getFetchResponseSetCookies(loginResponse);
+      const forwardedCookies = [...heartbeatCookies, ...loginCookies]
+        .map(stripCookieDomainAttribute)
+        .filter(Boolean);
+      const hasSessionCookie = forwardedCookies.some((cookie) => cookie.startsWith('romm_session='));
+      if (!hasSessionCookie) {
+        lastError = `Romm login via ${apiBase} did not return romm_session cookie.`;
+        continue;
+      }
+
+      return {
+        ok: true,
+        launchUrl: cleanLaunchUrl,
+        setCookies: forwardedCookies,
+        authBaseUrl: apiBase,
+        attemptedBases,
+      };
+    } catch (err) {
+      lastError = (safeMessage(err) || 'Failed to bootstrap Romm iframe session.') + ` via ${apiBase}.`;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  return {
+    ok: false,
+    error: lastError || 'Failed to bootstrap Romm iframe session.',
+    attemptedBases,
+  };
+}
+
+function resolveRoleAwareLaunchUrl(appItem, req, launchUrl, roleOverride = '') {
+  const resolved = String(launchUrl || '').trim();
+  if (!resolved) return '';
+  const baseId = getAppBaseId(appItem?.id);
+  if (baseId !== 'romm') return resolved;
+
+  const role = String(roleOverride || getEffectiveRole(req) || '').trim().toLowerCase();
+  if (role === 'user' || role === 'co-admin') {
+    const viewerUsername = String(appItem?.viewerUsername || '').trim();
+    const viewerPassword = String(appItem?.viewerPassword || '');
+    return injectBasicAuthIntoUrl(resolved, viewerUsername, viewerPassword);
+  }
+  if (role === 'admin') {
+    const adminUsername = String(appItem?.username || '').trim();
+    const adminPassword = String(appItem?.password || '');
+    return injectBasicAuthIntoUrl(resolved, adminUsername, adminPassword);
+  }
+  return resolved;
+}
+
 function buildAppApiUrl(baseUrl, suffixPath) {
   const url = new URL(baseUrl);
   const suffix = String(suffixPath || '').trim().replace(/^\/+/, '');
@@ -10128,6 +10713,185 @@ function buildAppApiUrl(baseUrl, suffixPath) {
   const joined = `${basePath}/${suffix}`.replace(/\/{2,}/g, '/');
   url.pathname = joined.startsWith('/') ? joined : `/${joined}`;
   return url;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function sendClientLaunchRedirectPage(res, targetUrl, options = {}) {
+  const href = String(targetUrl || '').trim();
+  if (!href) return res.status(400).send('Launch URL not configured.');
+  const title = escapeHtml(String(options?.title || 'Launch').trim() || 'Launch');
+  const message = escapeHtml(String(options?.message || 'Redirecting...').trim() || 'Redirecting...');
+  const escapedHref = escapeHtml(href);
+  const scriptHref = JSON.stringify(href);
+  const script = `
+  <script>
+    (function () {
+      var href = ${scriptHref};
+      if (!href) return;
+      try { window.location.replace(href); return; } catch (e) {}
+      window.location.href = href;
+    }());
+  </script>`;
+  return res
+    .status(200)
+    .type('html')
+    .send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${title}</title>
+  <meta http-equiv="refresh" content="0;url=${escapedHref}">
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: #0f172a; color: #e2e8f0; display: grid; place-items: center; min-height: 100vh; }
+    .card { width: min(28rem, calc(100vw - 2rem)); background: rgba(15, 23, 42, 0.92); border: 1px solid rgba(148, 163, 184, 0.28); border-radius: 12px; padding: 1rem 1.1rem; box-shadow: 0 12px 30px rgba(2, 6, 23, 0.35); }
+    .muted { color: #94a3b8; font-size: 0.92rem; margin-top: 0.35rem; word-break: break-word; }
+    a { color: #93c5fd; }
+  </style>
+</head>
+<body>
+  <div class="card" role="status" aria-live="polite">
+    <div>${message}</div>
+    <div class="muted">If you are not redirected, <a href="${escapedHref}" rel="noreferrer">continue to the app</a>.</div>
+  </div>
+  ${script}
+</body>
+</html>`);
+}
+
+function buildRommLaunchDebugPayload({
+  req,
+  primingPlan,
+  rommBootstrap,
+  primedCookies = [],
+  browserLaunchTarget = '',
+  launchMode = '',
+}) {
+  const cookieNames = uniqueList(
+    (Array.isArray(primedCookies) ? primedCookies : [])
+      .map((cookie) => String(cookie || '').split(';')[0])
+      .map((pair) => String(pair || '').split('=')[0].trim())
+      .filter(Boolean)
+  );
+  const plan = primingPlan && typeof primingPlan === 'object' ? primingPlan : {};
+  const bootstrap = rommBootstrap && typeof rommBootstrap === 'object' ? rommBootstrap : {};
+  return {
+    launchMode: String(launchMode || '').trim(),
+    browserLaunchTarget: String(browserLaunchTarget || '').trim(),
+    bootstrapOk: !!bootstrap.ok,
+    bootstrapError: String(bootstrap.error || '').trim(),
+    authBaseUrl: String(bootstrap.authBaseUrl || '').trim(),
+    attemptedBases: Array.isArray(bootstrap.attemptedBases) ? bootstrap.attemptedBases : [],
+    primedCookieCount: cookieNames.length,
+    primedCookieNames: cookieNames,
+    primingPlan: {
+      canPrime: !!plan.canPrime,
+      mode: String(plan.mode || '').trim(),
+      cookieDomain: String(plan.cookieDomain || '').trim(),
+      requestHost: String(plan.requestHost || '').trim(),
+      targetHost: String(plan.targetHost || '').trim(),
+      configuredLauncharrHost: String(plan.configuredLauncharrHost || '').trim(),
+      reason: String(plan.reason || '').trim(),
+    },
+    userAgent: String(req?.headers?.['user-agent'] || '').trim(),
+  };
+}
+
+function logRommLaunchServerDiagnostic(req, payload) {
+  try {
+    const details = buildRommLaunchDebugPayload({
+      req,
+      primingPlan: payload?.primingPlan,
+      rommBootstrap: payload?.rommBootstrap,
+      primedCookies: payload?.primedCookies,
+      browserLaunchTarget: payload?.browserLaunchTarget,
+      launchMode: payload?.launchMode,
+    });
+    const logPayload = redactRommLaunchLogPayloadHosts({
+      ts: new Date().toISOString(),
+      route: String(payload?.route || 'launch').trim() || 'launch',
+      stage: String(payload?.stage || '').trim(),
+      role: String(payload?.role || '').trim(),
+      path: String(req?.originalUrl || req?.url || '').trim(),
+      ...details,
+    });
+    console.log(`[romm-launch] ${JSON.stringify(logPayload)}`);
+  } catch (err) {
+    console.warn('[romm-launch] Failed to emit diagnostic log:', safeMessage(err));
+  }
+}
+
+function redactRommLaunchLogPayloadHosts(payload) {
+  if ((!LOG_REDACT_HOSTS && !LOG_REDACT_IPS) || !payload || typeof payload !== 'object') return payload;
+  const next = { ...payload };
+  next.browserLaunchTarget = redactLogHostOrUrl(next.browserLaunchTarget);
+  next.authBaseUrl = redactLogHostOrUrl(next.authBaseUrl);
+  next.attemptedBases = Array.isArray(next.attemptedBases)
+    ? next.attemptedBases.map((value) => redactLogHostOrUrl(value))
+    : next.attemptedBases;
+  if (next.primingPlan && typeof next.primingPlan === 'object') {
+    next.primingPlan = {
+      ...next.primingPlan,
+      requestHost: redactLogHostOrUrl(next.primingPlan.requestHost),
+      targetHost: redactLogHostOrUrl(next.primingPlan.targetHost),
+      configuredLauncharrHost: redactLogHostOrUrl(next.primingPlan.configuredLauncharrHost),
+    };
+  }
+  return next;
+}
+
+function redactLogHostOrUrl(value) {
+  const input = String(value ?? '').trim();
+  if ((!LOG_REDACT_HOSTS && !LOG_REDACT_IPS) || !input) return input;
+
+  if (/^https?:\/\//i.test(input)) {
+    try {
+      const parsed = new URL(input);
+      if (parsed.hostname) parsed.hostname = redactHostnameToken(parsed.hostname);
+      return parsed.toString();
+    } catch (_err) {
+      return input;
+    }
+  }
+
+  if (/^[^\s/]+$/.test(input)) {
+    try {
+      const parsed = new URL(`http://${input}`);
+      if (parsed.hostname) parsed.hostname = redactHostnameToken(parsed.hostname);
+      return parsed.host;
+    } catch (_err) {
+      return input;
+    }
+  }
+
+  return input;
+}
+
+function redactHostnameToken(hostname) {
+  const raw = String(hostname ?? '').trim();
+  if (!raw) return raw;
+  const redactedIp = redactLogIp(raw);
+  if (LOG_REDACT_IPS && redactedIp && redactedIp !== raw) return redactedIp;
+  if (LOG_REDACT_HOSTS) return getRedactedHostAlias(raw);
+  return raw;
+}
+
+function getRedactedHostAlias(hostname) {
+  const raw = String(hostname ?? '').trim();
+  if (!raw) return raw;
+  const key = raw.toLowerCase();
+  if (LOG_HOST_ALIAS_CACHE.has(key)) return LOG_HOST_ALIAS_CACHE.get(key);
+  const alias = `host-${crypto.createHash('sha256').update(key).digest('hex').slice(0, 8)}`;
+  LOG_HOST_ALIAS_CACHE.set(key, alias);
+  return alias;
 }
 
 async function fetchTransmissionQueue(baseUrl, authHeader) {
@@ -10626,6 +11390,174 @@ function parseCsv(value) {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function parseEnvFlag(value, fallback = false) {
+  const raw = String(value ?? '').trim().toLowerCase();
+  if (!raw) return Boolean(fallback);
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+}
+
+function setupConsoleLogRedaction() {
+  if (!LOG_REDACT_HOSTS && !LOG_REDACT_IPS) return;
+  if (globalThis.__launcharrConsoleRedactionInstalled) return;
+  globalThis.__launcharrConsoleRedactionInstalled = true;
+
+  const wrap = (fnName) => {
+    const original = console[fnName];
+    if (typeof original !== 'function') return;
+    const bound = original.bind(console);
+    console[fnName] = (...args) => bound(...redactConsoleArgs(args));
+  };
+
+  wrap('log');
+  wrap('info');
+  wrap('warn');
+  wrap('error');
+
+  console.log(`[logs] console redaction enabled hosts=${LOG_REDACT_HOSTS ? 'on' : 'off'} ips=${LOG_REDACT_IPS ? 'on' : 'off'}`);
+}
+
+function redactConsoleArgs(args) {
+  if ((!LOG_REDACT_HOSTS && !LOG_REDACT_IPS) || !Array.isArray(args) || !args.length) return args;
+  return args.map((arg) => redactConsoleArgValue(arg));
+}
+
+function redactConsoleArgValue(value, depth = 0) {
+  if (value == null) return value;
+  if (typeof value === 'string') return redactLogText(value);
+  if (depth >= 2) return value;
+  if (Array.isArray(value)) return value.map((item) => redactConsoleArgValue(item, depth + 1));
+  if (value instanceof URL) return redactLogHostOrUrl(value.toString());
+  if (typeof value === 'object') {
+    const out = {};
+    for (const [key, entry] of Object.entries(value)) out[key] = redactConsoleArgValue(entry, depth + 1);
+    return out;
+  }
+  return value;
+}
+
+function redactLogText(inputValue) {
+  let text = String(inputValue ?? '');
+  if (!text) return text;
+
+  if (LOG_REDACT_HOSTS) {
+    text = text.replace(/\bhttps?:\/\/[^\s"'<>]+/gi, (match) => redactLogHostOrUrl(match));
+    text = text.replace(/\bhost=([^\s]+)/gi, (_m, hostValue) => `host=${redactLogHostOrUrl(hostValue)}`);
+  }
+  if (LOG_REDACT_IPS) {
+    text = text.replace(/\bip=([^\s]+)/gi, (_m, ipValue) => `ip=${redactLogIp(ipValue)}`);
+    text = text.replace(/\bx-forwarded-for=([^\s]+)/gi, (_m, ipValue) => `x-forwarded-for=${redactLogIp(ipValue)}`);
+  }
+  return text;
+}
+
+function setupConsoleStderrMirrorToStdout() {
+  if (!LOG_MIRROR_STDERR_TO_STDOUT) return;
+  if (globalThis.__launcharrStderrStdoutMirrorInstalled) return;
+  globalThis.__launcharrStderrStdoutMirrorInstalled = true;
+
+  const originalWarn = console.warn.bind(console);
+  const originalError = console.error.bind(console);
+
+  const mirror = (level, args) => {
+    try {
+      const line = formatConsoleArgs(...(Array.isArray(args) ? args : []));
+      process.stdout.write(`[mirror:${level}] ${line}${line.endsWith('\n') ? '' : '\n'}`);
+    } catch (_err) {
+      // Avoid recursive logging if formatting/write fails.
+    }
+  };
+
+  console.warn = (...args) => {
+    originalWarn(...args);
+    mirror('warn', args);
+  };
+  console.error = (...args) => {
+    originalError(...args);
+    mirror('error', args);
+  };
+
+  console.log('[logs] LOG_MIRROR_STDERR_TO_STDOUT enabled');
+}
+
+function httpAccessLogMiddleware(req, res, next) {
+  if (!HTTP_ACCESS_LOGS) return next();
+  if (HTTP_ACCESS_LOGS_SKIP_STATIC && shouldSkipHttpAccessLog(req)) return next();
+  const startedAt = process.hrtime.bigint();
+  let logged = false;
+  const logAccess = (eventName) => {
+    if (logged) return;
+    logged = true;
+    const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+    const user = req.session?.user || null;
+    const role = getEffectiveRole(req) || '';
+    const forwardedFor = String(req.headers?.['x-forwarded-for'] || '').split(',')[0].trim();
+    const ip = forwardedFor || req.ip || req.socket?.remoteAddress || '';
+    const host = getRequestHost(req);
+    const pathOnly = String(req.originalUrl || req.url || '').split('#')[0];
+    const contentLength = res.getHeader('content-length');
+    const bytes = contentLength === undefined ? '' : String(contentLength);
+    console.log(`[http-access] ${req.method} ${pathOnly} status=${res.statusCode} durMs=${elapsedMs.toFixed(1)} host=${redactLogHostOrUrl(host) || '-'} ip=${redactLogIp(ip) || '-'} role=${role || '-'} user=${String(user?.username || user?.email || '').trim() || '-'} bytes=${bytes || '-'} event=${eventName}`);
+  };
+  res.on('finish', () => logAccess('finish'));
+  res.on('close', () => logAccess('close'));
+  next();
+}
+
+function shouldSkipHttpAccessLog(req) {
+  const method = String(req?.method || '').trim().toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD') return false;
+  const rawPath = String(req?.originalUrl || req?.url || '').trim();
+  const pathOnly = rawPath.split('?')[0].split('#')[0];
+  if (!pathOnly) return false;
+
+  if (pathOnly.startsWith('/icons/')
+    || pathOnly.startsWith('/fonts/')
+    || pathOnly.startsWith('/images/')
+    || pathOnly.startsWith('/public/')) {
+    return true;
+  }
+
+  return /\.(?:css|js|mjs|map|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot|webmanifest)$/i.test(pathOnly);
+}
+
+function redactLogIp(value) {
+  const input = String(value ?? '').trim();
+  if (!LOG_REDACT_IPS || !input) return input;
+  const normalized = input.replace(/^\[|\]$/g, '');
+  if (!normalized) return input;
+  const ipv4Match = normalized.match(/^(?:::ffff:)?(\d{1,3}(?:\.\d{1,3}){3})$/i);
+  if (ipv4Match) {
+    const ip = ipv4Match[1];
+    if (!isLikelyIpv4Address(ip)) return input;
+    const alias = getRedactedIpAlias(ip);
+    return normalized.toLowerCase().startsWith('::ffff:') ? `::ffff:${alias}` : alias;
+  }
+  if (isLikelyIpv6Address(normalized)) return getRedactedIpAlias(normalized.toLowerCase());
+  return input;
+}
+
+function isLikelyIpv4Address(value) {
+  const parts = String(value || '').split('.');
+  if (parts.length !== 4) return false;
+  return parts.every((part) => /^\d+$/.test(part) && Number(part) >= 0 && Number(part) <= 255);
+}
+
+function isLikelyIpv6Address(value) {
+  const raw = String(value || '').trim();
+  if (!raw || !raw.includes(':')) return false;
+  return /^[0-9a-f:]+$/i.test(raw);
+}
+
+function getRedactedIpAlias(ipValue) {
+  const raw = String(ipValue ?? '').trim();
+  if (!raw) return raw;
+  const key = raw.toLowerCase();
+  if (LOG_IP_ALIAS_CACHE.has(key)) return LOG_IP_ALIAS_CACHE.get(key);
+  const alias = `ip-${crypto.createHash('sha256').update(key).digest('hex').slice(0, 8)}`;
+  LOG_IP_ALIAS_CACHE.set(key, alias);
+  return alias;
 }
 
 function uniqueList(items) {
@@ -13738,6 +14670,13 @@ function buildAppOverrides(defaultApps, mergedApps) {
       const override = { id: app.id };
       Object.keys(app).forEach((key) => {
         if (key === 'id') return;
+        // Preserve explicit removals even when the default catalog also marks the app as removed.
+        // Without this, save/load drops `removed:true` for hidden-by-default apps (e.g. Emby),
+        // and mergeAppDefaults later reactivates them because the override no longer has `removed`.
+        if (key === 'removed' && app[key] === true) {
+          override[key] = true;
+          return;
+        }
         if (!deepEqual(app[key], base[key])) {
           override[key] = app[key];
         }

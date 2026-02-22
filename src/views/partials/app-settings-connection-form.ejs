@@ -1,0 +1,147 @@
+<%
+  const renderedApp = appItem || {};
+  const renderedAppId = String(renderedApp.id || '').trim();
+  const renderedAppName = String(renderedApp.name || 'App').trim() || 'App';
+  const renderedAppBaseId = String(appBaseId || '').trim().toLowerCase();
+  const renderedFormAction = String(formAction || '').trim() || `/apps/${encodeURIComponent(renderedAppId)}/settings`;
+  const renderedFormUid = String(formUid || renderedAppId || 'app').trim().replace(/[^a-zA-Z0-9_-]+/g, '-') || 'app';
+  const renderedSupportsInstances = Boolean(supportsInstances);
+  const renderedInstancePlaceholder = String(instancePlaceholder || 'Instance (e.g. Main)');
+  const renderedRequiresApiKey = Boolean(requiresApiKey);
+  const renderedAdmins = Array.isArray(admins) ? admins : [];
+%>
+<form method="post" action="<%= renderedFormAction %>" class="settings-form <%= renderedAppBaseId === 'plex' ? 'plex-settings-form' : '' %>">
+  <% if (renderedSupportsInstances) { %>
+    <label class="field">
+      <span>Instance Name</span>
+      <input type="text" name="instanceName" value="<%= renderedApp.instanceName || '' %>" placeholder="<%= renderedInstancePlaceholder %>" />
+    </label>
+  <% } %>
+  <div class="settings-card">
+    <% if (renderedAppId === 'plex') { %>
+      <div class="settings-card-title">App URLs</div>
+      <div class="settings-card-sub">Base URLs and credentials for local or remote access.</div>
+    <% } %>
+    <label class="field">
+      <span>Local URL</span>
+      <input type="text" name="localUrl" value="<%= renderedApp.localUrl || '' %>" placeholder="http://192.168.x.x:port" />
+    </label>
+    <label class="field">
+      <span>Remote URL</span>
+      <input type="text" name="remoteUrl" value="<%= renderedApp.remoteUrl || '' %>" placeholder="https://app.example.com" />
+    </label>
+  </div>
+  <% if (renderedAppId === 'plex') { %>
+    <% const adminOwner = renderedAdmins.length ? renderedAdmins[0] : ''; %>
+    <div class="settings-card plex-settings-card">
+      <div class="settings-card-title">Plex Access</div>
+      <div class="settings-card-sub">Uses the Local URL first, then the External URL.</div>
+      <div class="plex-settings-fields">
+        <label class="field field-with-action">
+          <span>Plex Token</span>
+          <div class="field-action-row">
+            <input id="<%= renderedFormUid %>-plex-token" type="password" name="plexToken" value="<%= renderedApp.plexToken || '' %>" placeholder="Plex token" data-plex-field="token" />
+            <button class="icon-button" type="button" aria-label="Show Plex token" data-visibility-toggle="<%= renderedFormUid %>-plex-token" data-visibility-state="hidden">
+              <img src="/icons/view-off.svg" alt="" />
+            </button>
+          </div>
+        </label>
+        <label class="field field-with-action">
+          <span>Plex Machine</span>
+          <div class="field-action-row">
+            <input id="<%= renderedFormUid %>-plex-machine" type="password" name="plexMachine" value="<%= renderedApp.plexMachine || '' %>" placeholder="Machine identifier" data-plex-field="machine" />
+            <button class="icon-button" type="button" aria-label="Show Plex machine" data-visibility-toggle="<%= renderedFormUid %>-plex-machine" data-visibility-state="hidden">
+              <img src="/icons/view-off.svg" alt="" />
+            </button>
+          </div>
+        </label>
+        <label class="field">
+          <span>Plex Admin User</span>
+          <input type="text" name="plexAdminUser" value="<%= adminOwner %>" placeholder="admin@plex.tv" />
+        </label>
+        <div class="plex-settings-actions">
+          <button class="ghost-button" type="button" data-plex-action="token">Get Plex Token</button>
+          <button class="ghost-button" type="button" data-plex-action="machine">Get Plex Machine</button>
+        </div>
+      </div>
+      <div class="plex-settings-note">Tip: Local URL is preferred when set.</div>
+    </div>
+  <% } %>
+  <% if (renderedRequiresApiKey) { %>
+    <div class="settings-card plex-settings-card">
+      <div class="settings-card-title"><%= renderedAppName %> Access</div>
+      <div class="settings-card-sub">
+        <% if (renderedAppId === 'tautulli') { %>
+          Use the API key from Tautulli Settings -> Web Interface.
+        <% } else if (renderedAppId === 'jellyfin') { %>
+          Use the API key from Jellyfin Dashboard -> API Keys.
+        <% } else if (renderedAppId === 'emby') { %>
+          Use the API key from Emby Dashboard -> API Keys.
+        <% } else if (renderedAppId === 'prowlarr') { %>
+          Use the API key from Prowlarr Settings -> General.
+        <% } else if (renderedAppId === 'sabnzbd') { %>
+          Use the API key from SABnzbd Config -> General.
+        <% } else if (renderedAppBaseId === 'maintainerr') { %>
+          Optional: Use the API key from Maintainerr Settings -> Generate API key.
+        <% } else { %>
+          Use the API key from <%= renderedAppName %> settings.
+        <% } %>
+      </div>
+      <div class="plex-settings-fields">
+        <label class="field">
+          <span>API Key</span>
+          <input type="password" name="apiKey" value="<%= renderedApp.apiKey || '' %>" placeholder="<%= renderedAppName %> API key" />
+        </label>
+      </div>
+      <div class="plex-settings-note">Tip: Keep this key private.</div>
+    </div>
+  <% } %>
+  <% if (['nzbget', 'transmission', 'qbittorrent', 'sabnzbd', 'romm', 'maintainerr'].includes(renderedAppBaseId)) { %>
+    <div class="settings-card plex-settings-card">
+      <div class="settings-card-title"><%= renderedAppName %> Access</div>
+      <div class="settings-card-sub">Credentials for local or remote access.</div>
+      <div class="plex-settings-fields">
+        <label class="field">
+          <span>Username</span>
+          <input type="text" name="username" value="<%= renderedApp.username || '' %>" placeholder="<%= renderedAppName %> username" />
+        </label>
+        <label class="field">
+          <span>Password</span>
+          <input type="password" name="password" value="<%= renderedApp.password || '' %>" placeholder="<%= renderedAppName %> password" />
+        </label>
+        <% if (renderedAppBaseId === 'romm') { %>
+          <div class="plex-settings-actions">
+            <button class="ghost-button" type="button" data-romm-test-session="admin">Test Admin Session</button>
+          </div>
+        <% } %>
+      </div>
+      <div class="plex-settings-note">Tip: Leave blank if authentication is disabled.</div>
+      <% if (renderedAppBaseId === 'romm') { %>
+        <div class="plex-settings-note">This can potentially fix Romm login loops when launching from Launcharr through a reverse proxy by priming Romm session cookies before opening the app.</div>
+        <div class="plex-settings-note" data-romm-test-status="admin" hidden aria-live="polite"></div>
+      <% } %>
+    </div>
+  <% } %>
+  <% if (renderedAppBaseId === 'romm') { %>
+    <div class="settings-card plex-settings-card">
+      <div class="settings-card-title">Romm Viewer Access (Launcharr User + Co-admin Roles)</div>
+      <div class="settings-card-sub">Optional: used when a Launcharr user or co-admin launches Romm.</div>
+      <div class="plex-settings-fields">
+        <label class="field">
+          <span>Viewer Username</span>
+          <input type="text" name="viewerUsername" value="<%= renderedApp.viewerUsername || '' %>" placeholder="viewer" />
+        </label>
+        <label class="field">
+          <span>Viewer Password</span>
+          <input type="password" name="viewerPassword" value="<%= renderedApp.viewerPassword || '' %>" placeholder="Romm viewer password" />
+        </label>
+        <div class="plex-settings-actions">
+          <button class="ghost-button" type="button" data-romm-test-session="viewer">Test Viewer Session</button>
+        </div>
+      </div>
+      <div class="plex-settings-note">User and co-admin roles use these viewer credentials. Admin launches use the main Username/Password fields above. Leave viewer fields blank to disable role-based viewer login injection.</div>
+      <div class="plex-settings-note" data-romm-test-status="viewer" hidden aria-live="polite"></div>
+    </div>
+  <% } %>
+  <button class="primary-button" type="submit">Save <%= renderedAppName %> settings</button>
+</form>

@@ -296,6 +296,30 @@
           ? Boolean(app.plexToken)
           : ((requiresApiKey && appBaseId !== 'maintainerr') ? Boolean(app.apiKey) : true);
         const statusOk = enabled && hasUrl && hasToken;
+        const supportsInstances = multiInstanceBaseIdsList.includes(appBaseId);
+        const defaultInstancePlaceholderMap = {
+          radarr: 'Instance (e.g. Movies)',
+          sonarr: 'Instance (e.g. TV)',
+          lidarr: 'Instance (e.g. Music)',
+          readarr: 'Instance (e.g. Books)',
+          prowlarr: 'Instance (e.g. Indexers)',
+          bazarr: 'Instance (e.g. Subtitles)',
+          sabnzbd: 'Instance (e.g. News)',
+          qbittorrent: 'Instance (e.g. Torrents)',
+          transmission: 'Instance (e.g. Torrents)',
+          nzbget: 'Instance (e.g. Downloads)',
+          tautulli: 'Instance (e.g. Stats)',
+          jellyfin: 'Instance (e.g. Media)',
+          emby: 'Instance (e.g. Media)',
+          seerr: 'Instance (e.g. Requests)',
+          maintainerr: 'Instance (e.g. Rules)',
+          huntarr: 'Instance (e.g. Hunting)',
+          romm: 'Instance (e.g. Retro)',
+        };
+        const instancePlaceholderMap = (multiInstancePlaceholderMap && typeof multiInstancePlaceholderMap === 'object')
+          ? multiInstancePlaceholderMap
+          : defaultInstancePlaceholderMap;
+        const instancePlaceholder = String(instancePlaceholderMap?.[appBaseId] || 'Instance (e.g. Main)');
       %>
       <div class="main-window-bar">
         <button class="sidebar-toggle main-toggle left-toggle" type="button" aria-label="Toggle sidebar">
@@ -317,105 +341,16 @@
           <h2>Connection</h2>
           <span class="panel-sub">URLs and access tokens</span>
         </div>
-        <form method="post" action="/apps/<%= app.id %>/settings" class="settings-form <%= app.id === 'plex' ? 'plex-settings-form' : '' %>">
-          <div class="settings-card">
-            <% if (app.id === 'plex') { %>
-              <div class="settings-card-title">App URLs</div>
-              <div class="settings-card-sub">Base URLs and credentials for local or remote access.</div>
-            <% } %>
-            <label class="field">
-              <span>Local URL</span>
-              <input type="text" name="localUrl" value="<%= app.localUrl || '' %>" placeholder="http://192.168.x.x:port" />
-            </label>
-            <label class="field">
-              <span>Remote URL</span>
-              <input type="text" name="remoteUrl" value="<%= app.remoteUrl || '' %>" placeholder="https://app.example.com" />
-            </label>
-          </div>
-          <% if (app.id === 'plex') { %>
-            <% const adminOwner = (Array.isArray(admins) && admins.length) ? admins[0] : ''; %>
-            <div class="settings-card plex-settings-card">
-              <div class="settings-card-title">Plex Access</div>
-              <div class="settings-card-sub">Uses the Local URL first, then the External URL.</div>
-              <div class="plex-settings-fields">
-                <label class="field field-with-action">
-                  <span>Plex Token</span>
-                  <div class="field-action-row">
-                    <input id="plexTokenInput" type="password" name="plexToken" value="<%= app.plexToken || '' %>" placeholder="Plex token" />
-                    <button class="icon-button" type="button" id="plexTokenToggle" aria-label="Show Plex token" data-visibility-toggle="plexTokenInput" data-visibility-state="hidden">
-                      <img src="/icons/view-off.svg" alt="" />
-                    </button>
-                  </div>
-                </label>
-                <label class="field field-with-action">
-                  <span>Plex Machine</span>
-                  <div class="field-action-row">
-                    <input id="plexMachineInput" type="password" name="plexMachine" value="<%= app.plexMachine || '' %>" placeholder="Machine identifier" />
-                    <button class="icon-button" type="button" id="plexMachineToggle" aria-label="Show Plex machine" data-visibility-toggle="plexMachineInput" data-visibility-state="hidden">
-                      <img src="/icons/view-off.svg" alt="" />
-                    </button>
-                  </div>
-                </label>
-                <label class="field">
-                  <span>Plex Admin User</span>
-                  <input id="plexAdminInput" type="text" name="plexAdminUser" value="<%= adminOwner %>" placeholder="admin@plex.tv" />
-                </label>
-                <div class="plex-settings-actions">
-                  <button class="ghost-button" type="button" id="plexRetrieveToken">Get Plex Token</button>
-                  <button class="ghost-button" type="button" id="plexRetrieveMachine">Get Plex Machine</button>
-                </div>
-              </div>
-              <div class="plex-settings-note">Tip: Local URL is preferred when set.</div>
-            </div>
-          <% } %>
-          <% if (requiresApiKey) { %>
-            <div class="settings-card plex-settings-card">
-              <div class="settings-card-title"><%= app.name %> Access</div>
-              <div class="settings-card-sub">
-                <% if (app.id === 'tautulli') { %>
-                  Use the API key from Tautulli Settings -> Web Interface.
-                <% } else if (app.id === 'jellyfin') { %>
-                  Use the API key from Jellyfin Dashboard -> API Keys.
-                <% } else if (app.id === 'emby') { %>
-                  Use the API key from Emby Dashboard -> API Keys.
-                <% } else if (app.id === 'prowlarr') { %>
-                  Use the API key from Prowlarr Settings -> General.
-                <% } else if (app.id === 'sabnzbd') { %>
-                  Use the API key from SABnzbd Config -> General.
-                <% } else if (appBaseId === 'maintainerr') { %>
-                  Optional: Use the API key from Maintainerr Settings -> Generate API key.
-                <% } else { %>
-                  Use the API key from <%= app.name %> settings.
-                <% } %>
-              </div>
-              <div class="plex-settings-fields">
-                <label class="field">
-                  <span>API Key</span>
-                  <input type="password" name="apiKey" value="<%= app.apiKey || '' %>" placeholder="<%= app.name %> API key" />
-                </label>
-              </div>
-              <div class="plex-settings-note">Tip: Keep this key private.</div>
-            </div>
-          <% } %>
-          <% if (['nzbget', 'transmission', 'qbittorrent', 'sabnzbd', 'romm', 'maintainerr'].includes(appBaseId)) { %>
-            <div class="settings-card plex-settings-card">
-              <div class="settings-card-title"><%= app.name %> Access</div>
-              <div class="settings-card-sub">Credentials for local or remote access.</div>
-              <div class="plex-settings-fields">
-                <label class="field">
-                  <span>Username</span>
-                  <input type="text" name="username" value="<%= app.username || '' %>" placeholder="<%= app.name %> username" />
-                </label>
-                <label class="field">
-                  <span>Password</span>
-                  <input type="password" name="password" value="<%= app.password || '' %>" placeholder="<%= app.name %> password" />
-                </label>
-              </div>
-              <div class="plex-settings-note">Tip: Leave blank if authentication is disabled.</div>
-            </div>
-          <% } %>
-          <button class="primary-button" type="submit">Save <%= app.name %> settings</button>
-        </form>
+        <%- include('partials/app-settings-connection-form', {
+          appItem: app,
+          appBaseId,
+          requiresApiKey,
+          admins,
+          supportsInstances,
+          instancePlaceholder,
+          formAction: `/apps/${encodeURIComponent(app.id)}/settings`,
+          formUid: `app-settings-${String(app.id || '').trim().toLowerCase()}`
+        }) %>
       </div>
 
     </section>
@@ -805,62 +740,165 @@
       });
     });
 
-    const visibilityButtons = document.querySelectorAll('[data-visibility-toggle]');
-    visibilityButtons.forEach((button) => {
-      const inputId = button.dataset.visibilityToggle;
-      const input = inputId ? document.getElementById(inputId) : null;
-      const img = button.querySelector('img');
-      if (!input) return;
-      button.addEventListener('click', () => {
-        const isHidden = input.type === 'password';
-        input.type = isHidden ? 'text' : 'password';
-        button.dataset.visibilityState = isHidden ? 'visible' : 'hidden';
-        button.setAttribute('aria-label', isHidden ? 'Hide value' : 'Show value');
-        if (img) {
-          img.src = isHidden ? '/icons/view.svg' : '/icons/view-off.svg';
-        }
+    const initVisibilityToggles = () => {
+      const visibilityButtons = document.querySelectorAll('[data-visibility-toggle]');
+      visibilityButtons.forEach((button) => {
+        const inputId = button.dataset.visibilityToggle;
+        const input = inputId ? document.getElementById(inputId) : null;
+        const img = button.querySelector('img');
+        if (!input) return;
+        button.addEventListener('click', () => {
+          const isHidden = input.type === 'password';
+          input.type = isHidden ? 'text' : 'password';
+          button.dataset.visibilityState = isHidden ? 'visible' : 'hidden';
+          button.setAttribute('aria-label', isHidden ? 'Hide value' : 'Show value');
+          if (img) img.src = isHidden ? '/icons/view.svg' : '/icons/view-off.svg';
+        });
       });
-    });
+    };
 
-    const plexTokenBtn = document.getElementById('plexRetrieveToken');
-    if (plexTokenBtn) {
-      plexTokenBtn.addEventListener('click', async () => {
+    const attachPlexSettingsActions = () => {
+      const plexButtons = Array.from(document.querySelectorAll('[data-plex-action]'));
+      if (!plexButtons.length) return;
+
+      const runPlexAction = async (button) => {
+        const action = String(button?.dataset?.plexAction || '').trim().toLowerCase();
+        if (action !== 'token' && action !== 'machine') return;
+        const form = button.closest('form');
+        if (!form) return;
+        const targetInput = form.querySelector(`[data-plex-field="${action}"]`);
+        if (!targetInput) return;
+
         try {
-          plexTokenBtn.disabled = true;
-          const res = await fetch('/api/plex/token');
-          const data = await res.json();
-          if (!res.ok || data?.error) throw new Error(data?.error || 'Failed to fetch Plex token.');
-          const nextToken = String(data.token || '').trim();
-          if (nextToken.split('.').length >= 3) {
-            throw new Error('Resolved token looks like a Plex auth JWT. Please set Plex Machine/URL and try again.');
+          button.disabled = true;
+          const endpoint = action === 'token' ? '/api/plex/token' : '/api/plex/machine';
+          const response = await fetch(endpoint);
+          const data = await response.json().catch(() => ({}));
+          if (action === 'token') {
+            if (!response.ok || data?.error) throw new Error(data?.error || 'Failed to fetch Plex token.');
+            const nextToken = String(data.token || '').trim();
+            if (nextToken.split('.').length >= 3) {
+              throw new Error('Resolved token looks like a Plex auth JWT. Please set Plex Machine/URL and try again.');
+            }
+            targetInput.value = nextToken;
+          } else {
+            if (!response.ok) throw new Error(data?.error || 'Failed to fetch Plex machine.');
+            targetInput.value = data.machineId || '';
           }
-          const input = document.getElementById('plexTokenInput');
-          if (input) input.value = nextToken;
         } catch (err) {
-          console.error('[Launcharr] Plex token fetch failed', err);
+          console.error(`[Launcharr] Plex ${action} fetch failed`, err);
         } finally {
-          plexTokenBtn.disabled = false;
+          button.disabled = false;
         }
-      });
-    }
+      };
 
-    const plexMachineBtn = document.getElementById('plexRetrieveMachine');
-    if (plexMachineBtn) {
-      plexMachineBtn.addEventListener('click', async () => {
-        try {
-          plexMachineBtn.disabled = true;
-          const res = await fetch('/api/plex/machine');
-          const data = await res.json();
-          if (!res.ok) throw new Error(data?.error || 'Failed to fetch Plex machine.');
-          const input = document.getElementById('plexMachineInput');
-          if (input) input.value = data.machineId || '';
-        } catch (err) {
-          console.error('[Launcharr] Plex machine fetch failed', err);
-        } finally {
-          plexMachineBtn.disabled = false;
-        }
+      plexButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+          runPlexAction(button).catch((err) => {
+            console.error('[Launcharr] Plex settings action error', err);
+          });
+        });
       });
-    }
+    };
+
+    const attachRommSettingsPanelSessionTests = () => {
+      const rommButtons = Array.from(document.querySelectorAll('[data-romm-test-session]'));
+      if (!rommButtons.length) return;
+
+      const setStatus = (form, mode, message, state = 'info') => {
+        const statusEl = form?.querySelector(`[data-romm-test-status="${mode}"]`);
+        if (!statusEl) return;
+        statusEl.hidden = false;
+        statusEl.textContent = String(message || '').trim();
+        if (state === 'error') {
+          statusEl.style.color = '#ff9b9b';
+        } else if (state === 'ok') {
+          statusEl.style.color = '#9bf0b0';
+        } else {
+          statusEl.style.color = '';
+        }
+      };
+
+      const runTest = async (button) => {
+        const mode = String(button?.dataset?.rommTestSession || '').trim().toLowerCase() === 'admin' ? 'admin' : 'viewer';
+        const modeLabel = mode === 'admin' ? 'admin' : 'viewer';
+        const form = button.closest('form');
+        if (!form) return;
+
+        const localUrl = String(form.querySelector('[name="localUrl"]')?.value || '').trim();
+        const remoteUrl = String(form.querySelector('[name="remoteUrl"]')?.value || '').trim();
+        const username = String(form.querySelector('[name="username"]')?.value || '').trim();
+        const password = String(form.querySelector('[name="password"]')?.value || '');
+        const viewerUsername = String(form.querySelector('[name="viewerUsername"]')?.value || '').trim();
+        const viewerPassword = String(form.querySelector('[name="viewerPassword"]')?.value || '');
+        const action = String(form.getAttribute('action') || '');
+        const actionMatch = action.match(/\/apps\/([^/]+)\/settings/i);
+        const appId = actionMatch ? decodeURIComponent(actionMatch[1]) : '<%= app.id %>';
+
+        if (mode === 'admin' && (!username || !password)) {
+          setStatus(form, mode, 'Romm admin Username/Password (main access fields above) are required before testing.', 'error');
+          return;
+        }
+        if (mode === 'viewer' && (!viewerUsername || !viewerPassword)) {
+          setStatus(form, mode, 'Viewer username and password are required before testing.', 'error');
+          return;
+        }
+
+        try {
+          button.disabled = true;
+          setStatus(form, mode, `Testing RomM ${modeLabel} session (CSRF + login + /users/me)...`, 'info');
+          const response = await fetch('/api/romm/viewer-session-test', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+              Accept: 'application/json',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              appId,
+              localUrl,
+              remoteUrl,
+              username,
+              password,
+              viewerUsername,
+              viewerPassword,
+              credentialMode: mode,
+              primeBrowser: true,
+            }),
+          });
+          const data = await response.json().catch(() => ({}));
+          const ok = Boolean(response.ok && data && data.ok);
+          setStatus(
+            form,
+            mode,
+            data?.message || (ok ? `Romm ${modeLabel} session test succeeded.` : `Romm ${modeLabel} session test failed.`),
+            ok ? 'ok' : 'error'
+          );
+          if (!ok) {
+            console.error(`[Launcharr] RomM ${modeLabel} session test failed`, data);
+          } else {
+            console.log(`[Launcharr] RomM ${modeLabel} session test ok`, data);
+          }
+        } catch (err) {
+          console.error(`[Launcharr] RomM ${modeLabel} session test request failed`, err);
+          setStatus(form, mode, (err && err.message) ? err.message : `Romm ${modeLabel} session test request failed.`, 'error');
+        } finally {
+          button.disabled = false;
+        }
+      };
+
+      rommButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+          runTest(button).catch((err) => {
+            console.error('[Launcharr] RomM settings panel session test error', err);
+          });
+        });
+      });
+    };
+
+    initVisibilityToggles();
+    attachPlexSettingsActions();
+    attachRommSettingsPanelSessionTests();
 
   </script>
   <script src="/version-badge.js?v=<%= assetVersion %>"></script>

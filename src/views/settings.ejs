@@ -904,14 +904,10 @@
                       <% } else if (canRemoveDefaultApp) { %>
                         <button
                           class="order-button default-app-delete"
-                          type="submit"
-                          name="id"
-                          value="<%= app.id %>"
-                          formaction="/settings/default-apps/remove"
-                          formmethod="post"
+                          type="button"
+                          data-default-app-id="<%= app.id %>"
                           title="Remove built-in app"
                           aria-label="Remove built-in app"
-                          onclick="return window.confirm('Remove this built-in app? You can re-add it later.');"
                         >&times;</button>
                       <% } else { %>
                         <button class="order-button default-app-delete" type="button" title="Only custom/built-in primary apps can be deleted here" aria-label="Delete app" disabled>&times;</button>
@@ -2412,9 +2408,11 @@
               const instancePlaceholder = String(multiInstancePlaceholderMap?.[appBaseId] || 'Instance (e.g. Main)');
             %>
             <div class="app-settings-panel<%= appIndex === 0 ? ' is-active' : '' %>" data-settings-app-panel data-app-id="<%= appItem.id %>">
-              <div class="settings-card">
-                <div class="settings-card-title"><%= supportsInstances ? resolveAppBaseTitle(appBaseId) : panelAppItem.name %> connection</div>
-                <div class="settings-card-sub"><%= appStatusOk ? 'Configured and enabled.' : 'Needs attention: check URL or credentials.' %></div>
+              <div class="dash-panel<%= appBaseId === 'plex' ? ' plex-settings-panel' : '' %>">
+                <div class="panel-header">
+                  <h2>Connection</h2>
+                  <span class="panel-sub">URLs and access tokens</span>
+                </div>
                 <% if (supportsInstances) { %>
                   <div class="settings-subtabs app-instance-tabs" role="tablist" aria-label="<%= resolveAppBaseTitle(appBaseId) %> instance tabs">
                     <% if (firstInstanceItem) { %>
@@ -2492,54 +2490,16 @@
                     <span class="settings-users-note">Instances: <%= baseInstanceCount %>/<%= maxInstancesForBase %></span>
                   </div>
                 <% } %>
-                <form method="post" action="/apps/<%= panelAppItem.id %>/settings?from=settings" class="settings-form">
-                  <% if (supportsInstances) { %>
-                    <label class="field">
-                      <span>Instance Name</span>
-                      <input type="text" name="instanceName" value="<%= panelAppItem.instanceName || '' %>" placeholder="<%= instancePlaceholder %>" />
-                    </label>
-                  <% } %>
-                  <label class="field">
-                    <span>Local URL</span>
-                    <input type="text" name="localUrl" value="<%= panelAppItem.localUrl || '' %>" placeholder="http://192.168.x.x:port" />
-                  </label>
-                  <label class="field">
-                    <span>Remote URL</span>
-                    <input type="text" name="remoteUrl" value="<%= panelAppItem.remoteUrl || '' %>" placeholder="https://app.example.com" />
-                  </label>
-                  <% if (panelAppItem.id === 'plex') { %>
-                    <% const appAdminOwner = (Array.isArray(admins) && admins.length) ? admins[0] : ''; %>
-                    <label class="field">
-                      <span>Plex Token</span>
-                      <input type="password" name="plexToken" value="<%= panelAppItem.plexToken || '' %>" placeholder="Plex token" />
-                    </label>
-                    <label class="field">
-                      <span>Plex Machine</span>
-                      <input type="password" name="plexMachine" value="<%= panelAppItem.plexMachine || '' %>" placeholder="Machine identifier" />
-                    </label>
-                    <label class="field">
-                      <span>Plex Admin User</span>
-                      <input type="text" name="plexAdminUser" value="<%= appAdminOwner %>" placeholder="admin@plex.tv" />
-                    </label>
-                  <% } %>
-                  <% if (appRequiresApiKey) { %>
-                    <label class="field">
-                      <span>API Key</span>
-                      <input type="password" name="apiKey" value="<%= panelAppItem.apiKey || '' %>" placeholder="<%= panelAppItem.name %> API key" />
-                    </label>
-                  <% } %>
-                  <% if (['nzbget', 'transmission', 'qbittorrent', 'sabnzbd'].includes(appBaseId)) { %>
-                    <label class="field">
-                      <span>Username</span>
-                      <input type="text" name="username" value="<%= panelAppItem.username || '' %>" placeholder="<%= panelAppItem.name %> username" />
-                    </label>
-                    <label class="field">
-                      <span>Password</span>
-                      <input type="password" name="password" value="<%= panelAppItem.password || '' %>" placeholder="<%= panelAppItem.name %> password" />
-                    </label>
-                  <% } %>
-                  <button class="primary-button" type="submit">Save <%= panelAppItem.name %> settings</button>
-                </form>
+                <%- include('partials/app-settings-connection-form', {
+                  appItem: panelAppItem,
+                  appBaseId,
+                  requiresApiKey: appRequiresApiKey,
+                  admins,
+                  supportsInstances,
+                  instancePlaceholder,
+                  formAction: `/apps/${encodeURIComponent(panelAppItem.id)}/settings?from=settings`,
+                  formUid: `settings-app-${String(panelAppItem.id || '').trim().toLowerCase()}`
+                }) %>
               </div>
             </div>
           <% }) %>
@@ -3433,6 +3393,166 @@
         handlePressAction(item, shortPressAction, isCategoryTrigger);
       });
     });
+
+    const initVisibilityToggles = () => {
+      const visibilityButtons = document.querySelectorAll('[data-visibility-toggle]');
+      visibilityButtons.forEach((button) => {
+        const inputId = button.dataset.visibilityToggle;
+        const input = inputId ? document.getElementById(inputId) : null;
+        const img = button.querySelector('img');
+        if (!input) return;
+        button.addEventListener('click', () => {
+          const isHidden = input.type === 'password';
+          input.type = isHidden ? 'text' : 'password';
+          button.dataset.visibilityState = isHidden ? 'visible' : 'hidden';
+          button.setAttribute('aria-label', isHidden ? 'Hide value' : 'Show value');
+          if (img) img.src = isHidden ? '/icons/view.svg' : '/icons/view-off.svg';
+        });
+      });
+    };
+
+    const attachPlexSettingsActions = () => {
+      const plexButtons = Array.from(document.querySelectorAll('[data-plex-action]'));
+      if (!plexButtons.length) return;
+
+      const runPlexAction = async (button) => {
+        const action = String(button?.dataset?.plexAction || '').trim().toLowerCase();
+        if (action !== 'token' && action !== 'machine') return;
+        const form = button.closest('form');
+        if (!form) return;
+        const targetInput = form.querySelector(`[data-plex-field="${action}"]`);
+        if (!targetInput) return;
+
+        try {
+          button.disabled = true;
+          const endpoint = action === 'token' ? '/api/plex/token' : '/api/plex/machine';
+          const response = await fetch(endpoint);
+          const data = await response.json().catch(() => ({}));
+          if (action === 'token') {
+            if (!response.ok || data?.error) throw new Error(data?.error || 'Failed to fetch Plex token.');
+            const nextToken = String(data.token || '').trim();
+            if (nextToken.split('.').length >= 3) {
+              throw new Error('Resolved token looks like a Plex auth JWT. Please set Plex Machine/URL and try again.');
+            }
+            targetInput.value = nextToken;
+          } else {
+            if (!response.ok) throw new Error(data?.error || 'Failed to fetch Plex machine.');
+            targetInput.value = data.machineId || '';
+          }
+        } catch (err) {
+          console.error(`[Launcharr] Plex ${action} fetch failed`, err);
+        } finally {
+          button.disabled = false;
+        }
+      };
+
+      plexButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+          runPlexAction(button).catch((err) => {
+            console.error('[Launcharr] Plex settings action error', err);
+          });
+        });
+      });
+    };
+
+    const attachRommSettingsPanelSessionTests = () => {
+      const rommButtons = Array.from(document.querySelectorAll('[data-romm-test-session]'));
+      if (!rommButtons.length) return;
+
+      const setStatus = (form, mode, message, state = 'info') => {
+        const statusEl = form?.querySelector(`[data-romm-test-status="${mode}"]`);
+        if (!statusEl) return;
+        statusEl.hidden = false;
+        statusEl.textContent = String(message || '').trim();
+        if (state === 'error') {
+          statusEl.style.color = '#ff9b9b';
+        } else if (state === 'ok') {
+          statusEl.style.color = '#9bf0b0';
+        } else {
+          statusEl.style.color = '';
+        }
+      };
+
+      const runTest = async (button) => {
+        const mode = String(button?.dataset?.rommTestSession || '').trim().toLowerCase() === 'admin' ? 'admin' : 'viewer';
+        const modeLabel = mode === 'admin' ? 'admin' : 'viewer';
+        const form = button.closest('form');
+        if (!form) return;
+
+        const localUrl = String(form.querySelector('[name="localUrl"]')?.value || '').trim();
+        const remoteUrl = String(form.querySelector('[name="remoteUrl"]')?.value || '').trim();
+        const username = String(form.querySelector('[name="username"]')?.value || '').trim();
+        const password = String(form.querySelector('[name="password"]')?.value || '');
+        const viewerUsername = String(form.querySelector('[name="viewerUsername"]')?.value || '').trim();
+        const viewerPassword = String(form.querySelector('[name="viewerPassword"]')?.value || '');
+        const action = String(form.getAttribute('action') || '');
+        const actionMatch = action.match(/\/apps\/([^/]+)\/settings/i);
+        const appId = actionMatch ? decodeURIComponent(actionMatch[1]) : 'romm';
+
+        if (mode === 'admin' && (!username || !password)) {
+          setStatus(form, mode, 'Romm admin Username/Password (main access fields above) are required before testing.', 'error');
+          return;
+        }
+        if (mode === 'viewer' && (!viewerUsername || !viewerPassword)) {
+          setStatus(form, mode, 'Viewer username and password are required before testing.', 'error');
+          return;
+        }
+
+        try {
+          button.disabled = true;
+          setStatus(form, mode, `Testing RomM ${modeLabel} session (CSRF + login + /users/me)...`, 'info');
+          const response = await fetch('/api/romm/viewer-session-test', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+              Accept: 'application/json',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              appId,
+              localUrl,
+              remoteUrl,
+              username,
+              password,
+              viewerUsername,
+              viewerPassword,
+              credentialMode: mode,
+              primeBrowser: true,
+            }),
+          });
+          const data = await response.json().catch(() => ({}));
+          const ok = Boolean(response.ok && data && data.ok);
+          setStatus(
+            form,
+            mode,
+            data?.message || (ok ? `Romm ${modeLabel} session test succeeded.` : `Romm ${modeLabel} session test failed.`),
+            ok ? 'ok' : 'error'
+          );
+          if (!ok) {
+            console.error(`[Launcharr] RomM ${modeLabel} session test failed`, data);
+          } else {
+            console.log(`[Launcharr] RomM ${modeLabel} session test ok`, data);
+          }
+        } catch (err) {
+          console.error(`[Launcharr] RomM ${modeLabel} session test request failed`, err);
+          setStatus(form, mode, (err && err.message) ? err.message : `Romm ${modeLabel} session test request failed.`, 'error');
+        } finally {
+          button.disabled = false;
+        }
+      };
+
+      rommButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+          runTest(button).catch((err) => {
+            console.error('[Launcharr] RomM settings panel session test error', err);
+          });
+        });
+      });
+    };
+
+    initVisibilityToggles();
+    attachPlexSettingsActions();
+    attachRommSettingsPanelSessionTests();
     function handleSidebarToggle() {
       if (!dashFrame) return;
       if (isMobile()) {
@@ -3951,7 +4071,11 @@
         });
 
         const handleCustomAppActions = async (event) => {
-          const editBtn = event.target.closest('.custom-app-edit');
+          const clickTarget = (event.target && typeof event.target.closest === 'function')
+            ? event.target
+            : event.target?.parentElement;
+          if (!clickTarget || typeof clickTarget.closest !== 'function') return;
+          const editBtn = clickTarget.closest('.custom-app-edit');
           if (editBtn) {
             event.preventDefault();
             event.stopPropagation();
@@ -3972,7 +4096,7 @@
             customAppName?.focus();
             return;
           }
-          const button = event.target.closest('.custom-app-delete');
+          const button = clickTarget.closest('.custom-app-delete');
           if (!button) return;
           event.preventDefault();
           event.stopPropagation();
@@ -4441,7 +4565,43 @@
           };
 
           appsTable.addEventListener('click', (event) => {
-            const favToggle = event.target.closest('.settings-favourite-toggle');
+            const clickTarget = (event.target && typeof event.target.closest === 'function')
+              ? event.target
+              : event.target?.parentElement;
+            if (!clickTarget || typeof clickTarget.closest !== 'function') return;
+            const defaultDeleteBtn = clickTarget.closest('.default-app-delete[data-default-app-id]');
+            if (defaultDeleteBtn) {
+              event.preventDefault();
+              event.stopPropagation();
+              if (defaultDeleteBtn.disabled) return;
+              const appId = String(defaultDeleteBtn.dataset.defaultAppId || '').trim();
+              if (!appId) return;
+              if (!window.confirm('Remove this built-in app? You can re-add it later.')) return;
+              const defaultAppNote = document.getElementById('defaultAppNote');
+              const setDefaultAppNote = (text, error = false) => {
+                if (!defaultAppNote) return;
+                defaultAppNote.textContent = String(text || '').trim();
+                defaultAppNote.classList.toggle('settings-users-note--error', Boolean(error));
+              };
+              setDefaultAppNote('Removing built-in app...');
+              safeStorage.set('settingsTab', 'custom');
+              safeStorage.set('settingsCustomTab', 'apps');
+              defaultDeleteBtn.disabled = true;
+              const removeForm = document.createElement('form');
+              removeForm.method = 'post';
+              removeForm.action = '/settings/default-apps/remove';
+              removeForm.style.display = 'none';
+              const idInput = document.createElement('input');
+              idInput.type = 'hidden';
+              idInput.name = 'id';
+              idInput.value = appId;
+              removeForm.appendChild(idInput);
+              document.body.appendChild(removeForm);
+              removeForm.submit();
+              return;
+            }
+
+            const favToggle = clickTarget.closest('.settings-favourite-toggle');
             if (!favToggle) return;
             const row = favToggle.closest('.settings-row--display');
             if (!row) return;

@@ -1153,6 +1153,8 @@
     "apiKey": "",
     "username": "",
     "password": "",
+    "viewerUsername": "",
+    "viewerPassword": "",
     "menu": {
       "overview": {
         "user": true,
