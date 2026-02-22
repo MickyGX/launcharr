@@ -83,6 +83,93 @@ const MEDIA_COMBINED_SECTION_PREFIX = {
 };
 const ENABLE_ARR_UNIFIED_CARDS = true;
 const ENABLE_DOWNLOADER_UNIFIED_CARDS = true;
+const ENABLE_DASHBOARD_WIDGETS = false;
+const DASHBOARD_WIDGET_SOURCES = [
+  {
+    id: 'romm-recently-added',
+    appId: 'romm',
+    name: 'Romm Recently Added',
+    icon: '/icons/romm.svg',
+    endpoint: '/api/romm/recently-added?limit=all',
+    supports: {
+      media: false,
+      letter: false,
+      status: false,
+      execute: false,
+    },
+  },
+  {
+    id: 'maintainerr-library-media',
+    appId: 'maintainerr',
+    name: 'Maintainerr Library Media',
+    icon: '/icons/maintainerr.svg',
+    endpoint: '/api/maintainerr/library-media?limit=all',
+    supports: {
+      media: true,
+      letter: true,
+      status: false,
+      execute: false,
+    },
+  },
+  {
+    id: 'maintainerr-rules',
+    appId: 'maintainerr',
+    name: 'Maintainerr Rules',
+    icon: '/icons/maintainerr.svg',
+    endpoint: '/api/maintainerr/rules',
+    supports: {
+      media: true,
+      letter: false,
+      status: true,
+      execute: true,
+    },
+  },
+  {
+    id: 'cleanuparr-recent-strikes',
+    appId: 'cleanuparr',
+    name: 'Cleanuparr Recent Strikes',
+    icon: '/icons/cleanuparr.svg',
+    endpoint: '/api/cleanuparr/recent-strikes?limit=all',
+    supports: {
+      media: true,
+      letter: true,
+      status: true,
+      execute: false,
+    },
+  },
+  {
+    id: 'cleanuparr-events',
+    appId: 'cleanuparr',
+    name: 'Cleanuparr Events',
+    icon: '/icons/cleanuparr.svg',
+    endpoint: '/api/cleanuparr/events?limit=all',
+    supports: {
+      media: true,
+      letter: false,
+      status: true,
+      execute: false,
+    },
+  },
+];
+const DASHBOARD_WIDGET_SOURCE_BY_ID = new Map(
+  DASHBOARD_WIDGET_SOURCES.map((entry) => [String(entry.id || '').trim().toLowerCase(), entry])
+);
+const DASHBOARD_WIDGET_DEFAULTS = {
+  title: 'Widget',
+  source: 'romm-recently-added',
+  rows: 2,
+  columns: 4,
+  limit: 12,
+  refreshSeconds: 120,
+  autoScroll: true,
+  order: 0,
+  visibilityRole: 'user',
+  filters: {
+    media: 'all',
+    letter: 'all',
+    status: 'all',
+  },
+};
 const APP_OVERVIEW_ELEMENTS = {
   plex: [
     { id: 'active', name: 'Active Streams' },
@@ -247,6 +334,7 @@ const DEFAULT_THEME_SETTINGS = {
   squareCorners: false,
   bgMotion: true,
   carouselFreeScroll: false,
+  hideScrollbars: false,
 };
 
 const APP_BASE_NAME_MAP = {
@@ -413,6 +501,7 @@ function normalizeThemeSettings(settings, fallback = DEFAULT_THEME_SETTINGS) {
     squareCorners: normalizeThemeFlag(source.squareCorners, base.squareCorners),
     bgMotion: normalizeThemeFlag(source.bgMotion, base.bgMotion),
     carouselFreeScroll: normalizeThemeFlag(source.carouselFreeScroll, base.carouselFreeScroll),
+    hideScrollbars: normalizeThemeFlag(source.hideScrollbars, base.hideScrollbars),
   };
 }
 
@@ -1455,6 +1544,18 @@ app.get('/dashboard', requireUser, (req, res) => {
     : {};
   const role = getEffectiveRole(req);
   const actualRole = getActualRole(req);
+  const canManageWidgets = false;
+  const dashboardWidgets = ENABLE_DASHBOARD_WIDGETS
+    ? resolveDashboardWidgets(config, apps, role, {
+      includeHidden: canManageWidgets,
+      includeUnavailable: canManageWidgets,
+    })
+    : [];
+  const dashboardWidgetSources = ENABLE_DASHBOARD_WIDGETS
+    ? resolveDashboardWidgetSourceOptions(config, apps, role, {
+      includeUnavailable: canManageWidgets,
+    })
+    : [];
   const navApps = getNavApps(apps, role, req, categoryOrder);
   const navCategories = buildNavCategories(navApps, categoryEntries, role);
   const rankCategory = buildCategoryRank(categoryOrder);
@@ -1788,6 +1889,9 @@ app.get('/dashboard', requireUser, (req, res) => {
     downloaderCombinedQueueDisplay,
     downloaderDashboardCombine,
     tautulliCards: mergeTautulliCardSettings(apps.find((appItem) => appItem.id === 'tautulli')),
+    dashboardWidgets,
+    dashboardWidgetSources,
+    canManageWidgets,
     role,
     actualRole,
   });
@@ -2017,6 +2121,17 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     canRemoveDefaultApp: canManageWithDefaultAppManager(appItem),
   }));
   const dashboardSettingsApps = settingsAppsWithIcons.filter((appItem) => !appItem?.removed);
+  const dashboardWidgets = ENABLE_DASHBOARD_WIDGETS
+    ? resolveDashboardWidgets(config, dashboardSettingsApps, 'admin', {
+      includeHidden: true,
+      includeUnavailable: true,
+    })
+    : [];
+  const dashboardWidgetSources = ENABLE_DASHBOARD_WIDGETS
+    ? resolveDashboardWidgetSourceOptions(config, dashboardSettingsApps, 'admin', {
+      includeUnavailable: true,
+    })
+    : [];
   const multiInstanceBaseIds = getMultiInstanceBaseIds();
   const multiInstanceTitleMap = getMultiInstanceTitleMap();
   const multiInstanceMaxMap = getMultiInstanceMaxMap(settingsAppsWithIcons);
@@ -2583,6 +2698,16 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
       });
     });
   }
+  if (ENABLE_DASHBOARD_WIDGETS) {
+    pushDashboardCombinedAddOption({
+      key: 'new:widget',
+      group: 'Widgets',
+      name: 'New Widget Card',
+      icon: '/icons/dashboard.svg',
+      disabled: false,
+      deprecated: false,
+    });
+  }
   const sortDashboardAddOptions = (a, b) => {
     const categoryDelta = rankCategory(a.group) - rankCategory(b.group);
     if (categoryDelta !== 0) return categoryDelta;
@@ -2704,6 +2829,8 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     arrDashboardCombinedCards,
     downloaderDashboardCards,
     mediaDashboardCards,
+    dashboardWidgets,
+    dashboardWidgetSources,
     dashboardAddOptions: dashboardUnifiedAddOptions,
     dashboardDeprecatedAddOptions,
     dashboardCombinedAddOptions,
@@ -2744,6 +2871,7 @@ app.post('/settings/theme-defaults', requireSettingsAdmin, (req, res) => {
       squareCorners: req.body?.theme_square_corners,
       bgMotion: req.body?.theme_bg_motion,
       carouselFreeScroll: req.body?.theme_carousel_free_scroll,
+      hideScrollbars: req.body?.theme_hide_scrollbars,
     }, currentDefaults);
     saveConfig({
       ...config,
@@ -3096,6 +3224,7 @@ app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
   if (Number.isFinite(downloaderQueueRows)) {
     downloaderCombinedQueueDisplay.queueVisibleRows = Math.max(5, Math.min(50, downloaderQueueRows));
   }
+  const dashboardWidgets = buildDashboardWidgetsFromDashboardRequest(config, apps, req.body);
 
   saveConfig({
     ...config,
@@ -3108,6 +3237,7 @@ app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
     arrDashboardCombinedCards,
     downloaderDashboardCards,
     mediaDashboardCards,
+    dashboardWidgets,
     dashboardCombinedOrder,
     dashboardCombinedSettings,
   });
@@ -3119,6 +3249,28 @@ app.post('/settings/dashboard-elements/remove', requireSettingsAdmin, (req, res)
   const key = String(req.body?.dashboard_element_key || req.body?.key || '').trim();
   if (!key) {
     return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&dashboardElementError=Missing+dashboard+item+key.');
+  }
+
+  const widgetMatch = key.match(/^widget:(.+)$/);
+  if (widgetMatch) {
+    const widgetId = normalizeDashboardWidgetToken(widgetMatch[1] || '');
+    if (!widgetId) {
+      return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&dashboardElementError=Invalid+widget+id.');
+    }
+    const apps = Array.isArray(config?.apps) ? config.apps : [];
+    const existingCards = resolveDashboardWidgets(config, apps, 'admin', {
+      includeHidden: true,
+      includeUnavailable: true,
+    });
+    const nextCards = existingCards.filter((entry) => normalizeDashboardWidgetToken(entry?.id || '') !== widgetId);
+    if (nextCards.length === existingCards.length) {
+      return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&dashboardElementError=Widget+not+found.');
+    }
+    saveConfig({
+      ...config,
+      dashboardWidgets: serializeDashboardWidgetCards(nextCards),
+    });
+    return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&dashboardElementResult=removed');
   }
 
   const customCombinedMatch = key.match(/^combined:(arrcustom|downloadercustom|mediacustom):(.+)$/);
@@ -3362,6 +3514,42 @@ function handleDashboardAddRequest(req, res) {
       ...config,
       apps: nextApps,
       dashboardRemovedElements,
+    });
+    return redirectDashboardAddResult(res, 'added');
+  }
+
+  const newWidgetMatch = key.match(/^new:widget(?::(.+))?$/);
+  if (newWidgetMatch) {
+    const sourceToken = String(newWidgetMatch[1] || '').trim().toLowerCase();
+    const sourceDef = getDashboardWidgetSourceDefinition(sourceToken)
+      || getDashboardWidgetSourceDefinition(DASHBOARD_WIDGET_DEFAULTS.source)
+      || DASHBOARD_WIDGET_SOURCES[0];
+    if (!sourceDef?.id) {
+      return redirectDashboardAddError(res, 'No widget sources are available.');
+    }
+    const existingCards = resolveDashboardWidgets(config, apps, 'admin', {
+      includeHidden: true,
+      includeUnavailable: true,
+    });
+    const nextCard = normalizeDashboardWidgetCard({
+      id: buildDashboardWidgetId(),
+      source: sourceDef.id,
+      title: sourceDef.name || 'Widget',
+      rows: DASHBOARD_WIDGET_DEFAULTS.rows,
+      columns: DASHBOARD_WIDGET_DEFAULTS.columns,
+      limit: DASHBOARD_WIDGET_DEFAULTS.limit,
+      refreshSeconds: DASHBOARD_WIDGET_DEFAULTS.refreshSeconds,
+      autoScroll: DASHBOARD_WIDGET_DEFAULTS.autoScroll,
+      order: resolveNextDashboardWidgetOrder(config, apps),
+      visibilityRole: DASHBOARD_WIDGET_DEFAULTS.visibilityRole,
+      filters: DASHBOARD_WIDGET_DEFAULTS.filters,
+    }, DASHBOARD_WIDGET_DEFAULTS);
+    if (!nextCard) {
+      return redirectDashboardAddError(res, 'Failed to create widget card.');
+    }
+    saveConfig({
+      ...config,
+      dashboardWidgets: serializeDashboardWidgetCards([...existingCards, nextCard]),
     });
     return redirectDashboardAddResult(res, 'added');
   }
@@ -3818,6 +4006,7 @@ app.post('/user-settings/theme', requireUser, (req, res) => {
       squareCorners: req.body?.theme_square_corners,
       bgMotion: req.body?.theme_bg_motion,
       carouselFreeScroll: req.body?.theme_carousel_free_scroll,
+      hideScrollbars: req.body?.theme_hide_scrollbars,
     }, defaults);
     saveConfig({
       ...config,
@@ -7351,6 +7540,241 @@ function mapMaintainerrCollectionMediaItem(entry, options = {}) {
   };
 }
 
+function parseCleanuparrTimestamp(value) {
+  if (value === null || value === undefined || value === '') return 0;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    if (numeric > 1e11) return Math.round(numeric);
+    return Math.round(numeric * 1000);
+  }
+  const parsed = Date.parse(String(value || '').trim());
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatCleanuparrDateLabel(value) {
+  const timestamp = parseCleanuparrTimestamp(value);
+  if (!timestamp) return '';
+  try {
+    return new Date(timestamp).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  } catch (_err) {
+    return '';
+  }
+}
+
+function formatCleanuparrRelativePill(value) {
+  const timestamp = parseCleanuparrTimestamp(value);
+  if (!timestamp) return '';
+  const diffMs = Date.now() - timestamp;
+  const diffMinutes = Math.max(1, Math.round(diffMs / 60000));
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 48) return `${diffHours}h ago`;
+  const diffDays = Math.round(diffHours / 24);
+  return `${diffDays}d ago`;
+}
+
+function normalizeCleanuparrMediaKind(value, fallback = 'movie') {
+  const text = String(value || '').trim().toLowerCase();
+  if (!text) return fallback;
+  if (text === 'movie' || text === 'movies' || text === 'film') return 'movie';
+  if (text === 'show' || text === 'shows' || text === 'tv' || text === 'series') return 'show';
+  if (text === 'season' || text === 'episode') return 'show';
+  return fallback;
+}
+
+function normalizeCleanuparrStatus(value, fallback = 'Active') {
+  const text = String(value || '').trim();
+  if (!text) return fallback;
+  if (/error|failed|blocked|denied|rejected/i.test(text)) return 'Error';
+  if (/skip|ignored|ignore/i.test(text)) return 'Ignored';
+  if (/remove|deleted|struck|strike/i.test(text)) return 'Removed';
+  if (/warn|warning/i.test(text)) return 'Warning';
+  if (/success|complete|handled|done|cleaned/i.test(text)) return 'Handled';
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function resolveCleanuparrAssetUrl(baseUrl, candidate = '') {
+  const value = String(candidate || '').trim();
+  if (!value) return '';
+  if (/^https?:\/\//i.test(value)) return value;
+  if (/^\/\//.test(value)) return `https:${value}`;
+  try {
+    const normalizedBase = normalizeBaseUrl(baseUrl || '');
+    const relativeBase = normalizedBase || baseUrl;
+    return new URL(value, relativeBase).toString();
+  } catch (_err) {
+    return value;
+  }
+}
+
+function extractCleanuparrList(payload, kind = 'events') {
+  const source = payload && typeof payload === 'object' ? payload : {};
+  if (Array.isArray(payload)) return payload;
+  const preferredKeys = kind === 'recent-strikes'
+    ? ['strikes', 'recentStrikes', 'recent_strikes', 'items', 'results', 'data']
+    : ['events', 'items', 'results', 'entries', 'data'];
+  for (let index = 0; index < preferredKeys.length; index += 1) {
+    const list = source?.[preferredKeys[index]];
+    if (Array.isArray(list)) return list;
+  }
+  const nestedCandidates = [source.data, source.result, source.results, source.payload, source.response];
+  for (let index = 0; index < nestedCandidates.length; index += 1) {
+    const entry = nestedCandidates[index];
+    if (Array.isArray(entry)) return entry;
+    if (entry && typeof entry === 'object') {
+      for (let inner = 0; inner < preferredKeys.length; inner += 1) {
+        const list = entry?.[preferredKeys[inner]];
+        if (Array.isArray(list)) return list;
+      }
+    }
+  }
+  return [];
+}
+
+function mapCleanuparrStrikeItem(entry, baseUrl = '') {
+  const source = entry && typeof entry === 'object' ? entry : {};
+  const title = pickFirstNonEmpty([
+    source.mediaTitle,
+    source.title,
+    source.name,
+    source.releaseTitle,
+    source.media?.title,
+    source.item?.title,
+    source.fileName,
+    source.filename,
+    'Untitled',
+  ]);
+  const mediaKind = normalizeCleanuparrMediaKind(
+    pickFirstNonEmpty([source.mediaType, source.type, source.kind, source.libraryType]),
+    'movie'
+  );
+  const strikeDate = pickFirstNonEmpty([
+    source.createdAt,
+    source.created_at,
+    source.timestamp,
+    source.date,
+    source.time,
+    source.updatedAt,
+    source.updated_at,
+  ]);
+  const year = parseFiniteNumber(source.year || source.releaseYear || source.media?.year, 0);
+  const status = normalizeCleanuparrStatus(
+    pickFirstNonEmpty([source.status, source.action, source.result, source.state, 'Strike']),
+    'Strike'
+  );
+  const reason = pickFirstNonEmpty([
+    source.reason,
+    source.reasonText,
+    source.rule,
+    source.ruleName,
+    source.description,
+    source.message,
+  ]);
+  const poster = resolveCleanuparrAssetUrl(baseUrl, pickFirstNonEmpty([
+    source.poster,
+    source.posterUrl,
+    source.poster_url,
+    source.thumb,
+    source.thumbnail,
+    source.media?.poster,
+    source.media?.thumb,
+  ]));
+  const art = resolveCleanuparrAssetUrl(baseUrl, pickFirstNonEmpty([
+    source.art,
+    source.backdrop,
+    source.backdropUrl,
+    source.backdrop_url,
+    source.media?.art,
+    source.media?.backdrop,
+  ]));
+  const dateLabel = formatCleanuparrDateLabel(strikeDate);
+  const metaParts = [];
+  if (year > 0) metaParts.push(String(year));
+  if (reason) metaParts.push(reason);
+  return {
+    id: pickFirstNonEmpty([source.id, source.uuid, source.slug, title]),
+    title,
+    kind: mediaKind,
+    subtitle: reason || (mediaKind === 'show' ? 'TV' : 'Movie'),
+    meta: metaParts.join(' • '),
+    pill: formatCleanuparrRelativePill(strikeDate),
+    sortTs: parseCleanuparrTimestamp(strikeDate),
+    status,
+    statusKey: String(status || '').toLowerCase(),
+    overview: pickFirstNonEmpty([source.description, source.message, reason]),
+    thumb: poster,
+    art,
+    addedLabel: dateLabel ? `Updated ${dateLabel}` : '',
+  };
+}
+
+function mapCleanuparrEventItem(entry, baseUrl = '') {
+  const source = entry && typeof entry === 'object' ? entry : {};
+  const title = pickFirstNonEmpty([
+    source.title,
+    source.name,
+    source.event,
+    source.eventName,
+    source.action,
+    source.message,
+    source.description,
+    'Event',
+  ]);
+  const mediaKind = normalizeCleanuparrMediaKind(
+    pickFirstNonEmpty([source.mediaType, source.type, source.kind, source.category]),
+    'movie'
+  );
+  const status = normalizeCleanuparrStatus(
+    pickFirstNonEmpty([source.level, source.severity, source.status, source.state, source.action, 'Info']),
+    'Info'
+  );
+  const eventDate = pickFirstNonEmpty([
+    source.createdAt,
+    source.created_at,
+    source.timestamp,
+    source.date,
+    source.time,
+    source.occurredAt,
+    source.occurred_at,
+    source.updatedAt,
+    source.updated_at,
+  ]);
+  const message = pickFirstNonEmpty([source.message, source.description, source.details, source.detail]);
+  const poster = resolveCleanuparrAssetUrl(baseUrl, pickFirstNonEmpty([
+    source.poster,
+    source.posterUrl,
+    source.poster_url,
+    source.thumb,
+    source.thumbnail,
+  ]));
+  const art = resolveCleanuparrAssetUrl(baseUrl, pickFirstNonEmpty([
+    source.art,
+    source.backdrop,
+    source.backdropUrl,
+    source.backdrop_url,
+  ]));
+  const dateLabel = formatCleanuparrDateLabel(eventDate);
+  return {
+    id: pickFirstNonEmpty([source.id, source.uuid, source.slug, `${title}:${eventDate}`]),
+    title,
+    kind: mediaKind,
+    subtitle: pickFirstNonEmpty([source.mediaTitle, source.target, source.ruleName, source.type]),
+    meta: message,
+    pill: formatCleanuparrRelativePill(eventDate),
+    sortTs: parseCleanuparrTimestamp(eventDate),
+    status,
+    statusKey: String(status || '').toLowerCase(),
+    overview: message,
+    thumb: poster,
+    art,
+    addedLabel: dateLabel ? `Logged ${dateLabel}` : '',
+  };
+}
+
 function normalizeRommMediaKind(value, fallback = 'game') {
   const text = String(value || '').trim().toLowerCase();
   if (!text) return fallback;
@@ -9410,6 +9834,286 @@ app.get('/api/romm/:kind', requireUser, async (req, res) => {
   return res.status(502).json({ error: lastError || 'Failed to fetch Romm data.' });
 });
 
+app.get('/api/cleanuparr/:kind', requireUser, async (req, res) => {
+  const kind = String(req.params.kind || '').trim().toLowerCase();
+  if (!['recent-strikes', 'events', 'stats'].includes(kind)) {
+    return res.status(400).json({ error: 'Unsupported Cleanuparr endpoint.' });
+  }
+
+  const config = loadConfig();
+  const apps = config.apps || [];
+  const cleanuparrApp = apps.find((appItem) => normalizeAppId(appItem?.id) === 'cleanuparr');
+  if (!cleanuparrApp) return res.status(404).json({ error: 'Cleanuparr app is not configured.' });
+  if (!canAccessDashboardApp(config, cleanuparrApp, getEffectiveRole(req))) {
+    return res.status(403).json({ error: 'Cleanuparr dashboard access denied.' });
+  }
+
+  const candidates = resolveAppApiCandidates(cleanuparrApp, req);
+  if (!candidates.length) return res.status(400).json({ error: 'Missing Cleanuparr URL.' });
+
+  const apiKey = String(cleanuparrApp.apiKey || '').trim();
+  const authHeader = buildBasicAuthHeader(cleanuparrApp.username || '', cleanuparrApp.password || '');
+  const headers = {
+    Accept: 'application/json',
+  };
+  if (apiKey) {
+    headers['X-Api-Key'] = apiKey;
+    headers['X-API-KEY'] = apiKey;
+    if (!authHeader) headers.Authorization = /^bearer\s+/i.test(apiKey) ? apiKey : `Bearer ${apiKey}`;
+  }
+  if (authHeader) headers.Authorization = authHeader;
+
+  const endpointPlans = kind === 'recent-strikes'
+    ? [
+      { path: 'api/strikes/recent' },
+      { path: 'api/v1/strikes/recent' },
+      { path: 'api/strikes', query: { recent: 'true' } },
+      { path: 'api/v1/strikes', query: { recent: 'true' } },
+      { path: 'api/strikes' },
+      { path: 'api/v1/strikes' },
+    ]
+    : (kind === 'events'
+      ? [
+        { path: 'api/events' },
+        { path: 'api/v1/events' },
+        { path: 'api/events/recent' },
+        { path: 'api/v1/events/recent' },
+      ]
+      : [
+        { path: 'api/stats' },
+        { path: 'api/v1/stats' },
+      ]);
+
+  const requestedLimitRaw = String(req.query?.limit || '').trim().toLowerCase();
+  const defaultLimit = kind === 'stats' ? 50 : 200;
+  const maxCap = kind === 'stats' ? 200 : 2000;
+  let itemLimit = defaultLimit;
+  if (requestedLimitRaw === 'all') {
+    itemLimit = maxCap;
+  } else if (requestedLimitRaw) {
+    const parsedLimit = Number(requestedLimitRaw);
+    if (Number.isFinite(parsedLimit) && parsedLimit > 0) {
+      itemLimit = Math.min(maxCap, Math.max(1, Math.round(parsedLimit)));
+    }
+  }
+
+  let lastError = '';
+  for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex += 1) {
+    const baseUrl = candidates[candidateIndex];
+    if (!baseUrl) continue;
+    for (let planIndex = 0; planIndex < endpointPlans.length; planIndex += 1) {
+      const endpoint = endpointPlans[planIndex];
+      try {
+        const url = buildAppApiUrl(baseUrl, endpoint.path);
+        Object.entries(endpoint.query || {}).forEach(([key, value]) => {
+          if (value !== undefined && value !== null && value !== '') {
+            url.searchParams.set(key, String(value));
+          }
+        });
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 12000);
+        let response;
+        try {
+          response = await fetch(url.toString(), {
+            headers,
+            signal: controller.signal,
+          });
+        } finally {
+          clearTimeout(timeout);
+        }
+        const text = await response.text();
+        if (!response.ok) {
+          lastError = `Cleanuparr request failed (${response.status}) via ${baseUrl}.`;
+          continue;
+        }
+        let payload = {};
+        try {
+          payload = text ? JSON.parse(text) : {};
+        } catch (_err) {
+          payload = {};
+        }
+        if (kind === 'stats') {
+          const statsSource = payload && typeof payload === 'object' ? payload : {};
+          const statsItems = Object.entries(statsSource)
+            .filter(([key]) => Boolean(String(key || '').trim()))
+            .map(([key, value]) => ({
+              id: String(key || '').trim(),
+              title: String(key || '').trim(),
+              subtitle: '',
+              meta: '',
+              pill: '',
+              sortTs: 0,
+              status: '',
+              statusKey: '',
+              kind: 'movie',
+              overview: String(value ?? '').trim(),
+              thumb: '',
+              art: '',
+              value: value ?? '',
+            }))
+            .slice(0, itemLimit);
+          return res.json({ items: statsItems });
+        }
+
+        const list = extractCleanuparrList(payload, kind);
+        if (!Array.isArray(list)) {
+          lastError = `Unexpected Cleanuparr response format via ${baseUrl}.`;
+          continue;
+        }
+        const mapper = kind === 'recent-strikes' ? mapCleanuparrStrikeItem : mapCleanuparrEventItem;
+        const items = list
+          .map((entry) => mapper(entry, baseUrl))
+          .filter((entry) => Boolean(entry?.title))
+          .sort((left, right) => {
+            const sortDelta = parseFiniteNumber(right?.sortTs, 0) - parseFiniteNumber(left?.sortTs, 0);
+            if (sortDelta !== 0) return sortDelta;
+            return String(left?.title || '').localeCompare(String(right?.title || ''));
+          })
+          .slice(0, itemLimit);
+        return res.json({ items });
+      } catch (err) {
+        lastError = safeMessage(err) || `Failed to reach Cleanuparr via ${baseUrl}.`;
+      }
+    }
+  }
+
+  return res.status(502).json({ error: lastError || 'Failed to fetch Cleanuparr data.' });
+});
+
+app.post('/api/widgets/cards', requireSettingsAdmin, (req, res) => {
+  try {
+    const config = loadConfig();
+    const apps = Array.isArray(config?.apps) ? config.apps : [];
+    const existingCards = resolveDashboardWidgets(config, apps, 'admin', {
+      includeHidden: true,
+      includeUnavailable: true,
+    });
+    const hasExplicitOrder = Object.prototype.hasOwnProperty.call(req.body || {}, 'order');
+    const normalized = normalizeDashboardWidgetCard(req.body || {}, {
+      source: DASHBOARD_WIDGET_DEFAULTS.source,
+      rows: DASHBOARD_WIDGET_DEFAULTS.rows,
+      columns: DASHBOARD_WIDGET_DEFAULTS.columns,
+      limit: DASHBOARD_WIDGET_DEFAULTS.limit,
+      refreshSeconds: DASHBOARD_WIDGET_DEFAULTS.refreshSeconds,
+      autoScroll: DASHBOARD_WIDGET_DEFAULTS.autoScroll,
+      order: hasExplicitOrder ? Number(req.body?.order) : resolveNextDashboardWidgetOrder(config, apps),
+      visibilityRole: DASHBOARD_WIDGET_DEFAULTS.visibilityRole,
+      filters: DASHBOARD_WIDGET_DEFAULTS.filters,
+    });
+    if (!normalized) {
+      return res.status(400).json({ error: 'Invalid widget payload.' });
+    }
+    const sourceDef = getDashboardWidgetSourceDefinition(normalized.source);
+    const sourceAppId = normalizeAppId(sourceDef?.appId || '');
+    const sourceApp = apps.find((appItem) => normalizeAppId(appItem?.id) === sourceAppId && !appItem?.removed);
+    if (!sourceDef || !sourceAppId || !sourceApp) {
+      return res.status(400).json({ error: 'Widget source app is not configured.' });
+    }
+
+    let widgetId = normalizeDashboardWidgetToken(normalized.id || '') || normalizeDashboardWidgetToken(buildDashboardWidgetId());
+    const existingIdSet = new Set(existingCards.map((entry) => normalizeDashboardWidgetToken(entry?.id || '')).filter(Boolean));
+    if (existingIdSet.has(widgetId)) {
+      const baseId = widgetId;
+      let suffix = 2;
+      while (existingIdSet.has(`${baseId}-${suffix}`)) suffix += 1;
+      widgetId = `${baseId}-${suffix}`;
+    }
+
+    const nextCards = [...existingCards, { ...normalized, id: widgetId }];
+    saveConfig({
+      ...config,
+      dashboardWidgets: serializeDashboardWidgetCards(nextCards),
+    });
+    const savedConfig = loadConfig();
+    const savedCards = resolveDashboardWidgets(savedConfig, Array.isArray(savedConfig?.apps) ? savedConfig.apps : apps, 'admin', {
+      includeHidden: true,
+      includeUnavailable: true,
+    });
+    const savedCard = savedCards.find((entry) => normalizeDashboardWidgetToken(entry?.id || '') === widgetId) || null;
+    return res.json({ ok: true, item: savedCard, items: savedCards });
+  } catch (err) {
+    return res.status(500).json({ error: safeMessage(err) || 'Failed to create widget card.' });
+  }
+});
+
+app.put('/api/widgets/cards/:id', requireSettingsAdmin, (req, res) => {
+  try {
+    const widgetId = normalizeDashboardWidgetToken(req.params.id || '');
+    if (!widgetId) return res.status(400).json({ error: 'Invalid widget id.' });
+    const config = loadConfig();
+    const apps = Array.isArray(config?.apps) ? config.apps : [];
+    const existingCards = resolveDashboardWidgets(config, apps, 'admin', {
+      includeHidden: true,
+      includeUnavailable: true,
+    });
+    const cardIndex = existingCards.findIndex((entry) => normalizeDashboardWidgetToken(entry?.id || '') === widgetId);
+    if (cardIndex === -1) return res.status(404).json({ error: 'Widget card not found.' });
+    const existing = existingCards[cardIndex];
+    const hasExplicitOrder = Object.prototype.hasOwnProperty.call(req.body || {}, 'order');
+    const normalized = normalizeDashboardWidgetCard({
+      ...existing,
+      ...(req.body || {}),
+      id: widgetId,
+    }, {
+      ...existing,
+      order: hasExplicitOrder ? Number(req.body?.order) : Number(existing?.order || 0),
+    }, {
+      generateId: false,
+    });
+    if (!normalized) return res.status(400).json({ error: 'Invalid widget payload.' });
+    const sourceDef = getDashboardWidgetSourceDefinition(normalized.source);
+    const sourceAppId = normalizeAppId(sourceDef?.appId || '');
+    const sourceApp = apps.find((appItem) => normalizeAppId(appItem?.id) === sourceAppId && !appItem?.removed);
+    if (!sourceDef || !sourceAppId || !sourceApp) {
+      return res.status(400).json({ error: 'Widget source app is not configured.' });
+    }
+
+    const nextCards = existingCards.map((entry, index) => (index === cardIndex ? normalized : entry));
+    saveConfig({
+      ...config,
+      dashboardWidgets: serializeDashboardWidgetCards(nextCards),
+    });
+    const savedConfig = loadConfig();
+    const savedCards = resolveDashboardWidgets(savedConfig, Array.isArray(savedConfig?.apps) ? savedConfig.apps : apps, 'admin', {
+      includeHidden: true,
+      includeUnavailable: true,
+    });
+    const savedCard = savedCards.find((entry) => normalizeDashboardWidgetToken(entry?.id || '') === widgetId) || null;
+    return res.json({ ok: true, item: savedCard, items: savedCards });
+  } catch (err) {
+    return res.status(500).json({ error: safeMessage(err) || 'Failed to update widget card.' });
+  }
+});
+
+app.delete('/api/widgets/cards/:id', requireSettingsAdmin, (req, res) => {
+  try {
+    const widgetId = normalizeDashboardWidgetToken(req.params.id || '');
+    if (!widgetId) return res.status(400).json({ error: 'Invalid widget id.' });
+    const config = loadConfig();
+    const apps = Array.isArray(config?.apps) ? config.apps : [];
+    const existingCards = resolveDashboardWidgets(config, apps, 'admin', {
+      includeHidden: true,
+      includeUnavailable: true,
+    });
+    const nextCards = existingCards.filter((entry) => normalizeDashboardWidgetToken(entry?.id || '') !== widgetId);
+    if (nextCards.length === existingCards.length) {
+      return res.status(404).json({ error: 'Widget card not found.' });
+    }
+    saveConfig({
+      ...config,
+      dashboardWidgets: serializeDashboardWidgetCards(nextCards),
+    });
+    const savedConfig = loadConfig();
+    const savedCards = resolveDashboardWidgets(savedConfig, Array.isArray(savedConfig?.apps) ? savedConfig.apps : apps, 'admin', {
+      includeHidden: true,
+      includeUnavailable: true,
+    });
+    return res.json({ ok: true, items: savedCards });
+  } catch (err) {
+    return res.status(500).json({ error: safeMessage(err) || 'Failed to delete widget card.' });
+  }
+});
+
 function buildBasicAuthHeader(username, password) {
   const user = String(username || '');
   const pass = String(password || '');
@@ -11106,6 +11810,54 @@ function buildDashboardElementsFromRequest(appItem, body) {
   });
 }
 
+function buildDashboardWidgetsFromDashboardRequest(config, apps, body) {
+  const payload = body && typeof body === 'object' ? body : {};
+  const existingCards = resolveDashboardWidgets(config, apps, 'admin', {
+    includeHidden: true,
+    includeUnavailable: true,
+  });
+  const nextCards = existingCards.map((card) => {
+    const widgetId = normalizeDashboardWidgetToken(card?.id || '');
+    if (!widgetId) return null;
+    const prefix = `dashboard_widget_${widgetId}_`;
+    if (!payload[`${prefix}present`]) {
+      return card;
+    }
+    const sourceKey = String(payload[`${prefix}source`] || card.source || '').trim().toLowerCase();
+    const sourceDef = getDashboardWidgetSourceDefinition(sourceKey)
+      || getDashboardWidgetSourceDefinition(card.source)
+      || getDashboardWidgetSourceDefinition(DASHBOARD_WIDGET_DEFAULTS.source);
+    const supports = sourceDef?.supports || {};
+    const parsedOrder = Number(payload[`${prefix}order`]);
+    const normalized = normalizeDashboardWidgetCard({
+      ...card,
+      id: widgetId,
+      title: String(payload[`${prefix}title`] || card.title || '').trim() || card.title,
+      source: String(sourceDef?.id || card.source || DASHBOARD_WIDGET_DEFAULTS.source).trim().toLowerCase(),
+      rows: payload[`${prefix}rows`],
+      columns: payload[`${prefix}columns`],
+      limit: payload[`${prefix}limit`],
+      refreshSeconds: payload[`${prefix}refresh_seconds`],
+      autoScroll: Boolean(payload[`${prefix}auto_scroll`]),
+      order: Number.isFinite(parsedOrder) ? parsedOrder : Number(card?.order || 0),
+      visibilityRole: normalizeVisibilityRole(payload[`${prefix}visibility_role`], card?.visibilityRole || 'user'),
+      filters: {
+        media: supports.media
+          ? resolveDashboardWidgetFilterValue(payload[`${prefix}filter_media`], card?.filters?.media || 'all')
+          : 'all',
+        letter: supports.letter
+          ? resolveDashboardWidgetFilterValue(payload[`${prefix}filter_letter`], card?.filters?.letter || 'all')
+          : 'all',
+        status: supports.status
+          ? resolveDashboardWidgetFilterValue(payload[`${prefix}filter_status`], card?.filters?.status || 'all')
+          : 'all',
+      },
+    }, card, { generateId: false });
+    return normalized || card;
+  }).filter(Boolean);
+  return serializeDashboardWidgetCards(nextCards);
+}
+
 function getTautulliCards(appItem) {
   if (!appItem || appItem.id !== 'tautulli') return [];
   return TAUTULLI_WATCH_CARDS;
@@ -11184,38 +11936,8 @@ function resolveLaunchUrl(appItem, req) {
   return remoteUrl || localUrl;
 }
 
-function extractHostNameFromHostHeader(hostValue) {
-  const raw = String(hostValue || '').trim();
-  if (!raw) return '';
-  if (raw.startsWith('[')) {
-    const closingIndex = raw.indexOf(']');
-    if (closingIndex > 1) return raw.slice(1, closingIndex);
-    return raw.replace(/^\[|\]$/g, '');
-  }
-  const colonIndex = raw.indexOf(':');
-  if (colonIndex > 0) return raw.slice(0, colonIndex);
-  return raw;
-}
-
 function resolveIframeLaunchUrl(req, launchUrl) {
-  const baseLaunchUrl = String(launchUrl || '').trim();
-  if (!baseLaunchUrl) return '';
-  try {
-    const parsedLaunchUrl = new URL(baseLaunchUrl);
-    const requestHostName = extractHostNameFromHostHeader(getRequestHost(req));
-    const targetHostName = String(parsedLaunchUrl.hostname || '').trim();
-    if (!requestHostName || !targetHostName) return baseLaunchUrl;
-    if (targetHostName.toLowerCase() === requestHostName.toLowerCase()) return baseLaunchUrl;
-
-    const isLocalPair = (isPrivateIp(targetHostName) || isLocalHost(targetHostName))
-      && (isPrivateIp(requestHostName) || isLocalHost(requestHostName));
-    if (!isLocalPair) return baseLaunchUrl;
-
-    parsedLaunchUrl.hostname = requestHostName;
-    return parsedLaunchUrl.toString();
-  } catch (err) {
-    return baseLaunchUrl;
-  }
+  return String(launchUrl || '').trim();
 }
 
 async function resolveDeepLaunchUrl(appItem, req, options = {}) {
@@ -11854,6 +12576,280 @@ function resolveDownloaderDashboardCards(config, apps) {
     });
   });
   return cards;
+}
+
+function getDashboardWidgetSourceDefinition(sourceId) {
+  const key = String(sourceId || '').trim().toLowerCase();
+  if (!key) return null;
+  return DASHBOARD_WIDGET_SOURCE_BY_ID.get(key) || null;
+}
+
+function normalizeDashboardWidgetToken(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[-_]+|[-_]+$/g, '');
+}
+
+function buildDashboardWidgetId() {
+  return `widget-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function coerceDashboardWidgetInt(value, fallback, minValue, maxValue) {
+  const parsed = Number(value);
+  const base = Number.isFinite(parsed) ? Math.round(parsed) : Number(fallback);
+  const safe = Number.isFinite(base) ? base : minValue;
+  return Math.max(minValue, Math.min(maxValue, safe));
+}
+
+function resolveDashboardWidgetFilterValue(value, fallback = 'all') {
+  const raw = String(value || '').trim();
+  if (!raw) return String(fallback || 'all').trim().toLowerCase() || 'all';
+  if (/^[a-z0-9#._-]+$/i.test(raw)) return raw.toLowerCase();
+  return String(fallback || 'all').trim().toLowerCase() || 'all';
+}
+
+function normalizeDashboardWidgetCard(entry, fallback = {}, options = {}) {
+  const source = entry && typeof entry === 'object' ? entry : {};
+  const fallbackSource = fallback && typeof fallback === 'object' ? fallback : {};
+  const sourceId = String(
+    source.source
+    ?? source.sourceId
+    ?? fallbackSource.source
+    ?? fallbackSource.sourceId
+    ?? DASHBOARD_WIDGET_DEFAULTS.source
+  ).trim().toLowerCase();
+  const sourceDef = getDashboardWidgetSourceDefinition(sourceId) || getDashboardWidgetSourceDefinition(DASHBOARD_WIDGET_DEFAULTS.source);
+  if (!sourceDef) return null;
+
+  const preferredId = normalizeDashboardWidgetToken(source.id || source.widgetId || '');
+  const fallbackId = normalizeDashboardWidgetToken(fallbackSource.id || fallbackSource.widgetId || '');
+  const allowGenerateId = options && options.generateId !== false;
+  const id = preferredId || fallbackId || (allowGenerateId ? normalizeDashboardWidgetToken(buildDashboardWidgetId()) : '');
+  if (!id) return null;
+
+  const fallbackFilters = (fallbackSource.filters && typeof fallbackSource.filters === 'object')
+    ? fallbackSource.filters
+    : DASHBOARD_WIDGET_DEFAULTS.filters;
+  const sourceFilters = (source.filters && typeof source.filters === 'object')
+    ? source.filters
+    : {};
+  const filters = {
+    media: resolveDashboardWidgetFilterValue(
+      sourceFilters.media,
+      fallbackFilters.media || DASHBOARD_WIDGET_DEFAULTS.filters.media
+    ),
+    letter: resolveDashboardWidgetFilterValue(
+      sourceFilters.letter,
+      fallbackFilters.letter || DASHBOARD_WIDGET_DEFAULTS.filters.letter
+    ),
+    status: resolveDashboardWidgetFilterValue(
+      sourceFilters.status,
+      fallbackFilters.status || DASHBOARD_WIDGET_DEFAULTS.filters.status
+    ),
+  };
+
+  const resolvedTitle = String(source.title ?? fallbackSource.title ?? '').trim()
+    || String(sourceDef.name || DASHBOARD_WIDGET_DEFAULTS.title || 'Widget').trim()
+    || 'Widget';
+
+  return {
+    id,
+    title: resolvedTitle,
+    source: String(sourceDef.id || '').trim().toLowerCase(),
+    rows: coerceDashboardWidgetInt(
+      source.rows ?? source.rowCount,
+      fallbackSource.rows ?? DASHBOARD_WIDGET_DEFAULTS.rows,
+      1,
+      6
+    ),
+    columns: coerceDashboardWidgetInt(
+      source.columns ?? source.colCount,
+      fallbackSource.columns ?? DASHBOARD_WIDGET_DEFAULTS.columns,
+      1,
+      8
+    ),
+    limit: coerceDashboardWidgetInt(
+      source.limit ?? source.itemLimit,
+      fallbackSource.limit ?? DASHBOARD_WIDGET_DEFAULTS.limit,
+      1,
+      200
+    ),
+    refreshSeconds: coerceDashboardWidgetInt(
+      source.refreshSeconds ?? source.refreshInterval ?? source.refresh,
+      fallbackSource.refreshSeconds ?? DASHBOARD_WIDGET_DEFAULTS.refreshSeconds,
+      15,
+      3600
+    ),
+    autoScroll: source.autoScroll === undefined
+      ? (fallbackSource.autoScroll === undefined ? DASHBOARD_WIDGET_DEFAULTS.autoScroll : Boolean(fallbackSource.autoScroll))
+      : Boolean(source.autoScroll),
+    order: Number.isFinite(Number(source.order))
+      ? Number(source.order)
+      : (Number.isFinite(Number(fallbackSource.order)) ? Number(fallbackSource.order) : Number(DASHBOARD_WIDGET_DEFAULTS.order)),
+    visibilityRole: normalizeVisibilityRole(
+      source.visibilityRole,
+      normalizeVisibilityRole(fallbackSource.visibilityRole, DASHBOARD_WIDGET_DEFAULTS.visibilityRole)
+    ),
+    filters,
+  };
+}
+
+function resolveDashboardWidgets(config, apps, role, options = {}) {
+  const includeHidden = Boolean(options?.includeHidden);
+  const includeUnavailable = Boolean(options?.includeUnavailable);
+  const sourceCards = Array.isArray(config?.dashboardWidgets) ? config.dashboardWidgets : [];
+  const roleKey = parseVisibilityRole(role) || 'user';
+  const appList = Array.isArray(apps) ? apps : [];
+  const byId = new Map(
+    appList
+      .filter((appItem) => !appItem?.removed)
+      .map((appItem) => [normalizeAppId(appItem?.id), appItem])
+      .filter(([id]) => Boolean(id))
+  );
+  const cards = [];
+  const seenIds = new Set();
+  sourceCards.forEach((entry, index) => {
+    const normalized = normalizeDashboardWidgetCard(entry, {
+      source: DASHBOARD_WIDGET_DEFAULTS.source,
+      rows: DASHBOARD_WIDGET_DEFAULTS.rows,
+      columns: DASHBOARD_WIDGET_DEFAULTS.columns,
+      limit: DASHBOARD_WIDGET_DEFAULTS.limit,
+      refreshSeconds: DASHBOARD_WIDGET_DEFAULTS.refreshSeconds,
+      autoScroll: DASHBOARD_WIDGET_DEFAULTS.autoScroll,
+      order: index + 1,
+      visibilityRole: DASHBOARD_WIDGET_DEFAULTS.visibilityRole,
+      filters: DASHBOARD_WIDGET_DEFAULTS.filters,
+    });
+    if (!normalized) return;
+    const sourceDef = getDashboardWidgetSourceDefinition(normalized.source);
+    if (!sourceDef) return;
+    const sourceAppId = normalizeAppId(sourceDef.appId || '');
+    const sourceApp = sourceAppId ? byId.get(sourceAppId) : null;
+    const sourceAvailable = Boolean(sourceApp);
+    const sourceAccessible = Boolean(
+      sourceApp
+      && canAccessDashboardApp(config, sourceApp, roleKey)
+    );
+    if (!includeHidden && !roleMeetsMinRole(roleKey, normalized.visibilityRole)) return;
+    if (!includeHidden && !sourceAccessible) return;
+    if (!sourceAvailable && !includeUnavailable) return;
+    let resolvedId = normalizeDashboardWidgetToken(normalized.id || '') || `widget-${index + 1}`;
+    if (seenIds.has(resolvedId)) {
+      let suffix = 2;
+      while (seenIds.has(`${resolvedId}-${suffix}`)) suffix += 1;
+      resolvedId = `${resolvedId}-${suffix}`;
+    }
+    seenIds.add(resolvedId);
+    cards.push({
+      ...normalized,
+      id: resolvedId,
+      sourceName: String(sourceDef.name || '').trim() || normalized.source,
+      sourceIcon: String(sourceDef.icon || '/icons/app.svg').trim() || '/icons/app.svg',
+      sourceEndpoint: String(sourceDef.endpoint || '').trim(),
+      sourceAppId,
+      sourceAppName: String(sourceApp?.name || sourceDef.appId || '').trim(),
+      sourceAvailable,
+      sourceAccessible,
+      supports: {
+        media: Boolean(sourceDef?.supports?.media),
+        letter: Boolean(sourceDef?.supports?.letter),
+        status: Boolean(sourceDef?.supports?.status),
+        execute: Boolean(sourceDef?.supports?.execute),
+      },
+    });
+  });
+  return cards.sort((left, right) => {
+    const orderDelta = Number(left?.order || 0) - Number(right?.order || 0);
+    if (orderDelta !== 0) return orderDelta;
+    return String(left?.title || '').localeCompare(String(right?.title || ''));
+  });
+}
+
+function resolveDashboardWidgetSourceOptions(config, apps, role, options = {}) {
+  const includeUnavailable = Boolean(options?.includeUnavailable);
+  const roleKey = parseVisibilityRole(role) || 'user';
+  const appList = Array.isArray(apps) ? apps : [];
+  const appById = new Map(
+    appList
+      .filter((appItem) => !appItem?.removed)
+      .map((appItem) => [normalizeAppId(appItem?.id), appItem])
+      .filter(([id]) => Boolean(id))
+  );
+  return DASHBOARD_WIDGET_SOURCES
+    .map((entry) => {
+      const sourceId = String(entry?.id || '').trim().toLowerCase();
+      if (!sourceId) return null;
+      const appId = normalizeAppId(entry?.appId || '');
+      const appItem = appId ? appById.get(appId) : null;
+      const appAvailable = Boolean(appItem);
+      const appAccessible = Boolean(appItem && canAccessDashboardApp(config, appItem, roleKey));
+      if (!includeUnavailable && !appAccessible) return null;
+      return {
+        id: sourceId,
+        name: String(entry?.name || sourceId).trim() || sourceId,
+        icon: String(entry?.icon || '/icons/app.svg').trim() || '/icons/app.svg',
+        endpoint: String(entry?.endpoint || '').trim(),
+        appId,
+        appName: String(appItem?.name || entry?.appId || '').trim(),
+        available: appAvailable && appAccessible,
+        supports: {
+          media: Boolean(entry?.supports?.media),
+          letter: Boolean(entry?.supports?.letter),
+          status: Boolean(entry?.supports?.status),
+          execute: Boolean(entry?.supports?.execute),
+        },
+      };
+    })
+    .filter(Boolean);
+}
+
+function resolveNextDashboardWidgetOrder(config, apps) {
+  const cards = resolveDashboardWidgets(config, apps, 'admin', {
+    includeHidden: true,
+    includeUnavailable: true,
+  });
+  const maxOrder = cards.reduce((maxValue, entry) => {
+    const value = Number(entry?.order);
+    if (!Number.isFinite(value)) return maxValue;
+    return value > maxValue ? value : maxValue;
+  }, 0);
+  return maxOrder + 1;
+}
+
+function serializeDashboardWidgetCards(cards = []) {
+  return (Array.isArray(cards) ? cards : [])
+    .map((entry, index) => normalizeDashboardWidgetCard(entry, {
+      source: DASHBOARD_WIDGET_DEFAULTS.source,
+      rows: DASHBOARD_WIDGET_DEFAULTS.rows,
+      columns: DASHBOARD_WIDGET_DEFAULTS.columns,
+      limit: DASHBOARD_WIDGET_DEFAULTS.limit,
+      refreshSeconds: DASHBOARD_WIDGET_DEFAULTS.refreshSeconds,
+      autoScroll: DASHBOARD_WIDGET_DEFAULTS.autoScroll,
+      order: index + 1,
+      visibilityRole: DASHBOARD_WIDGET_DEFAULTS.visibilityRole,
+      filters: DASHBOARD_WIDGET_DEFAULTS.filters,
+    }))
+    .filter(Boolean)
+    .map((entry) => ({
+      id: entry.id,
+      title: entry.title,
+      source: entry.source,
+      rows: entry.rows,
+      columns: entry.columns,
+      limit: entry.limit,
+      refreshSeconds: entry.refreshSeconds,
+      autoScroll: entry.autoScroll,
+      order: entry.order,
+      visibilityRole: entry.visibilityRole,
+      filters: {
+        media: entry.filters?.media || 'all',
+        letter: entry.filters?.letter || 'all',
+        status: entry.filters?.status || 'all',
+      },
+    }));
 }
 
 function migrateDeprecatedDashboardCards(config) {

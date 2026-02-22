@@ -1,4 +1,10 @@
-# Release Notes (v0.1.0 -> v0.2.35)
+# Release Notes (v0.1.0 -> v0.2.36)
+
+## v0.2.36 (2026-02-22)
+
+- Added a `Hide scrollbars` theme option for cleaner UI while preserving scroll behavior.
+- Added persistence for `Hide scrollbars` in admin theme defaults and per-user theme preferences.
+- Updated the About page Discord support link to the current invite URL.
 
 ## v0.2.35 (2026-02-21)
 

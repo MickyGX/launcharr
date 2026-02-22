@@ -28,10 +28,12 @@
         var bgMotionDefault = themeDefaults && themeDefaults.bgMotion === undefined ? true : (themeDefaults && themeDefaults.bgMotion === true);
         var bgMotion = bgMotionStored === null ? bgMotionDefault : (bgMotionStored === "1" || bgMotionStored === "true");
         var carouselFreeScroll = parseStoredBool("launcharr-carousel-free-scroll", themeDefaults && themeDefaults.carouselFreeScroll === true);
+        var hideScrollbars = parseStoredBool("launcharr-hide-scrollbars", themeDefaults && themeDefaults.hideScrollbars === true);
         document.documentElement.dataset.sidebarInvert = sidebarInvert ? "1" : "0";
         document.documentElement.dataset.squareCorners = squareCorners ? "1" : "0";
         document.documentElement.dataset.bgMotion = bgMotion ? "1" : "0";
         document.documentElement.dataset.carouselFreeScroll = carouselFreeScroll ? "1" : "0";
+        document.documentElement.dataset.hideScrollbars = hideScrollbars ? "1" : "0";
         var starDensity = 165;
         var starSpeed = 45;
         var starSize = 1.2;

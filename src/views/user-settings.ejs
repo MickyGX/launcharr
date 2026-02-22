@@ -28,11 +28,13 @@
         var bgMotionDefault = themeDefaults && themeDefaults.bgMotion === undefined ? true : (themeDefaults && themeDefaults.bgMotion === true);
         var bgMotion = bgMotionStored === null ? bgMotionDefault : (bgMotionStored === "1" || bgMotionStored === "true");
         var carouselFreeScroll = parseStoredBool("launcharr-carousel-free-scroll", themeDefaults && themeDefaults.carouselFreeScroll === true);
+        var hideScrollbars = parseStoredBool("launcharr-hide-scrollbars", themeDefaults && themeDefaults.hideScrollbars === true);
         var maximizedWindow = localStorage.getItem("launcharr-maximized-window") === "1";
         document.documentElement.dataset.sidebarInvert = sidebarInvert ? "1" : "0";
         document.documentElement.dataset.squareCorners = squareCorners ? "1" : "0";
         document.documentElement.dataset.bgMotion = bgMotion ? "1" : "0";
         document.documentElement.dataset.carouselFreeScroll = carouselFreeScroll ? "1" : "0";
+        document.documentElement.dataset.hideScrollbars = hideScrollbars ? "1" : "0";
         document.documentElement.dataset.maximized = maximizedWindow ? "1" : "0";
         var starDensity = 165;
         var starSpeed = 45;
@@ -435,6 +437,14 @@
                   <small>Disable index snapping and allow fast horizontal swipe scrolling.</small>
                 </span>
               </label>
+              <label class="settings-toggle theme-option">
+                <input id="profileThemeHideScrollbars" type="checkbox" />
+                <span class="settings-toggle-slider" aria-hidden="true"></span>
+                <span class="theme-option-copy">
+                  <strong>Hide scrollbars</strong>
+                  <small>Hide visual scrollbar rails while keeping scroll behavior.</small>
+                </span>
+              </label>
             </div>
             <form method="post" action="/user-settings/theme" class="settings-card-actions" id="profileThemeSaveForm">
               <input type="hidden" name="theme_mode" id="profileThemeMode" />
@@ -444,6 +454,7 @@
               <input type="hidden" name="theme_square_corners" id="profileThemeSquareCornersValue" />
               <input type="hidden" name="theme_bg_motion" id="profileThemeBgMotionValue" />
               <input type="hidden" name="theme_carousel_free_scroll" id="profileThemeCarouselFreeScrollValue" />
+              <input type="hidden" name="theme_hide_scrollbars" id="profileThemeHideScrollbarsValue" />
               <button class="primary-button" type="submit">Save my theme</button>
             </form>
             <% if (themeNote) { %>
@@ -506,6 +517,7 @@
     const profileThemeSquareCornersToggle = document.getElementById('profileThemeSquareCorners');
     const profileThemeBgMotionToggle = document.getElementById('profileThemeBgMotion');
     const profileThemeCarouselFreeScrollToggle = document.getElementById('profileThemeCarouselFreeScroll');
+    const profileThemeHideScrollbarsToggle = document.getElementById('profileThemeHideScrollbars');
     const profileThemeSaveForm = document.getElementById('profileThemeSaveForm');
     const profileThemeModeInput = document.getElementById('profileThemeMode');
     const profileThemeBrandThemeInput = document.getElementById('profileThemeBrandTheme');
@@ -514,6 +526,7 @@
     const profileThemeSquareCornersValueInput = document.getElementById('profileThemeSquareCornersValue');
     const profileThemeBgMotionValueInput = document.getElementById('profileThemeBgMotionValue');
     const profileThemeCarouselFreeScrollValueInput = document.getElementById('profileThemeCarouselFreeScrollValue');
+    const profileThemeHideScrollbarsValueInput = document.getElementById('profileThemeHideScrollbarsValue');
     const allowedBrandThemes = new Set(['custom', 'launcharr', 'rocketship', 'pulsarr', 'plex', 'radarr', 'sonarr', 'lidarr', 'readarr']);
     const customColorStorageKey = 'launcharr-custom-color';
     const themeOptionStorageKeys = {
@@ -521,6 +534,7 @@
       squareCorners: 'launcharr-square-corners',
       bgMotion: 'launcharr-bg-motion',
       carouselFreeScroll: 'launcharr-carousel-free-scroll',
+      hideScrollbars: 'launcharr-hide-scrollbars',
     };
     const parseStoredBool = (key, defaultValue = false) => {
       const raw = safeStorage.get(key);
@@ -607,6 +621,9 @@
       if (profileThemeCarouselFreeScrollValueInput) {
         profileThemeCarouselFreeScrollValueInput.value = profileThemeCarouselFreeScrollToggle?.checked ? '1' : '0';
       }
+      if (profileThemeHideScrollbarsValueInput) {
+        profileThemeHideScrollbarsValueInput.value = profileThemeHideScrollbarsToggle?.checked ? '1' : '0';
+      }
     };
     const applyThemeOptions = (options = {}) => {
       const sidebarInvert = Boolean(options.sidebarInvert);
@@ -616,6 +633,7 @@
       const starSpeed = 45;
       const starSize = 1.2;
       const carouselFreeScroll = Boolean(options.carouselFreeScroll);
+      const hideScrollbars = Boolean(options.hideScrollbars);
       document.documentElement.dataset.sidebarInvert = sidebarInvert ? '1' : '0';
       document.documentElement.dataset.squareCorners = squareCorners ? '1' : '0';
       document.documentElement.dataset.bgMotion = bgMotion ? '1' : '0';
@@ -623,14 +641,17 @@
       document.documentElement.style.setProperty('--star-speed', `${starSpeed}s`);
       document.documentElement.style.setProperty('--star-size', String(starSize));
       document.documentElement.dataset.carouselFreeScroll = carouselFreeScroll ? '1' : '0';
+      document.documentElement.dataset.hideScrollbars = hideScrollbars ? '1' : '0';
       safeStorage.set(themeOptionStorageKeys.sidebarInvert, sidebarInvert ? '1' : '0');
       safeStorage.set(themeOptionStorageKeys.squareCorners, squareCorners ? '1' : '0');
       safeStorage.set(themeOptionStorageKeys.bgMotion, bgMotion ? '1' : '0');
       safeStorage.set(themeOptionStorageKeys.carouselFreeScroll, carouselFreeScroll ? '1' : '0');
+      safeStorage.set(themeOptionStorageKeys.hideScrollbars, hideScrollbars ? '1' : '0');
       if (profileThemeSidebarInvertToggle) profileThemeSidebarInvertToggle.checked = sidebarInvert;
       if (profileThemeSquareCornersToggle) profileThemeSquareCornersToggle.checked = squareCorners;
       if (profileThemeBgMotionToggle) profileThemeBgMotionToggle.checked = bgMotion;
       if (profileThemeCarouselFreeScrollToggle) profileThemeCarouselFreeScrollToggle.checked = carouselFreeScroll;
+      if (profileThemeHideScrollbarsToggle) profileThemeHideScrollbarsToggle.checked = hideScrollbars;
       syncProfileThemeSaveForm();
     };
     const syncThemeOptionsFromInputs = () => {
@@ -639,6 +660,7 @@
         squareCorners: Boolean(profileThemeSquareCornersToggle?.checked),
         bgMotion: Boolean(profileThemeBgMotionToggle?.checked),
         carouselFreeScroll: Boolean(profileThemeCarouselFreeScrollToggle?.checked),
+        hideScrollbars: Boolean(profileThemeHideScrollbarsToggle?.checked),
       });
     };
     const applyBrandTheme = (theme) => {
@@ -664,12 +686,14 @@
       squareCorners: parseStoredBool(themeOptionStorageKeys.squareCorners, serverThemeDefaults.squareCorners === true),
       bgMotion: parseStoredBool(themeOptionStorageKeys.bgMotion, serverThemeDefaults.bgMotion === undefined ? true : serverThemeDefaults.bgMotion === true),
       carouselFreeScroll: parseStoredBool(themeOptionStorageKeys.carouselFreeScroll, serverThemeDefaults.carouselFreeScroll === true),
+      hideScrollbars: parseStoredBool(themeOptionStorageKeys.hideScrollbars, serverThemeDefaults.hideScrollbars === true),
     };
     applyThemeOptions(initialThemeOptions);
     profileThemeSidebarInvertToggle?.addEventListener('change', syncThemeOptionsFromInputs);
     profileThemeSquareCornersToggle?.addEventListener('change', syncThemeOptionsFromInputs);
     profileThemeBgMotionToggle?.addEventListener('change', syncThemeOptionsFromInputs);
     profileThemeCarouselFreeScrollToggle?.addEventListener('change', syncThemeOptionsFromInputs);
+    profileThemeHideScrollbarsToggle?.addEventListener('change', syncThemeOptionsFromInputs);
     if (profileThemePresetButtons.length) {
       const initialCustomHex = parseHexColor(safeStorage.get(customColorStorageKey) || serverThemeDefaults.customColor || '#1cc6c2');
       if (profileCustomThemeColorInput) profileCustomThemeColorInput.value = initialCustomHex;

@@ -28,11 +28,13 @@
         var bgMotionDefault = themeDefaults && themeDefaults.bgMotion === undefined ? true : (themeDefaults && themeDefaults.bgMotion === true);
         var bgMotion = bgMotionStored === null ? bgMotionDefault : (bgMotionStored === "1" || bgMotionStored === "true");
         var carouselFreeScroll = parseStoredBool("launcharr-carousel-free-scroll", themeDefaults && themeDefaults.carouselFreeScroll === true);
+        var hideScrollbars = parseStoredBool("launcharr-hide-scrollbars", themeDefaults && themeDefaults.hideScrollbars === true);
         var maximizedWindow = localStorage.getItem("launcharr-maximized-window") === "1";
         document.documentElement.dataset.sidebarInvert = sidebarInvert ? "1" : "0";
         document.documentElement.dataset.squareCorners = squareCorners ? "1" : "0";
         document.documentElement.dataset.bgMotion = bgMotion ? "1" : "0";
         document.documentElement.dataset.carouselFreeScroll = carouselFreeScroll ? "1" : "0";
+        document.documentElement.dataset.hideScrollbars = hideScrollbars ? "1" : "0";
         document.documentElement.dataset.maximized = maximizedWindow ? "1" : "0";
         var starDensity = 165;
         var starSpeed = 45;
@@ -1629,6 +1631,137 @@
                     </div>
                   </div>
                 <% }) %>
+                <% (Array.isArray(dashboardWidgets) ? dashboardWidgets : []).forEach((widget, widgetIndex) => { %>
+                  <% const widgetId = String(widget.id || '').trim(); %>
+                  <% if (!widgetId) return; %>
+                  <% const widgetPrefix = `dashboard_widget_${widgetId}`; %>
+                  <% const widgetSupports = widget.supports || {}; %>
+                  <% const widgetOrder = Number.isFinite(Number(widget.order)) ? Number(widget.order) : ((Array.isArray(dashboardElements) ? dashboardElements.length : 0) + widgetIndex + 1); %>
+                  <% const widgetVisibilityRole = normalizeDashboardVisibilityRole(widget.visibilityRole, 'user'); %>
+                  <% const widgetDisabled = widgetVisibilityRole === 'disabled'; %>
+                  <% const widgetSource = String(widget.source || '').trim().toLowerCase(); %>
+                  <% const widgetSourceName = String(widget.sourceName || widget.source || 'Widget').trim() || 'Widget'; %>
+                  <% const widgetTitle = String(widget.title || widgetSourceName || 'Widget').trim() || 'Widget'; %>
+                  <% const widgetIcon = String(widget.sourceIcon || '/icons/app.svg').trim() || '/icons/app.svg'; %>
+                  <div class="settings-row settings-row--elements settings-row--with-expand settings-row--draggable settings-row--card-current <%= widgetDisabled ? 'is-disabled' : '' %>" data-app-id="widget" data-category="Widgets" data-category-rank="999" data-app-access-disabled="0" draggable="true">
+                    <div class="settings-element">
+                      <button class="order-button settings-drag-handle" type="button" title="Drag to reorder" aria-label="Drag to reorder">&#x2630;</button>
+                      <img class="settings-element-icon" src="<%= widgetIcon %>" alt="" onerror="this.src='/icons/app.svg'" />
+                      <span class="settings-element-name"><%= widgetTitle %></span>
+                    </div>
+                    <div class="settings-cell settings-cell--visibility settings-col-visibility">
+                      <div class="settings-visibility-popover" data-dashboard-visibility-popover>
+                        <button class="settings-visibility-trigger" type="button" aria-label="Configure dashboard visibility role" aria-expanded="false" aria-haspopup="true"></button>
+                        <div class="settings-visibility-menu" hidden>
+                          <label class="settings-visibility-group">
+                            <span class="settings-visibility-label">Dashboard Visibility</span>
+                            <select class="settings-select settings-visibility-select dashboard-visibility-select" name="<%= widgetPrefix %>_visibility_role" data-dashboard-visibility-role>
+                              <% dashboardVisibilityRoles.forEach((option) => { %>
+                                <option value="<%= option.value %>" <%= option.value === widgetVisibilityRole ? 'selected' : '' %>><%= option.label %></option>
+                              <% }) %>
+                            </select>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="settings-cell settings-cell--visibility settings-col-visibility">
+                      <div class="settings-visibility-popover" data-dashboard-filter-popover>
+                        <button class="settings-visibility-trigger" type="button" aria-label="Configure widget settings" aria-expanded="false" aria-haspopup="true"></button>
+                        <div class="settings-visibility-menu settings-filter-menu" hidden>
+                          <div class="settings-filter-group-title">Widget Card</div>
+                          <div class="settings-grid">
+                            <label class="field">
+                              <span>Title</span>
+                              <input type="text" name="<%= widgetPrefix %>_title" value="<%= widgetTitle %>" />
+                            </label>
+                            <label class="field">
+                              <span>Source</span>
+                              <select class="settings-select" name="<%= widgetPrefix %>_source">
+                                <% (Array.isArray(dashboardWidgetSources) ? dashboardWidgetSources : []).forEach((sourceOption) => { %>
+                                  <% const sourceValue = String(sourceOption.id || '').trim().toLowerCase(); %>
+                                  <% if (!sourceValue) return; %>
+                                  <% const sourceLabel = `${sourceOption.name || sourceValue}${sourceOption.available === false ? ' (Unavailable)' : ''}`; %>
+                                  <option value="<%= sourceValue %>" <%= sourceValue === widgetSource ? 'selected' : '' %>><%= sourceLabel %></option>
+                                <% }) %>
+                              </select>
+                            </label>
+                            <label class="field">
+                              <span>Rows</span>
+                              <input type="number" min="1" max="6" step="1" name="<%= widgetPrefix %>_rows" value="<%= Number.isFinite(Number(widget.rows)) ? Number(widget.rows) : 2 %>" />
+                            </label>
+                            <label class="field">
+                              <span>Columns</span>
+                              <input type="number" min="1" max="8" step="1" name="<%= widgetPrefix %>_columns" value="<%= Number.isFinite(Number(widget.columns)) ? Number(widget.columns) : 4 %>" />
+                            </label>
+                            <label class="field">
+                              <span>Item Limit</span>
+                              <input type="number" min="1" max="200" step="1" name="<%= widgetPrefix %>_limit" value="<%= Number.isFinite(Number(widget.limit)) ? Number(widget.limit) : 12 %>" />
+                            </label>
+                            <label class="field">
+                              <span>Refresh (sec)</span>
+                              <input type="number" min="15" max="3600" step="1" name="<%= widgetPrefix %>_refresh_seconds" value="<%= Number.isFinite(Number(widget.refreshSeconds)) ? Number(widget.refreshSeconds) : 120 %>" />
+                            </label>
+                          </div>
+                          <div class="settings-filter-group-title">Filters</div>
+                          <div class="settings-grid">
+                            <label class="field">
+                              <span>Media</span>
+                              <select class="settings-select" name="<%= widgetPrefix %>_filter_media" <%= widgetSupports.media ? '' : 'disabled' %>>
+                                <option value="all" <%= (widget.filters?.media || 'all') === 'all' ? 'selected' : '' %>>All media</option>
+                                <option value="movie" <%= (widget.filters?.media || '') === 'movie' ? 'selected' : '' %>>Movies</option>
+                                <option value="show" <%= (widget.filters?.media || '') === 'show' ? 'selected' : '' %>>TV</option>
+                              </select>
+                            </label>
+                            <label class="field">
+                              <span>Letters</span>
+                              <select class="settings-select" name="<%= widgetPrefix %>_filter_letter" <%= widgetSupports.letter ? '' : 'disabled' %>>
+                                <option value="all" <%= (widget.filters?.letter || 'all') === 'all' ? 'selected' : '' %>>All letters</option>
+                                <option value="#" <%= (widget.filters?.letter || '') === '#' ? 'selected' : '' %>>#</option>
+                                <% 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').forEach((letter) => { %>
+                                  <option value="<%= letter.toLowerCase() %>" <%= (widget.filters?.letter || '') === letter.toLowerCase() ? 'selected' : '' %>><%= letter %></option>
+                                <% }) %>
+                              </select>
+                            </label>
+                            <label class="field">
+                              <span>Status</span>
+                              <select class="settings-select" name="<%= widgetPrefix %>_filter_status" <%= widgetSupports.status ? '' : 'disabled' %>>
+                                <option value="all" <%= (widget.filters?.status || 'all') === 'all' ? 'selected' : '' %>>All status</option>
+                                <option value="active" <%= (widget.filters?.status || '') === 'active' ? 'selected' : '' %>>Active</option>
+                                <option value="inactive" <%= (widget.filters?.status || '') === 'inactive' ? 'selected' : '' %>>Inactive</option>
+                                <option value="added" <%= (widget.filters?.status || '') === 'added' ? 'selected' : '' %>>Added</option>
+                                <option value="changed" <%= (widget.filters?.status || '') === 'changed' ? 'selected' : '' %>>Changed</option>
+                                <option value="fixed" <%= (widget.filters?.status || '') === 'fixed' ? 'selected' : '' %>>Fixed</option>
+                                <option value="error" <%= (widget.filters?.status || '') === 'error' ? 'selected' : '' %>>Error</option>
+                              </select>
+                            </label>
+                          </div>
+                          <div class="settings-grid">
+                            <label class="radio-pill">
+                              <input type="checkbox" name="<%= widgetPrefix %>_auto_scroll" <%= widget.autoScroll !== false ? 'checked' : '' %> />
+                              <span>Auto-scroll</span>
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <input type="hidden" class="settings-order-input" name="<%= widgetPrefix %>_order" value="<%= widgetOrder %>" />
+                    <input type="hidden" name="<%= widgetPrefix %>_present" value="1" />
+                    <div class="settings-cell settings-expand-cell">
+                      <button class="settings-expand-toggle settings-inline-toggle settings-element-options-toggle" type="button" aria-label="Widget settings are in the filter menu" aria-expanded="false" disabled>
+                        <img class="settings-expand-icon" src="/icons/expand.svg" alt="" />
+                      </button>
+                    </div>
+                    <div class="settings-cell settings-delete-cell">
+                      <button
+                        class="order-button default-app-delete settings-dashboard-delete"
+                        type="button"
+                        data-dashboard-element-key="widget:<%= widgetId %>"
+                        title="Remove widget card"
+                        aria-label="Remove widget card"
+                      >&times;</button>
+                    </div>
+                  </div>
+                <% }) %>
               </div>
               <%
                 const dashboardAddResultMap = {
@@ -1840,6 +1973,14 @@
                     <small>Disable index snapping and allow fast horizontal swipe scrolling.</small>
                   </span>
                 </label>
+                <label class="settings-toggle theme-option">
+                  <input id="themeHideScrollbars" type="checkbox" />
+                  <span class="settings-toggle-slider" aria-hidden="true"></span>
+                  <span class="theme-option-copy">
+                    <strong>Hide scrollbars</strong>
+                    <small>Hide visual scrollbar rails while keeping scroll behavior.</small>
+                  </span>
+                </label>
               </div>
               <%
                 const themeDefaultsResultMap = {
@@ -1857,6 +1998,7 @@
                 <input type="hidden" name="theme_square_corners" id="themeDefaultSquareCorners" />
                 <input type="hidden" name="theme_bg_motion" id="themeDefaultBgMotion" />
                 <input type="hidden" name="theme_carousel_free_scroll" id="themeDefaultCarouselFreeScroll" />
+                <input type="hidden" name="theme_hide_scrollbars" id="themeDefaultHideScrollbars" />
                 <button class="primary-button" type="submit">Save current theme as default</button>
               </form>
               <% if (themeDefaultsNote) { %>
@@ -2068,7 +2210,7 @@
             </div>
             <div class="settings-about-link-row">
               <span>Discord</span>
-              <a href="https://discord.gg/sTsmy7db" target="_blank" rel="noreferrer noopener">https://discord.gg/sTsmy7db</a>
+              <a href="https://discord.gg/TuR7uMajEj" target="_blank" rel="noreferrer noopener">https://discord.gg/TuR7uMajEj</a>
             </div>
           </div>
         </div>
@@ -2873,6 +3015,7 @@
     const themeSquareCornersToggle = document.getElementById('themeSquareCorners');
     const themeBgMotionToggle = document.getElementById('themeBgMotion');
     const themeCarouselFreeScrollToggle = document.getElementById('themeCarouselFreeScroll');
+    const themeHideScrollbarsToggle = document.getElementById('themeHideScrollbars');
     const themeDefaultForm = document.getElementById('themeDefaultForm');
     const themeDefaultModeInput = document.getElementById('themeDefaultMode');
     const themeDefaultBrandThemeInput = document.getElementById('themeDefaultBrandTheme');
@@ -2881,6 +3024,7 @@
     const themeDefaultSquareCornersInput = document.getElementById('themeDefaultSquareCorners');
     const themeDefaultBgMotionInput = document.getElementById('themeDefaultBgMotion');
     const themeDefaultCarouselFreeScrollInput = document.getElementById('themeDefaultCarouselFreeScroll');
+    const themeDefaultHideScrollbarsInput = document.getElementById('themeDefaultHideScrollbars');
     const allowedBrandThemes = new Set(['custom', 'launcharr', 'rocketship', 'pulsarr', 'plex', 'radarr', 'sonarr', 'lidarr', 'readarr']);
     const customColorStorageKey = 'launcharr-custom-color';
     const serverThemeDefaults = <%- JSON.stringify(themeDefaults || {}) %>;
@@ -2889,6 +3033,7 @@
       squareCorners: 'launcharr-square-corners',
       bgMotion: 'launcharr-bg-motion',
       carouselFreeScroll: 'launcharr-carousel-free-scroll',
+      hideScrollbars: 'launcharr-hide-scrollbars',
     };
     const resolveBrandTheme = (value) => {
       const raw = String(value || '').trim().toLowerCase();
@@ -2907,6 +3052,7 @@
       const starSpeed = 45;
       const starSize = 1.2;
       const carouselFreeScroll = Boolean(options.carouselFreeScroll);
+      const hideScrollbars = Boolean(options.hideScrollbars);
       document.documentElement.dataset.sidebarInvert = sidebarInvert ? '1' : '0';
       document.documentElement.dataset.squareCorners = squareCorners ? '1' : '0';
       document.documentElement.dataset.bgMotion = bgMotion ? '1' : '0';
@@ -2914,14 +3060,17 @@
       document.documentElement.style.setProperty('--star-speed', `${starSpeed}s`);
       document.documentElement.style.setProperty('--star-size', String(starSize));
       document.documentElement.dataset.carouselFreeScroll = carouselFreeScroll ? '1' : '0';
+      document.documentElement.dataset.hideScrollbars = hideScrollbars ? '1' : '0';
       safeStorage.set(themeOptionStorageKeys.sidebarInvert, sidebarInvert ? '1' : '0');
       safeStorage.set(themeOptionStorageKeys.squareCorners, squareCorners ? '1' : '0');
       safeStorage.set(themeOptionStorageKeys.bgMotion, bgMotion ? '1' : '0');
       safeStorage.set(themeOptionStorageKeys.carouselFreeScroll, carouselFreeScroll ? '1' : '0');
+      safeStorage.set(themeOptionStorageKeys.hideScrollbars, hideScrollbars ? '1' : '0');
       if (themeSidebarInvertToggle) themeSidebarInvertToggle.checked = sidebarInvert;
       if (themeSquareCornersToggle) themeSquareCornersToggle.checked = squareCorners;
       if (themeBgMotionToggle) themeBgMotionToggle.checked = bgMotion;
       if (themeCarouselFreeScrollToggle) themeCarouselFreeScrollToggle.checked = carouselFreeScroll;
+      if (themeHideScrollbarsToggle) themeHideScrollbarsToggle.checked = hideScrollbars;
       syncThemeDefaultForm();
     };
     const syncThemeOptionsFromInputs = () => {
@@ -2930,6 +3079,7 @@
         squareCorners: Boolean(themeSquareCornersToggle?.checked),
         bgMotion: Boolean(themeBgMotionToggle?.checked),
         carouselFreeScroll: Boolean(themeCarouselFreeScrollToggle?.checked),
+        hideScrollbars: Boolean(themeHideScrollbarsToggle?.checked),
       });
     };
     const parseHexColor = (value) => {
@@ -3026,18 +3176,23 @@
       if (themeDefaultCarouselFreeScrollInput) {
         themeDefaultCarouselFreeScrollInput.value = themeCarouselFreeScrollToggle?.checked ? '1' : '0';
       }
+      if (themeDefaultHideScrollbarsInput) {
+        themeDefaultHideScrollbarsInput.value = themeHideScrollbarsToggle?.checked ? '1' : '0';
+      }
     };
     const initialThemeOptions = {
       sidebarInvert: parseStoredBool(themeOptionStorageKeys.sidebarInvert, serverThemeDefaults.sidebarInvert === true),
       squareCorners: parseStoredBool(themeOptionStorageKeys.squareCorners, serverThemeDefaults.squareCorners === true),
       bgMotion: parseStoredBool(themeOptionStorageKeys.bgMotion, serverThemeDefaults.bgMotion === undefined ? true : serverThemeDefaults.bgMotion === true),
       carouselFreeScroll: parseStoredBool(themeOptionStorageKeys.carouselFreeScroll, serverThemeDefaults.carouselFreeScroll === true),
+      hideScrollbars: parseStoredBool(themeOptionStorageKeys.hideScrollbars, serverThemeDefaults.hideScrollbars === true),
     };
     applyThemeOptions(initialThemeOptions);
     themeSidebarInvertToggle?.addEventListener('change', syncThemeOptionsFromInputs);
     themeSquareCornersToggle?.addEventListener('change', syncThemeOptionsFromInputs);
     themeBgMotionToggle?.addEventListener('change', syncThemeOptionsFromInputs);
     themeCarouselFreeScrollToggle?.addEventListener('change', syncThemeOptionsFromInputs);
+    themeHideScrollbarsToggle?.addEventListener('change', syncThemeOptionsFromInputs);
     if (themePresetButtons.length) {
       const initialCustomHex = parseHexColor(safeStorage.get(customColorStorageKey) || serverThemeDefaults.customColor || '#1cc6c2');
       if (customThemeColorInput) customThemeColorInput.value = initialCustomHex;

@@ -28,11 +28,13 @@
         var bgMotionDefault = themeDefaults && themeDefaults.bgMotion === undefined ? true : (themeDefaults && themeDefaults.bgMotion === true);
         var bgMotion = bgMotionStored === null ? bgMotionDefault : (bgMotionStored === "1" || bgMotionStored === "true");
         var carouselFreeScroll = parseStoredBool("launcharr-carousel-free-scroll", themeDefaults && themeDefaults.carouselFreeScroll === true);
+        var hideScrollbars = parseStoredBool("launcharr-hide-scrollbars", themeDefaults && themeDefaults.hideScrollbars === true);
         var maximizedWindow = localStorage.getItem("launcharr-maximized-window") === "1";
         document.documentElement.dataset.sidebarInvert = sidebarInvert ? "1" : "0";
         document.documentElement.dataset.squareCorners = squareCorners ? "1" : "0";
         document.documentElement.dataset.bgMotion = bgMotion ? "1" : "0";
         document.documentElement.dataset.carouselFreeScroll = carouselFreeScroll ? "1" : "0";
+        document.documentElement.dataset.hideScrollbars = hideScrollbars ? "1" : "0";
         document.documentElement.dataset.maximized = maximizedWindow ? "1" : "0";
         var starDensity = 165;
         var starSpeed = 45;
@@ -104,6 +106,12 @@
     const multiInstanceBaseIdsList = (Array.isArray(multiInstanceBaseIds) ? multiInstanceBaseIds : [])
       .map((item) => String(item || '').trim().toLowerCase())
       .filter(Boolean);
+    const visibleDashboardWidgets = Array.isArray(dashboardWidgets) ? dashboardWidgets : [];
+    const hasDashboardContent = Boolean(
+      (Array.isArray(dashboardModules) && dashboardModules.length)
+      || visibleDashboardWidgets.length
+      || canManageWidgets
+    );
     const resolveAppBaseId = (value) => {
       const id = String(value || '').trim().toLowerCase();
       if (!id) return '';
@@ -289,7 +297,7 @@
         </div>
       </div>
 
-      <% if (dashboardModules.length) { %>
+      <% if (hasDashboardContent) { %>
         <%
           const hasPlexActive = dashboardModules.some((item) => item.app.id === 'plex' && item.element.id === 'active' && !item.mediaCombined);
           const hasPlexRecent = dashboardModules.some((item) => item.app.id === 'plex' && item.element.id === 'recent' && !item.mediaCombined);
@@ -1815,6 +1823,39 @@
             <% } %>
           <% }) %>
 
+          <% if (visibleDashboardWidgets.length || canManageWidgets) { %>
+            <section class="plex-module plex-module--no-subtitle dashboard-widgets-module" id="dashboard-widgets-module" data-widgets-admin="<%= canManageWidgets ? '1' : '0' %>">
+              <div class="plex-topbar">
+                <div class="plex-title-wrap">
+                  <div class="plex-title">
+                    <img class="plex-logo" src="/icons/dashboard.svg" alt="Widgets" loading="eager" />
+                    <span>Widgets</span>
+                  </div>
+                  <div class="plex-subtitle"></div>
+                </div>
+                <div class="plex-spacer"></div>
+                <div class="plex-controls-right">
+                  <% if (canManageWidgets) { %>
+                    <button class="plex-iconbtn dashboard-widget-add-btn" id="dashboardWidgetsAddBtn" type="button" aria-label="Add widget card" title="Add widget card">+</button>
+                  <% } %>
+                  <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="dashboard-widgets-module" data-collapse-global="true">
+                    <div class="plex-doublechev">
+                      <div class="plex-chev plex-up"></div>
+                      <div class="plex-chev plex-down"></div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+              <div class="plex-panel">
+                <div id="dashboardWidgetsRoot" class="dashboard-widgets-root">
+                  <div class="plex-empty">
+                    <%= visibleDashboardWidgets.length ? 'Loading…' : (canManageWidgets ? 'No widget cards yet. Use + to add one.' : 'No widget cards configured.') %>
+                  </div>
+                </div>
+              </div>
+            </section>
+          <% } %>
+
           <% if (hasPlexActive) { %>
             <div id="plexActiveModalBackdrop" class="plex-modal-backdrop plex-hidden">
               <div class="plex-modal">
@@ -2865,6 +2906,14 @@
   <% } %>
   <% if (dashboardModules.some((item) => ['prowlarr', 'jackett'].includes(item.app.id) && item.element.id === 'search')) { %>
     <script src="/indexer-table-sort.js?v=<%= assetVersion %>"></script>
+  <% } %>
+  <% if ((Array.isArray(dashboardWidgets) && dashboardWidgets.length) || canManageWidgets) { %>
+    <script>
+      window.DASHBOARD_WIDGETS_CONFIG = <%- JSON.stringify(Array.isArray(dashboardWidgets) ? dashboardWidgets : []) %>;
+      window.DASHBOARD_WIDGET_SOURCES = <%- JSON.stringify(Array.isArray(dashboardWidgetSources) ? dashboardWidgetSources : []) %>;
+      window.DASHBOARD_WIDGETS_CAN_MANAGE = <%= canManageWidgets ? 'true' : 'false' %>;
+    </script>
+    <script src="/widgets-overview.js?v=<%= assetVersion %>"></script>
   <% } %>
   <script src="/table-pagination.js?v=<%= assetVersion %>"></script>
   <script src="/version-badge.js?v=<%= assetVersion %>"></script>
