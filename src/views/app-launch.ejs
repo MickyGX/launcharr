@@ -316,7 +316,17 @@
       </div>
 
       <div class="dash-panel launch-frame-panel">
-        <iframe class="launch-frame" src="<%= launchUrl %>" title="Launch <%= app.name %>" loading="eager"></iframe>
+        <iframe
+          class="launch-frame"
+          <% if (deferIframeNavigation) { %>
+            data-launch-url="<%= launchUrl %>"
+            src="about:blank"
+          <% } else { %>
+            src="<%= launchUrl %>"
+          <% } %>
+          title="Launch <%= app.name %>"
+          loading="eager"
+        ></iframe>
         <div class="launch-frame-overlay" aria-hidden="true"></div>
       </div>
     </section>
@@ -330,6 +340,7 @@
     const mainContent = document.querySelector('.dash-main');
     const sidebar = document.querySelector('.dash-sidebar');
     const dashNav = document.querySelector('.dash-nav');
+    const launchFrame = document.querySelector('.launch-frame');
     const safeStorage = {
       get(key) {
         try {
@@ -346,6 +357,25 @@
         }
       },
     };
+
+    (function primeIframeLaunchAfterCookieSet() {
+      if (!launchFrame) return;
+      const deferredUrl = String(launchFrame.getAttribute('data-launch-url') || '').trim();
+      if (!deferredUrl) return;
+      // Romm cookie priming happens on the HTML response that renders this page.
+      // Deferring iframe navigation avoids a first request racing ahead of Set-Cookie.
+      const start = () => {
+        if (!launchFrame || launchFrame.src === deferredUrl) return;
+        launchFrame.src = deferredUrl;
+      };
+      if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        setTimeout(start, 75);
+        return;
+      }
+      window.addEventListener('DOMContentLoaded', () => {
+        setTimeout(start, 75);
+      }, { once: true });
+    })();
 
     function setToggleIcon() {
       if (!toggleIcon) return;

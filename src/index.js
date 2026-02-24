@@ -2039,6 +2039,9 @@ app.get('/apps/:id/launch', requireUser, async (req, res) => {
   const launchMode = resolveEffectiveLaunchMode(appWithIcon, req, normalizeMenu(appWithIcon));
   if (launchMode === 'iframe') {
     let iframeLaunchTarget = launchUrl;
+    // When we prime Romm cookies on this same response, delay iframe navigation
+    // so the browser applies Set-Cookie before the iframe's first request.
+    let deferIframeNavigation = false;
     if (hasEmbeddedUrlCredentials(launchUrl)) {
       const browserLaunchTarget = stripUrlEmbeddedCredentials(launchUrl) || launchUrl;
       const primingPlan = buildRommCookiePrimingPlan({
@@ -2053,6 +2056,7 @@ app.get('/apps/:id/launch', requireUser, async (req, res) => {
       });
       if (rommBootstrap?.ok) {
         iframeLaunchTarget = rommBootstrap.launchUrl || browserLaunchTarget;
+        const primingCompatibility = evaluateRommCookiePrimingCompatibility(rommBootstrap.setCookies, primingPlan);
         const primedCookies = prepareRommPrimedSetCookies(rommBootstrap.setCookies, primingPlan);
         logRommLaunchServerDiagnostic(req, {
           route: 'launch',
@@ -2066,11 +2070,12 @@ app.get('/apps/:id/launch', requireUser, async (req, res) => {
         });
         if (primedCookies.length) {
           res.append('Set-Cookie', primedCookies);
-        } else if (!primingPlan.canPrime) {
+          deferIframeNavigation = true;
+        } else if (!primingCompatibility.ok) {
           logRommLaunchServerDiagnostic(req, {
             route: 'launch',
             launchMode: 'iframe',
-            stage: 'fallback-top-level-no-cookie-priming',
+            stage: 'fallback-top-level-cookie-priming-incompatible',
             role,
             browserLaunchTarget,
             primingPlan,
@@ -2115,6 +2120,7 @@ app.get('/apps/:id/launch', requireUser, async (req, res) => {
       activeDashboard,
       app: appWithIcon,
       launchUrl: iframeLaunchUrl || iframeLaunchTarget,
+      deferIframeNavigation,
     });
   }
 
@@ -2131,6 +2137,7 @@ app.get('/apps/:id/launch', requireUser, async (req, res) => {
       authBaseCandidates: resolveAppApiCandidates(appWithIcon, req),
     });
     if (rommBootstrap?.ok) {
+      const primingCompatibility = evaluateRommCookiePrimingCompatibility(rommBootstrap.setCookies, primingPlan);
       const primedCookies = prepareRommPrimedSetCookies(rommBootstrap.setCookies, primingPlan);
       logRommLaunchServerDiagnostic(req, {
         route: 'launch',
@@ -2147,6 +2154,18 @@ app.get('/apps/:id/launch', requireUser, async (req, res) => {
         return sendClientLaunchRedirectPage(res, browserLaunchTarget, {
           title: `${String(appWithIcon?.name || 'App').trim() || 'App'} Launch`,
           message: 'Starting app...',
+        });
+      }
+      if (!primingCompatibility.ok) {
+        logRommLaunchServerDiagnostic(req, {
+          route: 'launch',
+          launchMode: 'new-tab',
+          stage: 'fallback-direct-redirect-cookie-priming-incompatible',
+          role,
+          browserLaunchTarget,
+          primingPlan,
+          rommBootstrap,
+          primedCookies,
         });
       }
     }
@@ -5699,7 +5718,10 @@ app.post('/api/romm/viewer-session-test', requireAdmin, async (req, res) => {
     }
   }
 
-  const primedSetCookies = (bootstrap?.ok && primeBrowser)
+  const primingCompatibility = bootstrap?.ok
+    ? evaluateRommCookiePrimingCompatibility(bootstrap.setCookies, primingPlan)
+    : { ok: false, blocking: false, reason: '' };
+  const primedSetCookies = (bootstrap?.ok && primeBrowser && primingCompatibility.ok)
     ? prepareRommPrimedSetCookies(bootstrap.setCookies, primingPlan)
     : [];
   if (primedSetCookies.length) {
@@ -5712,8 +5734,8 @@ app.post('/api/romm/viewer-session-test', requireAdmin, async (req, res) => {
   const primedBrowser = Boolean(primedSetCookies.length);
   const message = (() => {
     if (!bootstrap?.ok) return bootstrap?.error || `Romm ${sessionLabel} session bootstrap failed.`;
-    if (!primingPlan.canPrime) {
-      return `Romm login succeeded server-side, but browser cookie priming is blocked. ${primingPlan.reason || 'No compatible shared cookie domain found.'} Launcharr host: ${primingPlan.configuredLauncharrHost || primingPlan.requestHost || 'unknown'}; Romm host: ${primingPlan.targetHost || 'unknown'}.`;
+    if (!primingCompatibility.ok) {
+      return `Romm login succeeded server-side, but browser cookie priming is blocked. ${primingCompatibility.reason || primingPlan.reason || 'No compatible shared cookie domain found.'} Launcharr host: ${primingPlan.configuredLauncharrHost || primingPlan.requestHost || 'unknown'}; Romm host: ${primingPlan.targetHost || 'unknown'}.`;
     }
     if (!probe.ok) {
       return `Romm login cookies were obtained${primedBrowser ? ' and primed in this browser' : ''}, but /api/users/me verification failed${probe.status ? ` (${probe.status})` : ''}${probe.error ? `: ${probe.error}` : '.'}`;
@@ -5733,6 +5755,8 @@ app.post('/api/romm/viewer-session-test', requireAdmin, async (req, res) => {
       targetHost: primingPlan.targetHost,
       configuredLauncharrHost: primingPlan.configuredLauncharrHost,
       canPrimeBrowserCookies: primingPlan.canPrime,
+      cookiePrimingCompatible: primingCompatibility.ok,
+      cookiePrimingCompatibilityReason: primingCompatibility.reason,
       cookiePrimingMode: primingPlan.mode,
       cookieDomain: primingPlan.cookieDomain,
       baseLaunchUrl,
@@ -10772,6 +10796,20 @@ function hasRommSessionCookie(setCookies = []) {
   ));
 }
 
+function hasHostPrefixedRommSessionCookie(setCookies = []) {
+  const names = (Array.isArray(setCookies) ? setCookies : [])
+    .map((cookie) => getCookieNameFromSetCookie(cookie).toLowerCase())
+    .filter(Boolean);
+  return names.some((name) => (
+    name.startsWith('__host-')
+    && (
+      name === '__host-romm_session'
+      || /^__host-romm_.*session/.test(name)
+      || name.endsWith('_session')
+    )
+  ));
+}
+
 function buildCookieHeaderFromSetCookies(setCookies = []) {
   return (Array.isArray(setCookies) ? setCookies : [])
     .map((value) => String(value || '').split(';')[0].trim())
@@ -10881,10 +10919,33 @@ function buildRommCookiePrimingPlan({ config, req, browserUrl }) {
   };
 }
 
+function evaluateRommCookiePrimingCompatibility(setCookies, plan) {
+  if (!plan?.canPrime) {
+    return {
+      ok: false,
+      blocking: true,
+      reason: String(plan?.reason || 'Browser cookie priming is not available.').trim(),
+    };
+  }
+
+  if (plan.mode === 'shared-domain' && hasHostPrefixedRommSessionCookie(setCookies)) {
+    // __Host- cookies must be host-only (no Domain attribute). Shared-domain priming
+    // rewrites Domain=... so the browser will reject the cookie.
+    return {
+      ok: false,
+      blocking: true,
+      reason: 'Romm returned a __Host- prefixed session cookie, which browsers reject when Launcharr rewrites it to a shared Domain for subdomain cookie priming.',
+    };
+  }
+
+  return { ok: true, blocking: false, reason: '' };
+}
+
 function prepareRommPrimedSetCookies(setCookies, plan) {
   const list = Array.isArray(setCookies) ? setCookies : [];
   if (!list.length) return [];
-  if (!plan?.canPrime) return [];
+  const compatibility = evaluateRommCookiePrimingCompatibility(list, plan);
+  if (!compatibility.ok) return [];
   if (plan.mode === 'shared-domain' && plan.cookieDomain) {
     return list.map((cookie) => rewriteSetCookieDomainAttribute(cookie, plan.cookieDomain)).filter(Boolean);
   }
