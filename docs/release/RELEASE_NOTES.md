@@ -3,15 +3,15 @@
 ## v0.2.40 (2026-02-24)
 
 - [Added]
-- Added an admin `Quick Start Guide` modal flow with guided setup steps and a direct link to `Settings -> Custom -> Sidebar`.
-- Added a release `Welcome` modal that shows changelog highlights for the installed version and links to release notes.
-- Added changelog highlight parsing + `releaseNotesUrl`/`highlights` fields to `/api/version` for the version badge/release welcome experience.
+- Added multi-dashboard support with dashboard tabs/definitions, per-dashboard name/icon/visibility, and admin add/duplicate/delete controls in `Settings -> Custom -> Dashboard`.
+- Added per-dashboard saved state snapshots so dashboard card layouts/settings can differ by dashboard instead of sharing one global layout.
+- Added admin role-view switching (`guest` / `user` / `co-admin` / `admin`) via `/switch-view`, including role picker UI and dashboard-availability indicators in the user menu.
 - [Changed]
-- Updated the status/version badge flow so admin onboarding (`Quick Start Guide`) runs before release welcome prompts, avoiding stacked modals.
-- Updated frontend asset loading across dashboard/app/settings views to append a runtime `assetVersion` cache-busting query for CSS/JS assets.
+- Updated dashboard/app/settings navigation and routing to preserve a selected dashboard via `?dashboard=` and fall back to a visible dashboard when the requested one is not allowed for the current role.
+- Updated dashboard settings saves to persist dashboard metadata (name/icon/visibility) plus dashboard-specific card/combined/widget state.
 - [Fixed]
-- Reduced stale-asset mismatches after upgrades (especially `styles.css`, `version-badge.js`, and `pwa.js`) by cache-busting rendered asset URLs.
-- Auto-dismissed `Quick Start Guide` pending state when active apps already exist, preventing unnecessary onboarding prompts on populated installs.
+- Fixed version badge admin-view detection so status/version UI works correctly with the new role-view picker links.
+- Reduced stale asset mismatches after upgrades by cache-busting rendered CSS/JS asset URLs (`styles.css`, `version-badge.js`, `pwa.js`) across updated views.
 
 ## v0.2.39 (2026-02-22)
 
