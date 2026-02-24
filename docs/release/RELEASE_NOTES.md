@@ -1,4 +1,17 @@
-# Release Notes (v0.1.0 -> v0.2.39)
+# Release Notes (v0.1.0 -> v0.2.40)
+
+## v0.2.40 (2026-02-24)
+
+- [Added]
+- Added an admin `Quick Start Guide` modal flow with guided setup steps and a direct link to `Settings -> Custom -> Sidebar`.
+- Added a release `Welcome` modal that shows changelog highlights for the installed version and links to release notes.
+- Added changelog highlight parsing + `releaseNotesUrl`/`highlights` fields to `/api/version` for the version badge/release welcome experience.
+- [Changed]
+- Updated the status/version badge flow so admin onboarding (`Quick Start Guide`) runs before release welcome prompts, avoiding stacked modals.
+- Updated frontend asset loading across dashboard/app/settings views to append a runtime `assetVersion` cache-busting query for CSS/JS assets.
+- [Fixed]
+- Reduced stale-asset mismatches after upgrades (especially `styles.css`, `version-badge.js`, and `pwa.js`) by cache-busting rendered asset URLs.
+- Auto-dismissed `Quick Start Guide` pending state when active apps already exist, preventing unnecessary onboarding prompts on populated installs.
 
 ## v0.2.39 (2026-02-22)
 
