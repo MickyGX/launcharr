@@ -113,12 +113,41 @@
       </div>
 
       <div class="dash-nav">
-        <a class="nav-item" href="/dashboard">
-          <img class="nav-icon" src="/icons/dashboard.svg" alt="" />
-          <span class="nav-label">Dashboard</span>
-        </a>
+        <%
+          const settingsSidebarDashboards = Array.isArray(sidebarDashboardDefinitions)
+            ? sidebarDashboardDefinitions
+            : dashboardDefinitions;
+          const settingsDashboardNavEntries = (Array.isArray(settingsSidebarDashboards) ? settingsSidebarDashboards : [])
+            .map((entry) => ({
+              id: String(entry?.id || '').trim() || 'main',
+              name: String(entry?.name || '').trim() || 'Dashboard',
+              icon: String(entry?.icon || '/icons/dashboard.svg').trim() || '/icons/dashboard.svg',
+            }))
+            .filter((entry, index, list) => entry.id && list.findIndex((candidate) => candidate.id === entry.id) === index);
+          const activeSettingsDashboardNavId = String((sidebarActiveDashboard || activeDashboard)?.id || 'main').trim() || 'main';
+          const mainSettingsDashboardNavEntry = settingsDashboardNavEntries.find((entry) => entry.id === 'main')
+            || { id: 'main', name: 'Dashboard', icon: '/icons/dashboard.svg' };
+          const primarySettingsDashboardNavEntry = mainSettingsDashboardNavEntry?.id && settingsDashboardNavEntries.some((entry) => entry.id === mainSettingsDashboardNavEntry.id)
+            ? mainSettingsDashboardNavEntry
+            : (settingsDashboardNavEntries[0] || { id: 'main', name: 'Dashboard', icon: '/icons/dashboard.svg' });
+          const secondarySettingsDashboardNavEntries = settingsDashboardNavEntries.filter((entry) => entry.id !== primarySettingsDashboardNavEntry.id);
+        %>
+        <% if (settingsDashboardNavEntries.length) { %>
+          <a class="nav-item<%= activeSettingsDashboardNavId === primarySettingsDashboardNavEntry.id ? ' active' : '' %>" href="/dashboard?dashboard=<%= encodeURIComponent(primarySettingsDashboardNavEntry.id || 'main') %>">
+            <img class="nav-icon" src="<%= primarySettingsDashboardNavEntry.icon || '/icons/dashboard.svg' %>" alt="" onerror="this.src='/icons/dashboard.svg'" />
+            <span class="nav-label"><%= primarySettingsDashboardNavEntry.name || 'Dashboard' %></span>
+          </a>
+          <% if (secondarySettingsDashboardNavEntries.length) { %>
+            <% secondarySettingsDashboardNavEntries.forEach((dashboardLink) => { %>
+              <a class="nav-item nav-item--dashboard-child<%= activeSettingsDashboardNavId === dashboardLink.id ? ' active' : '' %>" href="/dashboard?dashboard=<%= encodeURIComponent(dashboardLink.id) %>">
+                <img class="nav-icon" src="<%= dashboardLink.icon || '/icons/dashboard.svg' %>" alt="" onerror="this.src='/icons/dashboard.svg'" />
+                <span class="nav-label"><%= dashboardLink.name %></span>
+              </a>
+            <% }) %>
+          <% } %>
+        <% } %>
         <% if (navCategories && navCategories.length) { %>
-          <div class="nav-divider"></div>
+          <% if (settingsDashboardNavEntries.length) { %><div class="nav-divider"></div><% } %>
           <div class="nav-accordion">
             <% navCategories.forEach((category) => { %>
               <% if (category.sidebarMenu) { %>
@@ -220,16 +249,32 @@
           <span class="user-pill-caret" aria-hidden="true"></span>
           <div class="user-menu" role="menu">
             <% if (actualRole === 'admin') { %>
-              <a class="user-menu-item" href="/settings">
-                <img class="user-menu-icon" src="/icons/settings.svg" alt="" />
-                <span class="user-menu-text">Settings</span>
-              </a>
-            <% } %>
-            <% if (actualRole === 'admin') { %>
-              <a class="user-menu-item" href="/switch-view?role=<%= role === 'admin' ? 'user' : 'admin' %>">
-                <img class="user-menu-icon" src="/icons/window.svg" alt="" />
-                <span class="user-menu-text"><%= role === 'admin' ? 'User view' : 'Admin view' %></span>
-              </a>
+              <details class="user-menu-role-picker" data-user-role-picker>
+                <summary class="user-menu-item user-menu-role-trigger">
+                  <img class="user-menu-icon" src="/icons/view.svg" alt="" />
+                  <span class="user-menu-text">Role view</span>
+                  <span class="user-menu-role-caret" aria-hidden="true"></span>
+                </summary>
+                <div class="user-menu-role-options" role="group" aria-label="Role view options">
+                  <% const roleViewDashboardMap = (roleViewDashboardAvailability && typeof roleViewDashboardAvailability === 'object') ? roleViewDashboardAvailability : {}; %>
+                  <a class="user-menu-item user-menu-role-option<%= role === 'guest' ? ' is-active' : '' %>" href="/switch-view?role=guest">
+                    <span class="user-menu-role-state" aria-hidden="true"><% if (roleViewDashboardMap.guest?.hasDashboard) { %><img class="user-menu-role-state-icon" src="/icons/dashboard.svg" alt="" /><% } else { %><span class="user-menu-role-state-x">x</span><% } %></span>
+                    <span class="user-menu-role-name">Guest</span>
+                  </a>
+                  <a class="user-menu-item user-menu-role-option<%= role === 'user' ? ' is-active' : '' %>" href="/switch-view?role=user">
+                    <span class="user-menu-role-state" aria-hidden="true"><% if (roleViewDashboardMap.user?.hasDashboard) { %><img class="user-menu-role-state-icon" src="/icons/dashboard.svg" alt="" /><% } else { %><span class="user-menu-role-state-x">x</span><% } %></span>
+                    <span class="user-menu-role-name">User</span>
+                  </a>
+                  <a class="user-menu-item user-menu-role-option<%= role === 'co-admin' ? ' is-active' : '' %>" href="/switch-view?role=co-admin">
+                    <span class="user-menu-role-state" aria-hidden="true"><% if (roleViewDashboardMap['co-admin']?.hasDashboard) { %><img class="user-menu-role-state-icon" src="/icons/dashboard.svg" alt="" /><% } else { %><span class="user-menu-role-state-x">x</span><% } %></span>
+                    <span class="user-menu-role-name">Co-admin</span>
+                  </a>
+                  <a class="user-menu-item user-menu-role-option<%= role === 'admin' ? ' is-active' : '' %>" href="/switch-view?role=admin">
+                    <span class="user-menu-role-state" aria-hidden="true"><% if (roleViewDashboardMap.admin?.hasDashboard) { %><img class="user-menu-role-state-icon" src="/icons/dashboard.svg" alt="" /><% } else { %><span class="user-menu-role-state-x">x</span><% } %></span>
+                    <span class="user-menu-role-name">Admin</span>
+                  </a>
+                </div>
+              </details>
             <% } %>
             <a class="user-menu-item" href="/user-settings">
               <img class="user-menu-icon" src="/icons/user-profile.svg" alt="" />
@@ -240,6 +285,12 @@
               <img class="user-menu-icon" src="/icons/logout.svg" alt="" />
               <span class="user-menu-text">Sign out</span>
             </a>
+            <% if (actualRole === 'admin') { %>
+              <a class="user-menu-item" href="/settings">
+                <img class="user-menu-icon" src="/icons/settings.svg" alt="" />
+                <span class="user-menu-text">Settings</span>
+              </a>
+            <% } %>
           </div>
         </div>
       </div>
@@ -1002,6 +1053,31 @@
           <div class="settings-subtab-panel" data-subtab="dashboard">
             <form method="post" action="/settings/dashboard-elements" class="settings-form" id="dashboardElementsForm">
               <%
+                const dashboardTabs = (Array.isArray(dashboardDefinitions) ? dashboardDefinitions : [])
+                  .map((entry) => ({
+                    id: String(entry?.id || '').trim() || 'main',
+                    name: String(entry?.name || '').trim() || 'Dashboard',
+                    icon: String(entry?.icon || '/icons/dashboard.svg').trim() || '/icons/dashboard.svg',
+                    visibilityRole: String(entry?.visibilityRole || 'user').trim() || 'user',
+                    visibilityRoles: Array.isArray(entry?.visibilityRoles) ? entry.visibilityRoles : [],
+                  }))
+                  .filter((entry, index, list) => (
+                    entry.id && list.findIndex((candidate) => candidate.id === entry.id) === index
+                  ));
+                if (!dashboardTabs.length) {
+                  dashboardTabs.push({
+                    id: 'main',
+                    name: 'Dashboard',
+                    icon: '/icons/dashboard.svg',
+                    visibilityRole: 'user',
+                  });
+                }
+                const activeDashboardId = String(activeDashboard?.id || 'main').trim() || 'main';
+                const activeDashboardEntry = dashboardTabs.find((entry) => entry.id === activeDashboardId) || dashboardTabs[0];
+                const dashboardIconOptions = [
+                  ...(Array.isArray(systemIconDefaults) ? systemIconDefaults : []),
+                  ...(Array.isArray(systemIconCustom) ? systemIconCustom : []),
+                ];
                 const dashboardVisibilityRoles = [
                   { value: 'disabled', label: 'Disabled' },
                   { value: 'guest', label: 'Guest' },
@@ -1009,6 +1085,7 @@
                   { value: 'co-admin', label: 'Co-admin' },
                   { value: 'admin', label: 'Admin' },
                 ];
+                const dashboardInstanceVisibilityRoles = dashboardVisibilityRoles.filter((option) => option.value !== 'disabled');
                 const parseDashboardVisibilityRole = (value) => {
                   const raw = String(value || '').trim().toLowerCase();
                   if (!raw) return '';
@@ -1021,6 +1098,23 @@
                   const fallbackParsed = parseDashboardVisibilityRole(fallback);
                   return fallbackParsed || 'user';
                 };
+                const normalizeDashboardVisibilityRoleList = (value, fallback) => {
+                  const sourceList = Array.isArray(value) ? value : (value ? [value] : []);
+                  const parsed = sourceList
+                    .map((item) => parseDashboardVisibilityRole(item))
+                    .filter((role, index, list) => role && role !== 'disabled' && list.indexOf(role) === index);
+                  if (parsed.length) {
+                    return dashboardInstanceVisibilityRoles
+                      .map((option) => option.value)
+                      .filter((role) => parsed.includes(role));
+                  }
+                  const fallbackRole = normalizeDashboardVisibilityRole(fallback, 'user');
+                  if (fallbackRole === 'disabled') return [];
+                  const roleOrder = dashboardInstanceVisibilityRoles.map((option) => option.value);
+                  const fallbackIndex = roleOrder.indexOf(fallbackRole);
+                  if (fallbackIndex < 0) return ['user', 'co-admin', 'admin'];
+                  return roleOrder.slice(fallbackIndex);
+                };
                 const resolveCombinedDashboardVisibilityRoleView = (settings, fallback = 'user') => {
                   const source = settings && typeof settings === 'object' ? settings : {};
                   const explicit = parseDashboardVisibilityRole(source.visibilityRole);
@@ -1030,7 +1124,191 @@
                   if (!enabled || !dashboard) return 'disabled';
                   return normalizeDashboardVisibilityRole(fallback, 'user');
                 };
+                activeDashboardEntry.visibilityRoles = normalizeDashboardVisibilityRoleList(
+                  activeDashboardEntry.visibilityRoles,
+                  activeDashboardEntry.visibilityRole
+                );
+                const activeDashboardVisibilityRoles = activeDashboardEntry.visibilityRoles;
+                const activeDashboardVisibilitySummary = activeDashboardVisibilityRoles.length === 0
+                  ? 'Hidden (no roles selected)'
+                  : (activeDashboardVisibilityRoles.length === dashboardInstanceVisibilityRoles.length
+                    ? 'All roles'
+                    : dashboardInstanceVisibilityRoles
+                      .filter((option) => activeDashboardVisibilityRoles.includes(option.value))
+                      .map((option) => option.label)
+                      .join(', '));
+                const deletableDashboardTabs = dashboardTabs.filter((entry) => entry.id !== 'main');
               %>
+              <input type="hidden" name="dashboardId" value="<%= activeDashboardEntry.id %>" />
+              <input type="hidden" name="dashboard_duplicate_source" value="blank" data-dashboard-duplicate-source />
+              <input type="hidden" name="deleteDashboardId" value="<%= deletableDashboardTabs[0]?.id || '' %>" data-dashboard-delete-target />
+              <div class="settings-subtabs app-instance-tabs" role="tablist" aria-label="Dashboard tabs">
+                <% dashboardTabs.forEach((dashboardTab, dashboardTabIndex) => { %>
+                  <% const isMainDashboardTab = dashboardTab.id === 'main'; %>
+                  <div class="app-instance-tab-entry">
+                    <a
+                      class="settings-subtab-btn<%= dashboardTab.id === activeDashboardEntry.id ? ' is-active' : '' %>"
+                      href="/settings?tab=custom&settingsCustomTab=dashboard&dashboard=<%= encodeURIComponent(dashboardTab.id) %>"
+                      data-dashboard-id="<%= dashboardTab.id %>"
+                    >
+                      <span class="settings-subtab-text"><%= dashboardTab.name %></span>
+                    </a>
+                  </div>
+                <% }) %>
+                <% if (dashboardTabs.length < 10) { %>
+                  <div class="app-instance-tab-add-form settings-visibility-popover" data-dashboard-duplicate-popover>
+                    <button
+                      class="settings-subtab-btn app-instance-tab-add"
+                      type="button"
+                      title="Duplicate source: Blank"
+                      aria-label="Choose dashboard duplicate source (Blank)"
+                      aria-haspopup="true"
+                      aria-expanded="false"
+                      data-dashboard-duplicate-trigger
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                        <rect x="9" y="9" width="11" height="11" rx="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                      </svg>
+                    </button>
+                    <div class="settings-visibility-menu settings-filter-menu" hidden data-dashboard-duplicate-menu>
+                      <div class="settings-filter-group-title">Duplicate Source</div>
+                      <div class="settings-dashboard-role-filter-list">
+                        <label class="settings-dashboard-role-filter-option">
+                          <input type="radio" name="dashboard_duplicate_source_choice" value="blank" checked data-dashboard-duplicate-option />
+                          <span class="settings-dashboard-role-filter-option-label">Blank</span>
+                        </label>
+                        <% dashboardTabs.forEach((dashboardTab) => { %>
+                          <label class="settings-dashboard-role-filter-option">
+                            <input type="radio" name="dashboard_duplicate_source_choice" value="<%= dashboardTab.id %>" data-dashboard-duplicate-option />
+                            <span class="settings-dashboard-role-filter-option-label"><%= dashboardTab.name %><%= dashboardTab.id === activeDashboardEntry.id ? ' (Current)' : '' %></span>
+                          </label>
+                        <% }) %>
+                      </div>
+                      <div class="settings-users-note settings-dashboard-role-filter-note">Pick a dashboard to duplicate, or leave Blank to create an empty dashboard.</div>
+                      <button
+                        class="settings-subtab-btn settings-dashboard-duplicate-submit"
+                        type="submit"
+                        formaction="/settings/dashboards/add"
+                        formmethod="post"
+                        formnovalidate
+                      >
+                        + Dashboard
+                      </button>
+                    </div>
+                  </div>
+                <% } %>
+                <% if (deletableDashboardTabs.length) { %>
+                  <div class="app-instance-tab-add-form settings-visibility-popover" data-dashboard-delete-popover>
+                    <button
+                      class="settings-subtab-btn app-instance-tab-add settings-dashboard-delete-trigger"
+                      type="button"
+                      title="Delete dashboard: <%= deletableDashboardTabs[0].name %>"
+                      aria-label="Choose dashboard to delete (<%= deletableDashboardTabs[0].name %>)"
+                      aria-haspopup="true"
+                      aria-expanded="false"
+                      data-dashboard-delete-trigger
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                        <path d="M3 6h18"></path>
+                        <path d="M8 6V4h8v2"></path>
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+                        <path d="M10 11v6"></path>
+                        <path d="M14 11v6"></path>
+                      </svg>
+                    </button>
+                    <div class="settings-visibility-menu settings-filter-menu" hidden data-dashboard-delete-menu>
+                      <div class="settings-filter-group-title">Delete Dashboard</div>
+                      <div class="settings-dashboard-role-filter-list">
+                        <% deletableDashboardTabs.forEach((dashboardTab, deleteTabIndex) => { %>
+                          <label class="settings-dashboard-role-filter-option">
+                            <input
+                              type="radio"
+                              name="dashboard_delete_target_choice"
+                              value="<%= dashboardTab.id %>"
+                              <%= deleteTabIndex === 0 ? 'checked' : '' %>
+                              data-dashboard-delete-option
+                            />
+                            <span class="settings-dashboard-role-filter-option-label"><%= dashboardTab.name %><%= dashboardTab.id === activeDashboardEntry.id ? ' (Current)' : '' %></span>
+                          </label>
+                        <% }) %>
+                      </div>
+                      <div class="settings-users-note settings-dashboard-role-filter-note">Select a dashboard to remove. The default Dashboard cannot be deleted.</div>
+                      <button
+                        class="settings-subtab-btn settings-dashboard-delete-submit"
+                        type="submit"
+                        formaction="/settings/dashboards/delete"
+                        formmethod="post"
+                        formnovalidate
+                        onclick="return confirm('Delete this dashboard? This cannot be undone.');"
+                      >
+                        - Dashboard
+                      </button>
+                    </div>
+                  </div>
+                <% } %>
+              </div>
+              <div class="settings-grid settings-grid--dashboard-meta" style="margin-bottom:12px;">
+                <label class="field field--dashboard-name">
+                  <span>Dashboard name</span>
+                  <input
+                    type="text"
+                    name="dashboard_name"
+                    value="<%= activeDashboardEntry.name %>"
+                    placeholder="<%= activeDashboardEntry.id === 'main' ? 'Dashboard' : 'Dashboard name' %>"
+                    maxlength="48"
+                  />
+                </label>
+                <label class="field field--dashboard-icon">
+                  <span>Dashboard icon</span>
+                  <div class="icon-picker" data-dashboard-meta-icon-picker>
+                    <button class="settings-select icon-picker-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+                      <span class="icon-picker-preview" aria-hidden="true"></span>
+                      <span class="icon-picker-label">Select icon</span>
+                    </button>
+                    <div class="icon-picker-menu" role="listbox" aria-label="Dashboard icon">
+                      <% dashboardIconOptions.forEach((iconPath) => { %>
+                        <button class="icon-picker-option" type="button" data-value="<%= iconPath %>" data-label="<%= iconPath.replace('/icons/', '') %>" role="option">
+                          <img class="icon-picker-icon" src="<%= iconPath %>" alt="" />
+                          <span class="icon-picker-option-label"><%= iconPath.replace('/icons/', '') %></span>
+                        </button>
+                      <% }) %>
+                    </div>
+                    <input type="hidden" id="dashboardMetaIconSelect" name="dashboard_icon" value="<%= activeDashboardEntry.icon %>" />
+                  </div>
+                </label>
+                <label class="field field--dashboard-role">
+                  <span>Visibility</span>
+                  <input type="hidden" name="dashboard_visibility_roles_present" value="1" />
+                  <div class="settings-dashboard-role-filter settings-visibility-popover" data-dashboard-role-filter>
+                    <button
+                      class="settings-visibility-trigger settings-dashboard-role-filter-trigger"
+                      type="button"
+                      aria-label="Configure dashboard visibility"
+                      aria-haspopup="true"
+                      aria-expanded="false"
+                      data-dashboard-role-filter-trigger
+                    ></button>
+                    <div class="settings-visibility-menu settings-filter-menu settings-dashboard-role-filter-menu" hidden data-dashboard-role-filter-menu>
+                      <div class="settings-filter-group-title">Visible To Roles</div>
+                      <div class="settings-dashboard-role-filter-list">
+                        <% dashboardInstanceVisibilityRoles.forEach((option) => { %>
+                          <label class="settings-dashboard-role-filter-option">
+                            <input
+                              type="checkbox"
+                              name="dashboard_visibility_roles"
+                              value="<%= option.value %>"
+                              <%= activeDashboardVisibilityRoles.includes(option.value) ? 'checked' : '' %>
+                            />
+                            <span class="settings-dashboard-role-filter-option-label"><%= option.label %></span>
+                          </label>
+                        <% }) %>
+                      </div>
+                      <div class="settings-users-note settings-dashboard-role-filter-note">No roles selected hides this dashboard.</div>
+                    </div>
+                  </div>
+                </label>
+              </div>
               <% const tautulliItems = Array.isArray(tautulliCards) ? tautulliCards : []; %>
               <% if (tautulliItems.length) { %>
                 <input type="hidden" name="tautulliCardsForm" value="1" />
@@ -1048,10 +1326,6 @@
                   <div>
                     <img class="settings-head-icon" src="/icons/view.svg" alt="" />
                     <span class="settings-head-label">Visibility</span>
-                  </div>
-                  <div>
-                    <img class="settings-head-icon" src="/icons/expand.svg" alt="" />
-                    <span class="settings-head-label">Options</span>
                   </div>
                   <div>
                     <img class="settings-head-icon" src="/icons/delete.svg" alt="" />
@@ -1546,11 +1820,6 @@
                     <% } else { %>
                       <input type="hidden" name="dashboard_<%= item.appId %>_<%= element.id %>_present" value="1" />
                     <% } %>
-                    <div class="settings-cell settings-expand-cell">
-                      <button class="settings-expand-toggle settings-inline-toggle settings-element-options-toggle" type="button" data-target="dashboardOptions-<%= rowKey %>" aria-label="Toggle card options" aria-expanded="false" <%= (isDisabled || !hasOptionsPanel) ? 'disabled' : '' %>>
-                        <img class="settings-expand-icon" src="/icons/expand.svg" alt="" />
-                      </button>
-                    </div>
                     <div class="settings-cell settings-delete-cell">
                       <button
                         class="order-button default-app-delete settings-dashboard-delete"
@@ -1742,11 +2011,6 @@
                     </div>
                     <input type="hidden" class="settings-order-input" name="<%= widgetPrefix %>_order" value="<%= widgetOrder %>" />
                     <input type="hidden" name="<%= widgetPrefix %>_present" value="1" />
-                    <div class="settings-cell settings-expand-cell">
-                      <button class="settings-expand-toggle settings-inline-toggle settings-element-options-toggle" type="button" aria-label="Widget settings are in the filter menu" aria-expanded="false" disabled>
-                        <img class="settings-expand-icon" src="/icons/expand.svg" alt="" />
-                      </button>
-                    </div>
                     <div class="settings-cell settings-delete-cell">
                       <button
                         class="order-button default-app-delete settings-dashboard-delete"
@@ -1768,7 +2032,7 @@
                 const dashboardAddError = String(dashboardElementError || arrCombinedCardError || '').trim();
                 const dashboardAddNotice = dashboardAddError
                   ? dashboardAddError
-                  : (dashboardAddResultMap[dashboardAddResult] || 'Add dashboard cards by category.');
+                  : (dashboardAddResultMap[dashboardAddResult] || '');
                 const dashboardCurrentEntries = Array.isArray(dashboardAddOptions) ? dashboardAddOptions : [];
                 const groupDashboardEntries = (entries) => entries.reduce((acc, entry) => {
                   const groupName = String(entry?.group || 'Cards').trim() || 'Cards';
@@ -1814,7 +2078,9 @@
                 </div>
                 <button class="primary-button dashboard-add-btn" type="submit" formaction="/settings/dashboard/add" formmethod="post" <%= dashboardCurrentEntries.length ? '' : 'disabled' %>>Add Dashboard Card</button>
               </div>
-              <span class="settings-users-note<%= dashboardAddError ? ' settings-users-note--error' : '' %>"><%= dashboardAddNotice %></span>
+              <% if (dashboardAddNotice) { %>
+                <span class="settings-users-note<%= dashboardAddError ? ' settings-users-note--error' : '' %>"><%= dashboardAddNotice %></span>
+              <% } %>
               <button class="primary-button" type="submit">Save dashboard settings</button>
             </form>
           </div>
@@ -2404,6 +2670,12 @@
               const firstInstanceSuffix = firstInstanceItem ? resolveAppInstanceSuffix(firstInstanceItem?.id, appBaseId) : NaN;
               const canDeleteFirstInstanceItem = Boolean(firstInstanceItem) && Number.isFinite(firstInstanceSuffix) && firstInstanceSuffix > 1;
               const remainingInstanceItems = supportsInstances && instanceItems.length > 1 ? instanceItems.slice(1) : [];
+              const deletableInstanceItems = supportsInstances
+                ? [
+                  ...(canDeleteFirstInstanceItem && firstInstanceItem ? [firstInstanceItem] : []),
+                  ...remainingInstanceItems,
+                ]
+                : [];
               const activeAppId = String(panelAppItem?.id || '').trim();
               const instancePlaceholder = String(multiInstancePlaceholderMap?.[appBaseId] || 'Instance (e.g. Main)');
             %>
@@ -2424,24 +2696,6 @@
                         >
                           <span class="settings-subtab-text"><%= resolveInstanceTabLabel(firstInstanceItem) %></span>
                         </a>
-                        <% if (canDeleteFirstInstanceItem) { %>
-                          <form
-                            method="post"
-                            action="/settings/apps/instances/delete"
-                            class="app-instance-tab-delete-form"
-                            onsubmit="return confirm('Delete this instance? This cannot be undone.');"
-                          >
-                            <input type="hidden" name="appId" value="<%= String(firstInstanceItem.id || '').trim() %>" />
-                            <button
-                              class="app-instance-tab-delete"
-                              type="submit"
-                              title="Delete <%= resolveInstanceTabLabel(firstInstanceItem) %>"
-                              aria-label="Delete <%= resolveInstanceTabLabel(firstInstanceItem) %>"
-                            >
-                              <img src="/icons/delete.svg" alt="" />
-                            </button>
-                          </form>
-                        <% } %>
                       </div>
                     <% } %>
                     <% remainingInstanceItems.forEach((instanceEntry) => { %>
@@ -2453,22 +2707,6 @@
                         >
                           <span class="settings-subtab-text"><%= resolveInstanceTabLabel(instanceEntry) %></span>
                         </a>
-                        <form
-                          method="post"
-                          action="/settings/apps/instances/delete"
-                          class="app-instance-tab-delete-form"
-                          onsubmit="return confirm('Delete this instance? This cannot be undone.');"
-                        >
-                          <input type="hidden" name="appId" value="<%= String(instanceEntry.id || '').trim() %>" />
-                          <button
-                            class="app-instance-tab-delete"
-                            type="submit"
-                            title="Delete <%= resolveInstanceTabLabel(instanceEntry) %>"
-                            aria-label="Delete <%= resolveInstanceTabLabel(instanceEntry) %>"
-                          >
-                            <img src="/icons/delete.svg" alt="" />
-                          </button>
-                        </form>
                       </div>
                     <% }) %>
                     <% if (canAddInstance) { %>
@@ -2483,6 +2721,53 @@
                         >
                           +
                         </button>
+                      </form>
+                    <% } %>
+                    <% if (deletableInstanceItems.length) { %>
+                      <form
+                        method="post"
+                        action="/settings/apps/instances/delete"
+                        class="app-instance-tab-add-form settings-visibility-popover"
+                        data-app-instance-delete-popover
+                        onsubmit="return confirm('Delete this instance? This cannot be undone.');"
+                      >
+                        <input type="hidden" name="appId" value="<%= String(deletableInstanceItems[0]?.id || '').trim() %>" data-app-instance-delete-target />
+                        <button
+                          class="settings-subtab-btn app-instance-tab-add settings-dashboard-delete-trigger"
+                          type="button"
+                          title="Delete instance: <%= resolveInstanceTabLabel(deletableInstanceItems[0]) %>"
+                          aria-label="Choose instance to delete (<%= resolveInstanceTabLabel(deletableInstanceItems[0]) %>)"
+                          aria-haspopup="true"
+                          aria-expanded="false"
+                          data-app-instance-delete-trigger
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                            <path d="M3 6h18"></path>
+                            <path d="M8 6V4h8v2"></path>
+                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+                            <path d="M10 11v6"></path>
+                            <path d="M14 11v6"></path>
+                          </svg>
+                        </button>
+                        <div class="settings-visibility-menu settings-filter-menu" hidden data-app-instance-delete-menu>
+                          <div class="settings-filter-group-title">Delete Instance</div>
+                          <div class="settings-dashboard-role-filter-list">
+                            <% deletableInstanceItems.forEach((instanceEntry, instanceDeleteIndex) => { %>
+                              <label class="settings-dashboard-role-filter-option">
+                                <input
+                                  type="radio"
+                                  name="app_instance_delete_target_choice_<%= appBaseId %>"
+                                  value="<%= String(instanceEntry.id || '').trim() %>"
+                                  <%= instanceDeleteIndex === 0 ? 'checked' : '' %>
+                                  data-app-instance-delete-option
+                                />
+                                <span class="settings-dashboard-role-filter-option-label"><%= resolveInstanceTabLabel(instanceEntry) %><%= String(instanceEntry.id || '').trim() === activeAppId ? ' (Current)' : '' %></span>
+                              </label>
+                            <% }) %>
+                          </div>
+                          <div class="settings-users-note settings-dashboard-role-filter-note">Select an instance to remove.</div>
+                          <button class="settings-subtab-btn settings-dashboard-delete-submit" type="submit">- Instance</button>
+                        </div>
                       </form>
                     <% } %>
                   </div>
@@ -2676,7 +2961,7 @@
     const dashNav = document.querySelector('.dash-nav');
     const tabButtons = Array.from(document.querySelectorAll('.settings-tab-btn'));
     const tabPanels = Array.from(document.querySelectorAll('.settings-tab-panel'));
-    const customTabButtons = Array.from(document.querySelectorAll('.settings-subtab-btn'));
+    const customTabButtons = Array.from(document.querySelectorAll('.settings-subtab-btn[data-subtab]'));
     const customTabPanels = Array.from(document.querySelectorAll('.settings-subtab-panel'));
     const debugBanner = document.getElementById('settingsDebug');
     const showDebug = (message) => {
@@ -3581,6 +3866,14 @@
       if (!isMobile() || !dashFrame?.classList.contains('mobile-nav-open')) return;
       const link = event.target.closest('a');
       if (!link || !link.classList.contains('active')) return;
+      try {
+        const targetUrl = new URL(link.href, window.location.href);
+        const currentPathWithQuery = `${window.location.pathname}${window.location.search}`;
+        const targetPathWithQuery = `${targetUrl.pathname}${targetUrl.search}`;
+        if (targetPathWithQuery !== currentPathWithQuery) return;
+      } catch (err) {
+        return;
+      }
       event.preventDefault();
       closeMobileNav();
     });
@@ -3590,6 +3883,7 @@
     function closeUserMenus(except) {
       userMenus.forEach((menu) => {
         if (menu === except) return;
+        menu.querySelectorAll('[data-user-role-picker][open]').forEach((picker) => { picker.open = false; });
         menu.classList.remove('user-pill--open');
         menu.setAttribute('aria-expanded', 'false');
       });
@@ -3606,6 +3900,7 @@
         menu.setAttribute('aria-expanded', !isOpen ? 'true' : 'false');
       });
       menu.addEventListener('keydown', (event) => {
+        if (event.target.closest('.user-menu')) return;
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();
         menu.click();
@@ -3984,6 +4279,8 @@
         let customAppEditId = '';
         const appsSettingsForm = document.querySelector('.settings-subtab-panel[data-subtab="apps"] form');
         const dashboardSettingsForm = document.getElementById('dashboardElementsForm');
+        const dashboardMetaIconPicker = dashboardSettingsForm?.querySelector('[data-dashboard-meta-icon-picker]');
+        const dashboardMetaIconSelect = document.getElementById('dashboardMetaIconSelect');
 
         const setCustomAppNote = (text, error = false) => {
           if (!customAppNote) return;
@@ -4009,6 +4306,7 @@
         const defaultAppPickerApi = initIconPicker(defaultAppPicker, defaultAppSelect, {
           onChange: (_value, option) => syncDefaultAppCategory(option),
         });
+        const dashboardMetaIconPickerApi = initIconPicker(dashboardMetaIconPicker, dashboardMetaIconSelect);
         const defaultAppOptions = getDefaultAppOptions();
         if (defaultAppOptions.length) {
           const firstDefault = defaultAppOptions[0];
@@ -4017,6 +4315,23 @@
           defaultAppPickerApi.setSelection(firstValue, firstLabel, firstDefault);
         } else {
           defaultAppPickerApi.setSelection('', 'No default apps available');
+        }
+        const dashboardMetaIconOptions = Array.from(dashboardMetaIconPicker?.querySelectorAll('.icon-picker-option') || []);
+        if (dashboardMetaIconPicker && dashboardMetaIconSelect) {
+          const selectedDashboardIconOption = dashboardMetaIconOptions.find((option) => (
+            String(option.dataset.value || '').trim() === String(dashboardMetaIconSelect.value || '').trim()
+          ));
+          const fallbackDashboardIconOption = dashboardMetaIconOptions[0];
+          const dashboardIconOption = selectedDashboardIconOption || fallbackDashboardIconOption || null;
+          if (dashboardIconOption) {
+            dashboardMetaIconPickerApi.setSelection(
+              String(dashboardIconOption.dataset.value || '').trim(),
+              String(dashboardIconOption.dataset.label || dashboardIconOption.textContent || '').trim(),
+              dashboardIconOption
+            );
+          } else {
+            dashboardMetaIconPickerApi.setSelection('', 'No icons available');
+          }
         }
         dashboardAddForms.forEach((dashboardAddForm) => {
           const dashboardAddPicker = dashboardAddForm?.querySelector('[data-dashboard-add-picker]');
@@ -4068,6 +4383,193 @@
         dashboardSettingsForm?.addEventListener('submit', () => {
           safeStorage.set('settingsTab', 'custom');
           safeStorage.set('settingsCustomTab', 'dashboard');
+        });
+
+        const dashboardDuplicatePopover = dashboardSettingsForm?.querySelector('[data-dashboard-duplicate-popover]');
+        const dashboardDuplicateInput = dashboardSettingsForm?.querySelector('[data-dashboard-duplicate-source]');
+        if (dashboardDuplicatePopover && dashboardDuplicateInput) {
+          const duplicateTrigger = dashboardDuplicatePopover.querySelector('[data-dashboard-duplicate-trigger]');
+          const duplicateMenu = dashboardDuplicatePopover.querySelector('[data-dashboard-duplicate-menu]');
+          const duplicateOptions = Array.from(dashboardDuplicatePopover.querySelectorAll('[data-dashboard-duplicate-option]'));
+          let duplicatePopoverOpen = false;
+
+          const getSelectedDuplicateOption = () => (
+            duplicateOptions.find((option) => option.checked) || duplicateOptions[0] || null
+          );
+          const syncDuplicateSelection = () => {
+            const selected = getSelectedDuplicateOption();
+            const value = String(selected?.value || 'blank').trim() || 'blank';
+            const labelText = selected?.closest('label')?.querySelector('.settings-dashboard-role-filter-option-label')?.textContent || value;
+            dashboardDuplicateInput.value = value;
+            if (duplicateTrigger) {
+              duplicateTrigger.title = `Duplicate source: ${String(labelText || 'Blank').trim()}`;
+              duplicateTrigger.setAttribute('aria-label', `Choose dashboard duplicate source (${String(labelText || 'Blank').trim()})`);
+            }
+          };
+          const closeDuplicatePopover = () => {
+            if (!duplicateTrigger || !duplicateMenu) return;
+            duplicateTrigger.setAttribute('aria-expanded', 'false');
+            duplicateMenu.hidden = true;
+            duplicatePopoverOpen = false;
+          };
+          const openDuplicatePopover = () => {
+            if (!duplicateTrigger || !duplicateMenu) return;
+            duplicateTrigger.setAttribute('aria-expanded', 'true');
+            duplicateMenu.hidden = false;
+            duplicatePopoverOpen = true;
+          };
+
+          syncDuplicateSelection();
+          if (duplicateTrigger && duplicateMenu) {
+            duplicateMenu.hidden = true;
+            duplicateTrigger.setAttribute('aria-expanded', 'false');
+            duplicateTrigger.addEventListener('click', (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (duplicatePopoverOpen) closeDuplicatePopover();
+              else openDuplicatePopover();
+            });
+            duplicateMenu.addEventListener('click', (event) => {
+              event.stopPropagation();
+            });
+            duplicateMenu.addEventListener('change', (event) => {
+              if (!(event.target instanceof Element)) return;
+              if (!event.target.closest('[data-dashboard-duplicate-option]')) return;
+              syncDuplicateSelection();
+            });
+            document.addEventListener('click', (event) => {
+              if (!duplicatePopoverOpen) return;
+              if (dashboardDuplicatePopover.contains(event.target)) return;
+              closeDuplicatePopover();
+            });
+            document.addEventListener('keydown', (event) => {
+              if (event.key !== 'Escape') return;
+              closeDuplicatePopover();
+            });
+          }
+        }
+
+        const dashboardDeletePopover = dashboardSettingsForm?.querySelector('[data-dashboard-delete-popover]');
+        const dashboardDeleteInput = dashboardSettingsForm?.querySelector('[data-dashboard-delete-target]');
+        if (dashboardDeletePopover && dashboardDeleteInput) {
+          const deleteTrigger = dashboardDeletePopover.querySelector('[data-dashboard-delete-trigger]');
+          const deleteMenu = dashboardDeletePopover.querySelector('[data-dashboard-delete-menu]');
+          const deleteOptions = Array.from(dashboardDeletePopover.querySelectorAll('[data-dashboard-delete-option]'));
+          let deletePopoverOpen = false;
+
+          const getSelectedDeleteOption = () => (
+            deleteOptions.find((option) => option.checked) || deleteOptions[0] || null
+          );
+          const syncDeleteSelection = () => {
+            const selected = getSelectedDeleteOption();
+            const value = String(selected?.value || '').trim();
+            const labelText = selected?.closest('label')?.querySelector('.settings-dashboard-role-filter-option-label')?.textContent || value;
+            dashboardDeleteInput.value = value;
+            if (deleteTrigger) {
+              deleteTrigger.title = `Delete dashboard: ${String(labelText || '').trim()}`;
+              deleteTrigger.setAttribute('aria-label', `Choose dashboard to delete (${String(labelText || '').trim()})`);
+            }
+          };
+          const closeDeletePopover = () => {
+            if (!deleteTrigger || !deleteMenu) return;
+            deleteTrigger.setAttribute('aria-expanded', 'false');
+            deleteMenu.hidden = true;
+            deletePopoverOpen = false;
+          };
+          const openDeletePopover = () => {
+            if (!deleteTrigger || !deleteMenu) return;
+            deleteTrigger.setAttribute('aria-expanded', 'true');
+            deleteMenu.hidden = false;
+            deletePopoverOpen = true;
+          };
+
+          syncDeleteSelection();
+          if (deleteTrigger && deleteMenu) {
+            deleteMenu.hidden = true;
+            deleteTrigger.setAttribute('aria-expanded', 'false');
+            deleteTrigger.addEventListener('click', (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (deletePopoverOpen) closeDeletePopover();
+              else openDeletePopover();
+            });
+            deleteMenu.addEventListener('click', (event) => {
+              event.stopPropagation();
+            });
+            deleteMenu.addEventListener('change', (event) => {
+              if (!(event.target instanceof Element)) return;
+              if (!event.target.closest('[data-dashboard-delete-option]')) return;
+              syncDeleteSelection();
+            });
+            document.addEventListener('click', (event) => {
+              if (!deletePopoverOpen) return;
+              if (dashboardDeletePopover.contains(event.target)) return;
+              closeDeletePopover();
+            });
+            document.addEventListener('keydown', (event) => {
+              if (event.key !== 'Escape') return;
+              closeDeletePopover();
+            });
+          }
+        }
+
+        const appInstanceDeletePopovers = Array.from(document.querySelectorAll('[data-app-instance-delete-popover]'));
+        appInstanceDeletePopovers.forEach((instanceDeletePopover) => {
+          const deleteTrigger = instanceDeletePopover.querySelector('[data-app-instance-delete-trigger]');
+          const deleteMenu = instanceDeletePopover.querySelector('[data-app-instance-delete-menu]');
+          const deleteInput = instanceDeletePopover.querySelector('[data-app-instance-delete-target]');
+          const deleteOptions = Array.from(instanceDeletePopover.querySelectorAll('[data-app-instance-delete-option]'));
+          if (!deleteTrigger || !deleteMenu || !deleteInput || !deleteOptions.length) return;
+
+          let deletePopoverOpen = false;
+          const getSelectedDeleteOption = () => (
+            deleteOptions.find((option) => option.checked) || deleteOptions[0] || null
+          );
+          const syncDeleteSelection = () => {
+            const selected = getSelectedDeleteOption();
+            const value = String(selected?.value || '').trim();
+            const labelText = selected?.closest('label')?.querySelector('.settings-dashboard-role-filter-option-label')?.textContent || value;
+            deleteInput.value = value;
+            deleteTrigger.title = `Delete instance: ${String(labelText || '').trim()}`;
+            deleteTrigger.setAttribute('aria-label', `Choose instance to delete (${String(labelText || '').trim()})`);
+          };
+          const closeDeletePopover = () => {
+            deleteTrigger.setAttribute('aria-expanded', 'false');
+            deleteMenu.hidden = true;
+            deletePopoverOpen = false;
+          };
+          const openDeletePopover = () => {
+            deleteTrigger.setAttribute('aria-expanded', 'true');
+            deleteMenu.hidden = false;
+            deletePopoverOpen = true;
+          };
+
+          syncDeleteSelection();
+          deleteMenu.hidden = true;
+          deleteTrigger.setAttribute('aria-expanded', 'false');
+          deleteTrigger.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (deletePopoverOpen) closeDeletePopover();
+            else openDeletePopover();
+          });
+          deleteMenu.addEventListener('click', (event) => {
+            event.stopPropagation();
+          });
+          deleteMenu.addEventListener('change', (event) => {
+            if (!(event.target instanceof Element)) return;
+            if (!event.target.closest('[data-app-instance-delete-option]')) return;
+            syncDeleteSelection();
+          });
+          document.addEventListener('click', (event) => {
+            if (!deletePopoverOpen) return;
+            if (instanceDeletePopover.contains(event.target)) return;
+            closeDeletePopover();
+          });
+          document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') return;
+            closeDeletePopover();
+          });
         });
 
         const handleCustomAppActions = async (event) => {
@@ -4135,6 +4637,87 @@
         });
       } catch (err) {
         console.error('[Launcharr] Custom app init failed', err);
+      }
+
+      try {
+        const roleFilters = Array.from(document.querySelectorAll('[data-dashboard-role-filter]'));
+        if (roleFilters.length) {
+          const roleOrder = ['guest', 'user', 'co-admin', 'admin'];
+          const roleLabels = { guest: 'Guest', user: 'User', 'co-admin': 'Co-admin', admin: 'Admin' };
+          let openRoleFilter = null;
+
+          const getSelectedRoles = (filter) => roleOrder.filter((role) => {
+            const input = filter.querySelector(`input[type="checkbox"][name="dashboard_visibility_roles"][value="${role}"]`);
+            return Boolean(input?.checked);
+          });
+          const buildSummary = (roles) => {
+            if (!Array.isArray(roles) || !roles.length) return 'Hidden (no roles selected)';
+            if (roles.length === roleOrder.length) return 'All roles';
+            return roles.map((role) => roleLabels[role] || role).join(', ');
+          };
+          const updateRoleFilterSummary = (filter) => {
+            if (!filter) return;
+            const trigger = filter.querySelector('[data-dashboard-role-filter-trigger]');
+            if (!trigger) return;
+            const summary = buildSummary(getSelectedRoles(filter));
+            trigger.title = summary;
+            trigger.setAttribute('aria-label', `Configure dashboard role visibility (${summary})`);
+          };
+          const closeRoleFilter = (filter) => {
+            if (!filter) return;
+            const trigger = filter.querySelector('[data-dashboard-role-filter-trigger]');
+            const menu = filter.querySelector('[data-dashboard-role-filter-menu]');
+            if (trigger) trigger.setAttribute('aria-expanded', 'false');
+            if (menu) menu.hidden = true;
+            if (openRoleFilter === filter) openRoleFilter = null;
+          };
+          const openRoleFilterMenu = (filter) => {
+            if (!filter) return;
+            if (openRoleFilter && openRoleFilter !== filter) closeRoleFilter(openRoleFilter);
+            const trigger = filter.querySelector('[data-dashboard-role-filter-trigger]');
+            const menu = filter.querySelector('[data-dashboard-role-filter-menu]');
+            if (!trigger || !menu) return;
+            trigger.setAttribute('aria-expanded', 'true');
+            menu.hidden = false;
+            openRoleFilter = filter;
+          };
+
+          roleFilters.forEach((filter) => {
+            const trigger = filter.querySelector('[data-dashboard-role-filter-trigger]');
+            const menu = filter.querySelector('[data-dashboard-role-filter-menu]');
+            if (!trigger || !menu) return;
+            menu.hidden = true;
+            trigger.setAttribute('aria-expanded', 'false');
+            updateRoleFilterSummary(filter);
+            trigger.addEventListener('click', (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              const isOpen = trigger.getAttribute('aria-expanded') === 'true';
+              if (isOpen) closeRoleFilter(filter);
+              else openRoleFilterMenu(filter);
+            });
+            menu.addEventListener('click', (event) => {
+              event.stopPropagation();
+            });
+            menu.addEventListener('change', (event) => {
+              if (!(event.target instanceof Element)) return;
+              if (!event.target.closest('input[type="checkbox"][name="dashboard_visibility_roles"]')) return;
+              updateRoleFilterSummary(filter);
+            });
+          });
+
+          document.addEventListener('click', (event) => {
+            if (!openRoleFilter) return;
+            if (openRoleFilter.contains(event.target)) return;
+            closeRoleFilter(openRoleFilter);
+          });
+          document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') return;
+            closeRoleFilter(openRoleFilter);
+          });
+        }
+      } catch (err) {
+        console.error('[Launcharr] Dashboard role filter init failed', err);
       }
 
       try {
@@ -4508,6 +5091,11 @@
               keyInput.name = 'dashboard_element_key';
               keyInput.value = key;
               removeForm.appendChild(keyInput);
+              const dashboardIdInput = document.createElement('input');
+              dashboardIdInput.type = 'hidden';
+              dashboardIdInput.name = 'dashboardId';
+              dashboardIdInput.value = String(document.querySelector('#dashboardElementsForm input[name=\"dashboardId\"]')?.value || '').trim();
+              removeForm.appendChild(dashboardIdInput);
               document.body.appendChild(removeForm);
               removeForm.submit();
               return;

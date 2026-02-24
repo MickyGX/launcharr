@@ -1277,6 +1277,10 @@ app.use((req, res, next) => {
 app.use((req, res, next) => {
   const config = loadConfig();
   res.locals.themeDefaults = resolveThemeSettingsForUser(config, req.session?.user);
+  const actualRole = getActualRole(req);
+  res.locals.roleViewDashboardAvailability = actualRole === 'admin'
+    ? buildRoleViewDashboardAvailability(config)
+    : {};
   next();
 });
 
@@ -1535,7 +1539,15 @@ app.get('/api/plex/pin/status', async (req, res) => {
 
 
 app.get('/dashboard', requireUser, (req, res) => {
-  const config = loadConfig();
+  const baseConfig = loadConfig();
+  const role = getEffectiveRole(req);
+  const actualRole = getActualRole(req);
+  const dashboardSelection = resolveDashboardSelection(baseConfig, resolveRequestedDashboardId(req), role);
+  if (!dashboardSelection.visibleDashboards.length || !dashboardSelection.activeDashboard) {
+    return res.redirect(resolveBestRoleLandingPath(req, role, { config: baseConfig, excludeDashboard: true }));
+  }
+  const activeDashboard = dashboardSelection.activeDashboard;
+  const config = applyDashboardStateSnapshot(baseConfig, activeDashboard);
   const apps = config.apps || [];
   const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
     ? config.dashboardRemovedElements
@@ -1554,8 +1566,6 @@ app.get('/dashboard', requireUser, (req, res) => {
   const dashboardCombinedOrder = (config && typeof config.dashboardCombinedOrder === 'object' && config.dashboardCombinedOrder)
     ? config.dashboardCombinedOrder
     : {};
-  const role = getEffectiveRole(req);
-  const actualRole = getActualRole(req);
   const canManageWidgets = false;
   const dashboardWidgets = ENABLE_DASHBOARD_WIDGETS
     ? resolveDashboardWidgets(config, apps, role, {
@@ -1894,6 +1904,8 @@ app.get('/dashboard', requireUser, (req, res) => {
     navCategories,
     multiInstanceBaseIds: getMultiInstanceBaseIds(),
     appBaseUrls,
+    dashboardDefinitions: dashboardSelection.visibleDashboards,
+    activeDashboard,
     dashboardModules,
     arrDashboardCombine,
     mediaDashboardCombine,
@@ -1917,6 +1929,13 @@ app.get('/apps/:id', requireUser, (req, res) => {
   const appBaseUrls = buildAppBaseUrls(apps, req);
   const role = getEffectiveRole(req);
   const actualRole = getActualRole(req);
+  const dashboardSelection = resolveDashboardSelection(config, resolveRequestedDashboardId(req), role);
+  const activeDashboard = dashboardSelection.activeDashboard || resolveDashboardDefinitions(config)[0] || {
+    id: DASHBOARD_MAIN_ID,
+    name: 'Dashboard',
+    icon: DEFAULT_DASHBOARD_ICON,
+    visibilityRole: 'user',
+  };
   const navApps = getNavApps(apps, role, req, categoryOrder);
   const navCategories = buildNavCategories(navApps, categoryEntries, role);
   const appItem = apps.find((item) => item.id === req.params.id);
@@ -1940,6 +1959,8 @@ app.get('/apps/:id', requireUser, (req, res) => {
     navCategories,
     multiInstanceBaseIds: getMultiInstanceBaseIds(),
     appBaseUrls,
+    dashboardDefinitions: dashboardSelection.visibleDashboards,
+    activeDashboard,
     app: appWithIcon,
     overviewElements,
     tautulliCards: mergeTautulliCardSettings(appItem),
@@ -1953,6 +1974,13 @@ app.get('/apps/:id/activity', requireAdmin, (req, res) => {
   const categoryOrder = categoryEntries.map((entry) => entry.name);
   const role = getEffectiveRole(req);
   const actualRole = getActualRole(req);
+  const dashboardSelection = resolveDashboardSelection(config, resolveRequestedDashboardId(req), role);
+  const activeDashboard = dashboardSelection.activeDashboard || resolveDashboardDefinitions(config)[0] || {
+    id: DASHBOARD_MAIN_ID,
+    name: 'Dashboard',
+    icon: DEFAULT_DASHBOARD_ICON,
+    visibilityRole: 'user',
+  };
   const navApps = getNavApps(apps, role, req, categoryOrder);
   const navCategories = buildNavCategories(navApps, categoryEntries, role);
   const appItem = apps.find((item) => item.id === req.params.id);
@@ -1969,6 +1997,8 @@ app.get('/apps/:id/activity', requireAdmin, (req, res) => {
     actualRole,
     page: 'activity',
     navCategories,
+    dashboardDefinitions: dashboardSelection.visibleDashboards,
+    activeDashboard,
     app: appWithIcon,
   });
 });
@@ -2067,6 +2097,13 @@ app.get('/apps/:id/launch', requireUser, async (req, res) => {
     }
     const navApps = getNavApps(apps, role, req, categoryOrder);
     const navCategories = buildNavCategories(navApps, categoryEntries, role);
+    const dashboardSelection = resolveDashboardSelection(config, resolveRequestedDashboardId(req), role);
+    const activeDashboard = dashboardSelection.activeDashboard || resolveDashboardDefinitions(config)[0] || {
+      id: DASHBOARD_MAIN_ID,
+      name: 'Dashboard',
+      icon: DEFAULT_DASHBOARD_ICON,
+      visibilityRole: 'user',
+    };
     const iframeLaunchUrl = resolveIframeLaunchUrl(req, iframeLaunchTarget);
     return res.render('app-launch', {
       user: req.session.user,
@@ -2074,6 +2111,8 @@ app.get('/apps/:id/launch', requireUser, async (req, res) => {
       actualRole,
       page: 'launch',
       navCategories,
+      dashboardDefinitions: dashboardSelection.visibleDashboards,
+      activeDashboard,
       app: appWithIcon,
       launchUrl: iframeLaunchUrl || iframeLaunchTarget,
     });
@@ -2135,6 +2174,13 @@ app.get('/apps/:id/settings', requireAdmin, (req, res) => {
   const categoryOrder = categoryEntries.map((entry) => entry.name);
   const role = getEffectiveRole(req);
   const actualRole = getActualRole(req);
+  const dashboardSelection = resolveDashboardSelection(config, resolveRequestedDashboardId(req), role);
+  const activeDashboard = dashboardSelection.activeDashboard || resolveDashboardDefinitions(config)[0] || {
+    id: DASHBOARD_MAIN_ID,
+    name: 'Dashboard',
+    icon: DEFAULT_DASHBOARD_ICON,
+    visibilityRole: 'user',
+  };
   const navApps = getNavApps(apps, role, req, categoryOrder);
   const navCategories = buildNavCategories(navApps, categoryEntries, role);
   const appItem = apps.find((item) => item.id === req.params.id);
@@ -2152,6 +2198,8 @@ app.get('/apps/:id/settings', requireAdmin, (req, res) => {
     actualRole,
     page: 'settings',
     navCategories,
+    dashboardDefinitions: dashboardSelection.visibleDashboards,
+    activeDashboard,
     multiInstanceBaseIds: getMultiInstanceBaseIds(),
     multiInstancePlaceholderMap: getMultiInstancePlaceholderMap(config.apps || []),
     app: appWithIcon,
@@ -2162,22 +2210,32 @@ app.get('/apps/:id/settings', requireAdmin, (req, res) => {
 
 app.get('/settings', requireSettingsAdmin, (req, res) => {
   const config = loadConfig();
+  const dashboardSettingsSelection = resolveDashboardSelection(config, resolveRequestedDashboardId(req), 'admin', { includeHidden: true });
+  const dashboardSidebarSelection = resolveDashboardSelection(config, resolveRequestedDashboardId(req), getEffectiveRole(req));
+  const activeSettingsDashboard = dashboardSettingsSelection.activeDashboard || resolveDashboardDefinitions(config)[0] || {
+    id: DASHBOARD_MAIN_ID,
+    name: 'Dashboard',
+    icon: DEFAULT_DASHBOARD_ICON,
+    visibilityRole: 'user',
+  };
+  const dashboardConfig = applyDashboardStateSnapshot(config, activeSettingsDashboard);
   const admins = loadAdmins();
   const apps = config.apps || [];
   const categoryEntries = resolveCategoryEntries(config, apps);
   const categoryOrder = categoryEntries.map((entry) => entry.name);
   const categoryIcons = getCategoryIconOptions();
   const appIcons = getAppIconOptions(apps);
-  const arrDashboardCombine = resolveArrDashboardCombineSettings(config, apps);
-  const mediaDashboardCombine = resolveMediaDashboardCombineSettings(config, apps);
-  const arrCombinedQueueDisplay = resolveCombinedQueueDisplaySettings(config, 'arrCombinedQueueDisplay');
-  const downloaderCombinedQueueDisplay = resolveCombinedQueueDisplaySettings(config, 'downloaderCombinedQueueDisplay');
-  const downloaderDashboardCombine = resolveDownloaderDashboardCombineSettings(config, apps);
-  const dashboardCombinedOrder = (config && typeof config.dashboardCombinedOrder === 'object' && config.dashboardCombinedOrder)
-    ? config.dashboardCombinedOrder
+  const dashboardApps = dashboardConfig.apps || [];
+  const arrDashboardCombine = resolveArrDashboardCombineSettings(dashboardConfig, dashboardApps);
+  const mediaDashboardCombine = resolveMediaDashboardCombineSettings(dashboardConfig, dashboardApps);
+  const arrCombinedQueueDisplay = resolveCombinedQueueDisplaySettings(dashboardConfig, 'arrCombinedQueueDisplay');
+  const downloaderCombinedQueueDisplay = resolveCombinedQueueDisplaySettings(dashboardConfig, 'downloaderCombinedQueueDisplay');
+  const downloaderDashboardCombine = resolveDownloaderDashboardCombineSettings(dashboardConfig, dashboardApps);
+  const dashboardCombinedOrder = (dashboardConfig && typeof dashboardConfig.dashboardCombinedOrder === 'object' && dashboardConfig.dashboardCombinedOrder)
+    ? dashboardConfig.dashboardCombinedOrder
     : {};
-  const dashboardCombinedSettings = (config && typeof config.dashboardCombinedSettings === 'object' && config.dashboardCombinedSettings)
-    ? config.dashboardCombinedSettings
+  const dashboardCombinedSettings = (dashboardConfig && typeof dashboardConfig.dashboardCombinedSettings === 'object' && dashboardConfig.dashboardCombinedSettings)
+    ? dashboardConfig.dashboardCombinedSettings
     : {};
   const logSettings = resolveLogSettings(config);
   const generalSettings = resolveGeneralSettings(config);
@@ -2238,15 +2296,31 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     icon: resolvePersistedAppIconPath(appItem),
     canRemoveDefaultApp: canManageWithDefaultAppManager(appItem),
   }));
-  const dashboardSettingsApps = settingsAppsWithIcons.filter((appItem) => !appItem?.removed);
+  const dashboardSettingsApps = dashboardApps
+    .slice()
+    .sort((a, b) => {
+      const favouriteDelta = (b.favourite ? 1 : 0) - (a.favourite ? 1 : 0);
+      if (favouriteDelta !== 0) return favouriteDelta;
+      const categoryDelta = rankCategory(a.category) - rankCategory(b.category);
+      if (categoryDelta !== 0) return categoryDelta;
+      const orderDelta = (a.order || 0) - (b.order || 0);
+      if (orderDelta !== 0) return orderDelta;
+      return String(a.name || '').localeCompare(String(b.name || ''));
+    })
+    .map((appItem) => ({
+      ...appItem,
+      icon: resolvePersistedAppIconPath(appItem),
+      canRemoveDefaultApp: canManageWithDefaultAppManager(appItem),
+    }))
+    .filter((appItem) => !appItem?.removed);
   const dashboardWidgets = ENABLE_DASHBOARD_WIDGETS
-    ? resolveDashboardWidgets(config, dashboardSettingsApps, 'admin', {
+    ? resolveDashboardWidgets(dashboardConfig, dashboardSettingsApps, 'admin', {
       includeHidden: true,
       includeUnavailable: true,
     })
     : [];
   const dashboardWidgetSources = ENABLE_DASHBOARD_WIDGETS
-    ? resolveDashboardWidgetSourceOptions(config, dashboardSettingsApps, 'admin', {
+    ? resolveDashboardWidgetSourceOptions(dashboardConfig, dashboardSettingsApps, 'admin', {
       includeUnavailable: true,
     })
     : [];
@@ -2254,9 +2328,9 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
   const multiInstanceTitleMap = getMultiInstanceTitleMap();
   const multiInstanceMaxMap = getMultiInstanceMaxMap(settingsAppsWithIcons);
   const multiInstancePlaceholderMap = getMultiInstancePlaceholderMap(settingsAppsWithIcons);
-  const arrDashboardCombinedCards = resolveArrDashboardCombinedCards(config, dashboardSettingsApps);
-  const downloaderDashboardCards = resolveDownloaderDashboardCards(config, dashboardSettingsApps);
-  const mediaDashboardCards = resolveMediaDashboardCards(config, dashboardSettingsApps);
+  const arrDashboardCombinedCards = resolveArrDashboardCombinedCards(dashboardConfig, dashboardSettingsApps);
+  const downloaderDashboardCards = resolveDownloaderDashboardCards(dashboardConfig, dashboardSettingsApps);
+  const mediaDashboardCards = resolveMediaDashboardCards(dashboardConfig, dashboardSettingsApps);
   const arrSettingsAppIds = dashboardSettingsApps
     .filter((appItem) => isAppInSet(appItem.id, ARR_APP_IDS))
     .map((appItem) => appItem.id);
@@ -2574,8 +2648,8 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     const orderValue = Number(item?.element?.order);
     return Number.isFinite(orderValue) ? orderValue : 0;
   };
-  const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
-    ? config.dashboardRemovedElements
+  const dashboardRemovedElements = (dashboardConfig && typeof dashboardConfig.dashboardRemovedElements === 'object' && dashboardConfig.dashboardRemovedElements)
+    ? dashboardConfig.dashboardRemovedElements
     : {};
   const getDashboardElementKey = (item) => {
     if (!item) return '';
@@ -2913,11 +2987,15 @@ app.get('/settings', requireSettingsAdmin, (req, res) => {
     user: req.session.user,
     admins,
     apps: settingsAppsWithIcons,
+    dashboardDefinitions: dashboardSettingsSelection.dashboards,
+    activeDashboard: activeSettingsDashboard,
+    sidebarDashboardDefinitions: dashboardSidebarSelection.visibleDashboards,
+    sidebarActiveDashboard: dashboardSidebarSelection.activeDashboard,
     categories: categoryOrder,
     categoryEntries,
     categoryIcons,
     appIcons,
-    tautulliCards: mergeTautulliCardSettings(apps.find((appItem) => appItem.id === 'tautulli')),
+    tautulliCards: mergeTautulliCardSettings(dashboardApps.find((appItem) => appItem.id === 'tautulli')),
     dashboardElements,
     dashboardCombinedOrder,
     dashboardCombinedSettings,
@@ -3003,7 +3081,33 @@ app.post('/settings/theme-defaults', requireSettingsAdmin, (req, res) => {
 });
 
 app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
-  const config = loadConfig();
+  const baseConfig = loadConfig();
+  const dashboardSelection = resolveDashboardSelection(baseConfig, resolveRequestedDashboardId(req), 'admin', { includeHidden: true });
+  const activeDashboard = dashboardSelection.activeDashboard || resolveDashboardDefinitions(baseConfig)[0] || {
+    id: DASHBOARD_MAIN_ID,
+    name: 'Dashboard',
+    icon: DEFAULT_DASHBOARD_ICON,
+    visibilityRole: 'user',
+  };
+  const selectedDashboardId = String(activeDashboard.id || DASHBOARD_MAIN_ID).trim() || DASHBOARD_MAIN_ID;
+  const config = applyDashboardStateSnapshot(baseConfig, activeDashboard);
+  const nextDashboardDefinitions = dashboardSelection.dashboards.map((entry) => (
+    entry.id === selectedDashboardId
+      ? (() => {
+        const visibilityRoles = resolveDashboardVisibilityRolesFromRequest(req.body, entry);
+        return {
+          ...entry,
+          name: normalizeDashboardDisplayName(req.body?.dashboard_name, entry.name || 'Dashboard'),
+          icon: normalizeDashboardIcon(req.body?.dashboard_icon, entry.icon || DEFAULT_DASHBOARD_ICON),
+          visibilityRoles,
+          visibilityRole: deriveDashboardLegacyVisibilityRole(
+            visibilityRoles,
+            visibilityRoles.length ? (entry.visibilityRole || 'user') : 'disabled',
+          ),
+        };
+      })()
+      : entry
+  ));
   const shouldUpdateTautulliCards = Boolean(req.body.tautulliCardsForm);
   const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
     ? config.dashboardRemovedElements
@@ -3344,7 +3448,7 @@ app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
   }
   const dashboardWidgets = buildDashboardWidgetsFromDashboardRequest(config, apps, req.body);
 
-  saveConfig({
+  saveDashboardScopedConfig(baseConfig, {
     ...config,
     apps,
     arrDashboardCombine,
@@ -3358,22 +3462,26 @@ app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
     dashboardWidgets,
     dashboardCombinedOrder,
     dashboardCombinedSettings,
-  });
-  res.redirect('/settings');
+  }, selectedDashboardId, nextDashboardDefinitions);
+  res.redirect(buildDashboardSettingsRedirect(req));
 });
 
 app.post('/settings/dashboard-elements/remove', requireSettingsAdmin, (req, res) => {
-  const config = loadConfig();
+  const baseConfig = loadConfig();
+  const dashboardSelection = resolveDashboardSelection(baseConfig, resolveRequestedDashboardId(req), 'admin', { includeHidden: true });
+  const activeDashboard = dashboardSelection.activeDashboard || resolveDashboardDefinitions(baseConfig)[0] || { id: DASHBOARD_MAIN_ID };
+  const selectedDashboardId = String(activeDashboard.id || DASHBOARD_MAIN_ID).trim() || DASHBOARD_MAIN_ID;
+  const config = applyDashboardStateSnapshot(baseConfig, activeDashboard);
   const key = String(req.body?.dashboard_element_key || req.body?.key || '').trim();
   if (!key) {
-    return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&dashboardElementError=Missing+dashboard+item+key.');
+    return res.redirect(buildDashboardSettingsRedirect(req, { dashboardElementError: 'Missing dashboard item key.' }));
   }
 
   const widgetMatch = key.match(/^widget:(.+)$/);
   if (widgetMatch) {
     const widgetId = normalizeDashboardWidgetToken(widgetMatch[1] || '');
     if (!widgetId) {
-      return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&dashboardElementError=Invalid+widget+id.');
+      return res.redirect(buildDashboardSettingsRedirect(req, { dashboardElementError: 'Invalid widget id.' }));
     }
     const apps = Array.isArray(config?.apps) ? config.apps : [];
     const existingCards = resolveDashboardWidgets(config, apps, 'admin', {
@@ -3382,13 +3490,13 @@ app.post('/settings/dashboard-elements/remove', requireSettingsAdmin, (req, res)
     });
     const nextCards = existingCards.filter((entry) => normalizeDashboardWidgetToken(entry?.id || '') !== widgetId);
     if (nextCards.length === existingCards.length) {
-      return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&dashboardElementError=Widget+not+found.');
+      return res.redirect(buildDashboardSettingsRedirect(req, { dashboardElementError: 'Widget not found.' }));
     }
-    saveConfig({
+    saveDashboardScopedConfig(baseConfig, {
       ...config,
       dashboardWidgets: serializeDashboardWidgetCards(nextCards),
-    });
-    return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&dashboardElementResult=removed');
+    }, selectedDashboardId);
+    return res.redirect(buildDashboardSettingsRedirect(req, { dashboardElementResult: 'removed' }));
   }
 
   const customCombinedMatch = key.match(/^combined:(arrcustom|downloadercustom|mediacustom):(.+)$/);
@@ -3396,7 +3504,7 @@ app.post('/settings/dashboard-elements/remove', requireSettingsAdmin, (req, res)
     const customType = String(customCombinedMatch[1] || '').trim();
     const customToken = normalizeCombinedCardToken(customCombinedMatch[2] || '');
     if (!customToken) {
-      return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&dashboardElementError=Invalid+custom+dashboard+card+id.');
+      return res.redirect(buildDashboardSettingsRedirect(req, { dashboardElementError: 'Invalid custom dashboard card id.' }));
     }
     const listField = customType === 'arrcustom'
       ? 'arrDashboardCombinedCards'
@@ -3419,35 +3527,33 @@ app.post('/settings/dashboard-elements/remove', requireSettingsAdmin, (req, res)
     delete dashboardCombinedSettings[customKey];
     delete dashboardCombinedOrder[key];
     delete dashboardCombinedOrder[customKey];
-    saveConfig({
+    saveDashboardScopedConfig(baseConfig, {
       ...config,
       [listField]: nextCards,
       dashboardRemovedElements,
       dashboardCombinedSettings,
       dashboardCombinedOrder,
-    });
-    return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&dashboardElementResult=removed');
+    }, selectedDashboardId);
+    return res.redirect(buildDashboardSettingsRedirect(req, { dashboardElementResult: 'removed' }));
   }
 
   const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
     ? { ...config.dashboardRemovedElements }
     : {};
   dashboardRemovedElements[key] = true;
-  saveConfig({
+  saveDashboardScopedConfig(baseConfig, {
     ...config,
     dashboardRemovedElements,
-  });
-  return res.redirect('/settings?tab=custom&settingsCustomTab=dashboard&dashboardElementResult=removed');
+  }, selectedDashboardId);
+  return res.redirect(buildDashboardSettingsRedirect(req, { dashboardElementResult: 'removed' }));
 });
 
-const DASHBOARD_SETTINGS_REDIRECT = '/settings?tab=custom&settingsCustomTab=dashboard';
-
-function redirectDashboardAddError(res, message) {
-  return res.redirect(`${DASHBOARD_SETTINGS_REDIRECT}&dashboardElementError=${encodeURIComponent(message)}`);
+function redirectDashboardAddError(req, res, message) {
+  return res.redirect(buildDashboardSettingsRedirect(req, { dashboardElementError: message }));
 }
 
-function redirectDashboardAddResult(res, result = 'added') {
-  return res.redirect(`${DASHBOARD_SETTINGS_REDIRECT}&dashboardElementResult=${encodeURIComponent(result)}`);
+function redirectDashboardAddResult(req, res, result = 'added') {
+  return res.redirect(buildDashboardSettingsRedirect(req, { dashboardElementResult: result }));
 }
 
 function resolveNextDashboardOrder(config) {
@@ -3489,8 +3595,13 @@ function resolveNextDashboardOrder(config) {
 }
 
 function handleDashboardAddRequest(req, res) {
-  const config = loadConfig();
+  const baseConfig = loadConfig();
+  const dashboardSelection = resolveDashboardSelection(baseConfig, resolveRequestedDashboardId(req), 'admin', { includeHidden: true });
+  const activeDashboard = dashboardSelection.activeDashboard || resolveDashboardDefinitions(baseConfig)[0] || { id: DASHBOARD_MAIN_ID };
+  const selectedDashboardId = String(activeDashboard.id || DASHBOARD_MAIN_ID).trim() || DASHBOARD_MAIN_ID;
+  const config = applyDashboardStateSnapshot(baseConfig, activeDashboard);
   const apps = Array.isArray(config.apps) ? config.apps : [];
+  const persistConfig = (nextConfig) => saveDashboardScopedConfig(baseConfig, nextConfig, selectedDashboardId);
   const normalizeSubmittedValues = (value) => {
     if (Array.isArray(value)) {
       return value.flatMap((entry) => normalizeSubmittedValues(entry));
@@ -3512,7 +3623,7 @@ function handleDashboardAddRequest(req, res) {
   ];
   const key = submittedKeys.find((entry) => /^(app:|new:|combined:)/.test(entry)) || submittedKeys[0] || '';
   if (!key) {
-    return redirectDashboardAddError(res, 'Select a dashboard card to add.');
+    return redirectDashboardAddError(req, res, 'Select a dashboard card to add.');
   }
 
   const deprecatedDescriptor = resolveDeprecatedDashboardCardDescriptor(key);
@@ -3584,20 +3695,20 @@ function handleDashboardAddRequest(req, res) {
 
     const migration = migrateDeprecatedDashboardCards(draftConfig);
     if (migration.changed) {
-      saveConfig(migration.config);
-      return redirectDashboardAddResult(res, 'added');
+      persistConfig(migration.config);
+      return redirectDashboardAddResult(req, res, 'added');
     }
   }
 
   if (key.startsWith('app:')) {
     const appMatch = key.match(/^app:([^:]+):(.+)$/);
     if (!appMatch) {
-      return redirectDashboardAddError(res, 'Invalid app card selection.');
+      return redirectDashboardAddError(req, res, 'Invalid app card selection.');
     }
     const selectedAppId = String(appMatch[1] || '').trim();
     const selectedElementId = String(appMatch[2] || '').trim();
     if (!selectedAppId || !selectedElementId) {
-      return redirectDashboardAddError(res, 'Invalid app card selection.');
+      return redirectDashboardAddError(req, res, 'Invalid app card selection.');
     }
     const nextDashboardOrder = resolveNextDashboardOrder(config);
     const nextApps = apps.map((appItem) => {
@@ -3628,12 +3739,12 @@ function handleDashboardAddRequest(req, res) {
       ? { ...config.dashboardRemovedElements }
       : {};
     delete dashboardRemovedElements[key];
-    saveConfig({
+    persistConfig({
       ...config,
       apps: nextApps,
       dashboardRemovedElements,
     });
-    return redirectDashboardAddResult(res, 'added');
+    return redirectDashboardAddResult(req, res, 'added');
   }
 
   const newWidgetMatch = key.match(/^new:widget(?::(.+))?$/);
@@ -3643,7 +3754,7 @@ function handleDashboardAddRequest(req, res) {
       || getDashboardWidgetSourceDefinition(DASHBOARD_WIDGET_DEFAULTS.source)
       || DASHBOARD_WIDGET_SOURCES[0];
     if (!sourceDef?.id) {
-      return redirectDashboardAddError(res, 'No widget sources are available.');
+      return redirectDashboardAddError(req, res, 'No widget sources are available.');
     }
     const existingCards = resolveDashboardWidgets(config, apps, 'admin', {
       includeHidden: true,
@@ -3663,23 +3774,23 @@ function handleDashboardAddRequest(req, res) {
       filters: DASHBOARD_WIDGET_DEFAULTS.filters,
     }, DASHBOARD_WIDGET_DEFAULTS);
     if (!nextCard) {
-      return redirectDashboardAddError(res, 'Failed to create widget card.');
+      return redirectDashboardAddError(req, res, 'Failed to create widget card.');
     }
-    saveConfig({
+    persistConfig({
       ...config,
       dashboardWidgets: serializeDashboardWidgetCards([...existingCards, nextCard]),
     });
-    return redirectDashboardAddResult(res, 'added');
+    return redirectDashboardAddResult(req, res, 'added');
   }
 
   const newArrMatch = key.match(/^new:arr:(.+)$/);
   if (newArrMatch) {
     if (!ENABLE_ARR_UNIFIED_CARDS) {
-      return redirectDashboardAddError(res, 'ARR unified cards are currently disabled.');
+      return redirectDashboardAddError(req, res, 'ARR unified cards are currently disabled.');
     }
     const sectionKey = String(newArrMatch[1] || '').trim();
     if (!getArrCombineSection(sectionKey)) {
-      return redirectDashboardAddError(res, 'Invalid combined section selected.');
+      return redirectDashboardAddError(req, res, 'Invalid combined section selected.');
     }
     const allowedAppIds = [
       ...new Set(
@@ -3690,7 +3801,7 @@ function handleDashboardAddRequest(req, res) {
       ),
     ];
     if (!allowedAppIds.length) {
-      return redirectDashboardAddError(res, 'No ARR sources available to build a dashboard card.');
+      return redirectDashboardAddError(req, res, 'No ARR sources available to build a dashboard card.');
     }
     const existingCards = resolveArrDashboardCombinedCards(config, apps);
     const cardId = normalizeCombinedCardToken(buildCombinedCardId());
@@ -3714,21 +3825,21 @@ function handleDashboardAddRequest(req, res) {
     existingCombinedOrder[combinedKey] = resolveNextDashboardOrder(config);
     delete dashboardRemovedElements[combinedKey];
 
-    saveConfig({
+    persistConfig({
       ...config,
       arrDashboardCombinedCards: nextCards,
       dashboardCombinedSettings: existingCombinedSettings,
       dashboardCombinedOrder: existingCombinedOrder,
       dashboardRemovedElements,
     });
-    return redirectDashboardAddResult(res, 'added');
+    return redirectDashboardAddResult(req, res, 'added');
   }
 
   const newMediaMatch = key.match(/^new:media:(.+)$/);
   if (newMediaMatch) {
     const sectionKey = String(newMediaMatch[1] || '').trim();
     if (!getMediaCombineSection(sectionKey)) {
-      return redirectDashboardAddError(res, 'Invalid combined section selected.');
+      return redirectDashboardAddError(req, res, 'Invalid combined section selected.');
     }
     const allowedAppIds = [
       ...new Set(
@@ -3739,7 +3850,7 @@ function handleDashboardAddRequest(req, res) {
       ),
     ];
     if (!allowedAppIds.length) {
-      return redirectDashboardAddError(res, 'No media sources available to build a dashboard card.');
+      return redirectDashboardAddError(req, res, 'No media sources available to build a dashboard card.');
     }
     const existingCards = resolveMediaDashboardCards(config, apps);
     const cardId = normalizeCombinedCardToken(buildCombinedCardId());
@@ -3762,24 +3873,24 @@ function handleDashboardAddRequest(req, res) {
     existingCombinedOrder[combinedKey] = resolveNextDashboardOrder(config);
     delete dashboardRemovedElements[combinedKey];
 
-    saveConfig({
+    persistConfig({
       ...config,
       mediaDashboardCards: nextCards,
       dashboardCombinedSettings: existingCombinedSettings,
       dashboardCombinedOrder: existingCombinedOrder,
       dashboardRemovedElements,
     });
-    return redirectDashboardAddResult(res, 'added');
+    return redirectDashboardAddResult(req, res, 'added');
   }
 
   const newDownloaderMatch = key.match(/^new:downloader:(.+)$/);
   if (newDownloaderMatch) {
     if (!ENABLE_DOWNLOADER_UNIFIED_CARDS) {
-      return redirectDashboardAddError(res, 'Downloader unified cards are currently disabled.');
+      return redirectDashboardAddError(req, res, 'Downloader unified cards are currently disabled.');
     }
     const sectionKey = String(newDownloaderMatch[1] || '').trim();
     if (!getDownloaderCombineSection(sectionKey)) {
-      return redirectDashboardAddError(res, 'Invalid combined section selected.');
+      return redirectDashboardAddError(req, res, 'Invalid combined section selected.');
     }
     const allowedAppIds = [
       ...new Set(
@@ -3790,7 +3901,7 @@ function handleDashboardAddRequest(req, res) {
       ),
     ];
     if (!allowedAppIds.length) {
-      return redirectDashboardAddError(res, 'No downloader sources available to build a dashboard card.');
+      return redirectDashboardAddError(req, res, 'No downloader sources available to build a dashboard card.');
     }
     const existingCards = resolveDownloaderDashboardCards(config, apps);
     const cardId = normalizeCombinedCardToken(buildCombinedCardId());
@@ -3813,14 +3924,14 @@ function handleDashboardAddRequest(req, res) {
     existingCombinedOrder[combinedKey] = resolveNextDashboardOrder(config);
     delete dashboardRemovedElements[combinedKey];
 
-    saveConfig({
+    persistConfig({
       ...config,
       downloaderDashboardCards: nextCards,
       dashboardCombinedSettings: existingCombinedSettings,
       dashboardCombinedOrder: existingCombinedOrder,
       dashboardRemovedElements,
     });
-    return redirectDashboardAddResult(res, 'added');
+    return redirectDashboardAddResult(req, res, 'added');
   }
 
   const arrCustomAddKeys = resolveArrDashboardCombinedCards(config, apps).map((card, index) => {
@@ -3844,7 +3955,7 @@ function handleDashboardAddRequest(req, res) {
     ...mediaCustomAddKeys,
   ]);
   if (!allowedKeys.has(key)) {
-    return redirectDashboardAddError(res, 'Invalid combined card selection.');
+    return redirectDashboardAddError(req, res, 'Invalid combined card selection.');
   }
 
   const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
@@ -3855,13 +3966,92 @@ function handleDashboardAddRequest(req, res) {
     : {};
   existingCombinedOrder[key] = resolveNextDashboardOrder(config);
   delete dashboardRemovedElements[key];
-  saveConfig({
+  persistConfig({
     ...config,
     dashboardCombinedOrder: existingCombinedOrder,
     dashboardRemovedElements,
   });
-  return redirectDashboardAddResult(res, 'added');
+  return redirectDashboardAddResult(req, res, 'added');
 }
+
+app.post('/settings/dashboards/add', requireSettingsAdmin, (req, res) => {
+  const config = loadConfig();
+  const dashboards = resolveDashboardDefinitions(config);
+  if (dashboards.length >= DASHBOARD_MAX_COUNT) {
+    return res.redirect(buildDashboardSettingsRedirect(req, { dashboardElementError: `Maximum dashboards reached (${DASHBOARD_MAX_COUNT}).` }));
+  }
+  const selection = resolveDashboardSelection(config, resolveRequestedDashboardId(req), 'admin', { includeHidden: true });
+  const activeDashboard = selection.activeDashboard || dashboards[0] || {
+    id: DASHBOARD_MAIN_ID,
+    name: 'Dashboard',
+    icon: DEFAULT_DASHBOARD_ICON,
+    visibilityRole: 'user',
+  };
+  const duplicateSourceRaw = String(req.body?.dashboard_duplicate_source || '').trim();
+  const duplicateSelectionPresent = Object.prototype.hasOwnProperty.call(req.body || {}, 'dashboard_duplicate_source');
+  const useBlankDashboard = duplicateSelectionPresent && duplicateSourceRaw === 'blank';
+  const duplicateSourceId = useBlankDashboard ? '' : normalizeDashboardInstanceId(duplicateSourceRaw);
+  const duplicateSourceDashboard = duplicateSourceId
+    ? (dashboards.find((entry) => entry.id === duplicateSourceId) || null)
+    : null;
+  const sourceDashboard = duplicateSourceDashboard || activeDashboard;
+  const sourceConfig = (!useBlankDashboard && sourceDashboard)
+    ? applyDashboardStateSnapshot(config, sourceDashboard)
+    : config;
+  const nextId = buildDashboardInstanceId(dashboards);
+  const nextDashboards = [
+    ...dashboards,
+    (() => {
+      const visibilityRoles = duplicateSourceDashboard
+        ? resolveDashboardDefinitionVisibilityRoles(duplicateSourceDashboard, 'user')
+        : resolveDashboardVisibilityRolesFromRequest(req.body, sourceDashboard);
+      return {
+        id: nextId,
+        name: duplicateSourceDashboard
+          ? normalizeDashboardDisplayName(duplicateSourceDashboard.name, `Dashboard ${dashboards.length + 1}`)
+          : normalizeDashboardDisplayName(req.body?.dashboard_name, `Dashboard ${dashboards.length + 1}`),
+        icon: duplicateSourceDashboard
+          ? normalizeDashboardIcon(duplicateSourceDashboard.icon, DEFAULT_DASHBOARD_ICON)
+          : normalizeDashboardIcon(req.body?.dashboard_icon, sourceDashboard.icon || DEFAULT_DASHBOARD_ICON),
+        visibilityRoles,
+        visibilityRole: deriveDashboardLegacyVisibilityRole(
+          visibilityRoles,
+          visibilityRoles.length ? (sourceDashboard.visibilityRole || 'user') : 'disabled',
+        ),
+        state: useBlankDashboard
+          ? buildEmptyDashboardStateSnapshot(config)
+          : extractDashboardStateSnapshot(sourceConfig),
+      };
+    })(),
+  ];
+  saveConfig({
+    ...config,
+    dashboards: nextDashboards,
+  });
+  return res.redirect(buildDashboardSettingsRedirect(req, { dashboardId: nextId }));
+});
+
+app.post('/settings/dashboards/delete', requireSettingsAdmin, (req, res) => {
+  const config = loadConfig();
+  const dashboards = resolveDashboardDefinitions(config);
+  const requestedDeleteId = normalizeDashboardInstanceId(req.body?.deleteDashboardId || req.body?.dashboardId || req.body?.id);
+  if (!requestedDeleteId || requestedDeleteId === DASHBOARD_MAIN_ID) {
+    return res.redirect(buildDashboardSettingsRedirect(req, { dashboardElementError: 'The main dashboard cannot be deleted.' }));
+  }
+  const nextDashboards = dashboards.filter((entry) => entry.id !== requestedDeleteId);
+  if (nextDashboards.length === dashboards.length) {
+    return res.redirect(buildDashboardSettingsRedirect(req, { dashboardElementError: 'Dashboard not found.' }));
+  }
+  const currentDashboardId = resolveRequestedDashboardId(req);
+  const redirectDashboardId = currentDashboardId && currentDashboardId !== requestedDeleteId
+    ? currentDashboardId
+    : DASHBOARD_MAIN_ID;
+  saveConfig({
+    ...config,
+    dashboards: nextDashboards,
+  });
+  return res.redirect(buildDashboardSettingsRedirect(req, { dashboardId: redirectDashboardId }));
+});
 
 app.post('/settings/dashboard/add', requireSettingsAdmin, handleDashboardAddRequest);
 
@@ -3971,6 +4161,13 @@ app.get('/user-settings', requireUser, (req, res) => {
   const categoryOrder = categoryEntries.map((entry) => entry.name);
   const role = getEffectiveRole(req);
   const actualRole = getActualRole(req);
+  const dashboardSelection = resolveDashboardSelection(config, resolveRequestedDashboardId(req), role);
+  const activeDashboard = dashboardSelection.activeDashboard || resolveDashboardDefinitions(config)[0] || {
+    id: DASHBOARD_MAIN_ID,
+    name: 'Dashboard',
+    icon: DEFAULT_DASHBOARD_ICON,
+    visibilityRole: 'user',
+  };
   const navApps = getNavApps(apps, role, req, categoryOrder);
   const navCategories = buildNavCategories(navApps, categoryEntries, role);
   const generalSettings = resolveGeneralSettings(config);
@@ -3991,6 +4188,8 @@ app.get('/user-settings', requireUser, (req, res) => {
     role,
     actualRole,
     navCategories,
+    dashboardDefinitions: dashboardSelection.visibleDashboards,
+    activeDashboard,
     generalSettings,
     isLocalUser,
     localProfile,
@@ -5477,9 +5676,7 @@ app.post('/api/romm/viewer-session-test', requireAdmin, async (req, res) => {
       const probeBase = normalizeBaseUrl(bootstrap.authBaseUrl || cleanLaunchUrl);
       const meUrl = buildAppApiUrl(probeBase, 'api/users/me').toString();
       const cookieHeader = buildCookieHeaderFromSetCookies(bootstrap.setCookies || []);
-      const csrfToken = (bootstrap.setCookies || [])
-        .map((cookie) => getCookieValueFromSetCookie(cookie, 'romm_csrftoken'))
-        .find(Boolean);
+      const csrfToken = getRommCsrfTokenFromSetCookies(bootstrap.setCookies || []);
       const headers = { Accept: 'application/json' };
       if (cookieHeader) headers.Cookie = cookieHeader;
       if (csrfToken) headers['x-csrftoken'] = csrfToken;
@@ -10008,6 +10205,58 @@ app.get('/api/romm/:kind', requireUser, async (req, res) => {
   }
   if (authHeader) headers.Authorization = authHeader;
 
+  const effectiveRole = getEffectiveRole(req);
+  let rommSessionHeaders = null;
+  let rommSessionBootstrapAttempted = false;
+  async function getRommSessionHeaders() {
+    if (rommSessionBootstrapAttempted) return rommSessionHeaders;
+    rommSessionBootstrapAttempted = true;
+
+    const baseLaunchUrl = String(resolveLaunchUrl(rommApp, req) || '').trim();
+    if (!baseLaunchUrl) return null;
+
+    let credentialedLaunchUrl = resolveRoleAwareLaunchUrl(rommApp, req, baseLaunchUrl, effectiveRole) || baseLaunchUrl;
+    if (!hasEmbeddedUrlCredentials(credentialedLaunchUrl)) {
+      const roleText = String(effectiveRole || '').trim().toLowerCase();
+      const prefersViewer = roleText === 'user' || roleText === 'co-admin';
+      const loginUsername = String(
+        (prefersViewer ? (rommApp.viewerUsername || rommApp.username) : rommApp.username) || '',
+      ).trim();
+      const loginPassword = String(
+        (prefersViewer ? (rommApp.viewerPassword || rommApp.password) : rommApp.password) || '',
+      );
+      credentialedLaunchUrl = injectBasicAuthIntoUrl(baseLaunchUrl, loginUsername, loginPassword);
+    }
+    if (!hasEmbeddedUrlCredentials(credentialedLaunchUrl)) return null;
+
+    const bootstrap = await bootstrapRommIframeSession({
+      req,
+      launchUrl: credentialedLaunchUrl,
+      authBaseCandidates: candidates,
+    });
+    if (!bootstrap?.ok) return null;
+
+    const cookieHeader = buildCookieHeaderFromSetCookies(bootstrap.setCookies || []);
+    if (!cookieHeader) return null;
+    rommSessionHeaders = { Accept: 'application/json', Cookie: cookieHeader };
+    const csrfToken = getRommCsrfTokenFromSetCookies(bootstrap.setCookies || []);
+    if (csrfToken) rommSessionHeaders['x-csrftoken'] = csrfToken;
+    return rommSessionHeaders;
+  }
+
+  async function fetchRommApi(urlString, requestHeaders) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    try {
+      return await fetch(urlString, {
+        headers: requestHeaders,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   const endpointPlans = kind === 'consoles'
     ? [
       { path: 'api/platforms' },
@@ -10051,16 +10300,13 @@ app.get('/api/romm/:kind', requireUser, async (req, res) => {
             url.searchParams.set(key, String(value));
           }
         });
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10000);
         let response;
-        try {
-          response = await fetch(url.toString(), {
-            headers,
-            signal: controller.signal,
-          });
-        } finally {
-          clearTimeout(timeout);
+        response = await fetchRommApi(url.toString(), headers);
+        if (!response.ok && (response.status === 401 || response.status === 403)) {
+          const sessionHeaders = await getRommSessionHeaders();
+          if (sessionHeaders) {
+            response = await fetchRommApi(url.toString(), sessionHeaders);
+          }
         }
         const text = await response.text();
         if (!response.ok) {
@@ -10481,6 +10727,51 @@ function getCookieValueFromSetCookie(setCookie, cookieName) {
   return first.slice(eqIndex + 1);
 }
 
+function getCookieNameFromSetCookie(setCookie) {
+  const raw = String(setCookie || '').trim();
+  if (!raw) return '';
+  const first = raw.split(';')[0] || '';
+  const eqIndex = first.indexOf('=');
+  if (eqIndex <= 0) return '';
+  return first.slice(0, eqIndex).trim();
+}
+
+function findSetCookieValueByNames(setCookies = [], cookieNames = []) {
+  const accepted = new Set(
+    (Array.isArray(cookieNames) ? cookieNames : [])
+      .map((name) => String(name || '').trim().toLowerCase())
+      .filter(Boolean),
+  );
+  if (!accepted.size) return '';
+  const list = Array.isArray(setCookies) ? setCookies : [];
+  for (let index = 0; index < list.length; index += 1) {
+    const cookie = list[index];
+    const cookieName = getCookieNameFromSetCookie(cookie);
+    if (!cookieName) continue;
+    if (!accepted.has(cookieName.toLowerCase())) continue;
+    const value = getCookieValueFromSetCookie(cookie, cookieName);
+    if (value) return value;
+  }
+  return '';
+}
+
+function getRommCsrfTokenFromSetCookies(setCookies = []) {
+  return findSetCookieValueByNames(setCookies, ['romm_csrftoken', 'csrftoken', 'csrf_token']);
+}
+
+function hasRommSessionCookie(setCookies = []) {
+  const names = (Array.isArray(setCookies) ? setCookies : [])
+    .map((cookie) => getCookieNameFromSetCookie(cookie).toLowerCase())
+    .filter(Boolean);
+  return names.some((name) => (
+    name === 'romm_session'
+    || name === 'session_id'
+    || name === 'sessionid'
+    || /^romm_.*session/.test(name)
+    || name.endsWith('_session')
+  ));
+}
+
 function buildCookieHeaderFromSetCookies(setCookies = []) {
   return (Array.isArray(setCookies) ? setCookies : [])
     .map((value) => String(value || '').split(';')[0].trim())
@@ -10645,20 +10936,14 @@ async function bootstrapRommIframeSession({ req, launchUrl, authBaseCandidates =
         continue;
       }
       const heartbeatCookies = getFetchResponseSetCookies(heartbeatResponse);
-      const csrfToken = heartbeatCookies
-        .map((cookie) => getCookieValueFromSetCookie(cookie, 'romm_csrftoken'))
-        .find(Boolean);
-      if (!csrfToken) {
-        lastError = `Romm heartbeat via ${apiBase} did not return romm_csrftoken.`;
-        continue;
-      }
+      const csrfToken = getRommCsrfTokenFromSetCookies(heartbeatCookies);
 
       const loginUrl = buildAppApiUrl(apiBase, 'api/login').toString();
       const loginHeaders = {
         Accept: 'application/json',
-        'x-csrftoken': csrfToken,
         Authorization: buildBasicAuthHeader(username, password),
       };
+      if (csrfToken) loginHeaders['x-csrftoken'] = csrfToken;
       const heartbeatCookieHeader = buildCookieHeaderFromSetCookies(heartbeatCookies);
       if (heartbeatCookieHeader) loginHeaders.Cookie = heartbeatCookieHeader;
 
@@ -10677,9 +10962,9 @@ async function bootstrapRommIframeSession({ req, launchUrl, authBaseCandidates =
       const forwardedCookies = [...heartbeatCookies, ...loginCookies]
         .map(stripCookieDomainAttribute)
         .filter(Boolean);
-      const hasSessionCookie = forwardedCookies.some((cookie) => cookie.startsWith('romm_session='));
+      const hasSessionCookie = hasRommSessionCookie(forwardedCookies);
       if (!hasSessionCookie) {
-        lastError = `Romm login via ${apiBase} did not return romm_session cookie.`;
+        lastError = `Romm login via ${apiBase} did not return a supported session cookie.`;
         continue;
       }
 
@@ -11343,27 +11628,14 @@ app.get('/switch-view', requireUser, (req, res) => {
     return res.status(403).send('Admin access required.');
   }
   const desired = String(req.query?.role || '').trim().toLowerCase();
-  if (desired === 'user') {
-    req.session.viewRole = 'user';
-  } else {
-    req.session.viewRole = null;
-  }
-  const fallback = '/dashboard';
-  const referrer = resolveReturnPath(req, fallback);
-  if (desired === 'user') {
-    try {
-      const host = req.headers.host || '';
-      const url = new URL(referrer, `http://${host}`);
-      const path = url.pathname || '';
-      if ((path.startsWith('/apps/') && path.endsWith('/settings'))
-        || (path.startsWith('/apps/') && path.endsWith('/activity'))) {
-        return res.redirect(fallback);
-      }
-    } catch (err) {
-      return res.redirect(fallback);
-    }
-  }
-  res.redirect(referrer);
+  const allowedViewRoles = new Set(['guest', 'user', 'co-admin', 'admin']);
+  req.session.viewRole = allowedViewRoles.has(desired) && desired !== 'admin'
+    ? desired
+    : null;
+  const targetRole = getEffectiveRole(req);
+  const config = loadConfig();
+  const targetPath = resolveRoleSwitchRedirectPath(req, targetRole, { config });
+  res.redirect(targetPath);
 });
 
 app.get('/logout', (req, res) => {
@@ -12414,6 +12686,424 @@ function canAccessCombinedDashboardVisibility(settings, role, fallback = 'user')
   if (!roleKey) return false;
   const minRole = resolveCombinedDashboardVisibilityRole(settings, fallback);
   return roleMeetsMinRole(roleKey, minRole);
+}
+
+const DASHBOARD_MAIN_ID = 'main';
+const DASHBOARD_MAX_COUNT = 10;
+const DEFAULT_DASHBOARD_ICON = '/icons/dashboard.svg';
+const DASHBOARD_VISIBILITY_SELECTABLE_ROLES = ['guest', 'user', 'co-admin', 'admin'];
+
+function dashboardVisibilityRolesFromLegacyMinRole(minRole = 'user') {
+  const normalized = normalizeVisibilityRole(minRole, 'user');
+  if (normalized === 'disabled') return [];
+  const minRank = Number(VISIBILITY_ROLE_RANK[normalized]);
+  return DASHBOARD_VISIBILITY_SELECTABLE_ROLES.filter((role) => {
+    const rank = Number(VISIBILITY_ROLE_RANK[role]);
+    return Number.isFinite(rank) && Number.isFinite(minRank) && rank >= minRank;
+  });
+}
+
+function normalizeDashboardVisibilityRoles(value, fallback = undefined) {
+  const inputList = Array.isArray(value)
+    ? value
+    : (typeof value === 'string' && value.includes(','))
+      ? value.split(',')
+      : (value === undefined ? [] : [value]);
+  const parsed = uniqueList(
+    inputList
+      .map((item) => parseVisibilityRole(item))
+      .filter((role) => role && role !== 'disabled' && DASHBOARD_VISIBILITY_SELECTABLE_ROLES.includes(role))
+  );
+  if (parsed.length) {
+    return DASHBOARD_VISIBILITY_SELECTABLE_ROLES.filter((role) => parsed.includes(role));
+  }
+  if (fallback === undefined) return [];
+  if (Array.isArray(fallback)) {
+    return normalizeDashboardVisibilityRoles(fallback);
+  }
+  return dashboardVisibilityRolesFromLegacyMinRole(fallback);
+}
+
+function deriveDashboardLegacyVisibilityRole(roles = [], fallback = 'disabled') {
+  const normalized = normalizeDashboardVisibilityRoles(roles);
+  if (!normalized.length) return normalizeVisibilityRole(fallback, 'disabled');
+  const first = DASHBOARD_VISIBILITY_SELECTABLE_ROLES.find((role) => normalized.includes(role));
+  return normalizeVisibilityRole(first, fallback);
+}
+
+function resolveDashboardDefinitionVisibilityRoles(entry, fallback = 'user') {
+  const source = entry && typeof entry === 'object' ? entry : {};
+  if (Array.isArray(source.visibilityRoles)) {
+    return normalizeDashboardVisibilityRoles(source.visibilityRoles);
+  }
+  return normalizeDashboardVisibilityRoles(source.visibilityRoles, source.visibilityRole || fallback);
+}
+
+function cloneJsonValue(value, fallback) {
+  if (value === undefined) return fallback;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch (err) {
+    return fallback;
+  }
+}
+
+function normalizeDashboardInstanceId(value) {
+  const source = Array.isArray(value)
+    ? value.find((item) => String(item || '').trim()) ?? value[0]
+    : value;
+  const normalized = String(source || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  if (!normalized) return '';
+  if (normalized === DASHBOARD_MAIN_ID) return DASHBOARD_MAIN_ID;
+  return normalized.slice(0, 48);
+}
+
+function normalizeDashboardDisplayName(value, fallback = 'Dashboard') {
+  const name = String(value || '').trim();
+  if (!name) return String(fallback || 'Dashboard').trim() || 'Dashboard';
+  return name.slice(0, 48);
+}
+
+function normalizeDashboardIcon(value, fallback = DEFAULT_DASHBOARD_ICON) {
+  const raw = String(value || '').trim();
+  if (!raw) return String(fallback || DEFAULT_DASHBOARD_ICON).trim() || DEFAULT_DASHBOARD_ICON;
+  if (!raw.startsWith('/icons/')) {
+    return String(fallback || DEFAULT_DASHBOARD_ICON).trim() || DEFAULT_DASHBOARD_ICON;
+  }
+  return raw;
+}
+
+function normalizeDashboardDefinition(entry, index = 0) {
+  const source = entry && typeof entry === 'object' ? entry : {};
+  const requestedId = normalizeDashboardInstanceId(source.id);
+  const fallbackId = index === 0 ? DASHBOARD_MAIN_ID : '';
+  const id = requestedId || fallbackId;
+  if (!id) return null;
+  const isMain = id === DASHBOARD_MAIN_ID;
+  const visibilityRoles = resolveDashboardDefinitionVisibilityRoles(source, 'user');
+  return {
+    id,
+    name: normalizeDashboardDisplayName(source.name, isMain ? 'Dashboard' : 'Dashboard'),
+    icon: normalizeDashboardIcon(source.icon, DEFAULT_DASHBOARD_ICON),
+    visibilityRole: deriveDashboardLegacyVisibilityRole(
+      visibilityRoles,
+      visibilityRoles.length ? normalizeVisibilityRole(source.visibilityRole, 'user') : 'disabled',
+    ),
+    visibilityRoles,
+    state: source.state && typeof source.state === 'object'
+      ? cloneJsonValue(source.state, {})
+      : undefined,
+  };
+}
+
+function resolveDashboardDefinitions(config) {
+  const source = Array.isArray(config?.dashboards) ? config.dashboards : [];
+  const seen = new Set();
+  const entries = [];
+
+  source.forEach((entry, index) => {
+    const normalized = normalizeDashboardDefinition(entry, index);
+    if (!normalized?.id) return;
+    if (seen.has(normalized.id)) return;
+    seen.add(normalized.id);
+    entries.push(normalized);
+  });
+
+  if (!seen.has(DASHBOARD_MAIN_ID)) {
+    entries.unshift({
+      id: DASHBOARD_MAIN_ID,
+      name: 'Dashboard',
+      icon: DEFAULT_DASHBOARD_ICON,
+      visibilityRole: 'user',
+      visibilityRoles: dashboardVisibilityRolesFromLegacyMinRole('user'),
+    });
+  }
+
+  const mainIndex = entries.findIndex((entry) => entry.id === DASHBOARD_MAIN_ID);
+  if (mainIndex > 0) {
+    const [mainEntry] = entries.splice(mainIndex, 1);
+    entries.unshift(mainEntry);
+  }
+
+  return entries.map((entry, index) => normalizeDashboardDefinition(entry, index)).filter(Boolean);
+}
+
+function buildDashboardInstanceId(existingDashboards = []) {
+  const taken = new Set(
+    (Array.isArray(existingDashboards) ? existingDashboards : [])
+      .map((entry) => normalizeDashboardInstanceId(entry?.id))
+      .filter(Boolean)
+  );
+  for (let index = 2; index <= 999; index += 1) {
+    const candidate = `dashboard-${index}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+  return `dashboard-${Date.now()}`;
+}
+
+function canAccessDashboardDefinition(entry, role) {
+  if (!entry) return false;
+  const roleKey = parseVisibilityRole(role);
+  if (!roleKey || roleKey === 'disabled') return false;
+  const allowedRoles = resolveDashboardDefinitionVisibilityRoles(entry, 'user');
+  return allowedRoles.includes(roleKey);
+}
+
+function resolveRequestedDashboardId(req) {
+  return normalizeDashboardInstanceId(
+    req?.body?.dashboardId
+    || req?.body?.dashboard
+    || req?.query?.dashboard
+    || ''
+  );
+}
+
+function resolveDashboardSelection(config, requestedId, role, options = {}) {
+  const includeHidden = options.includeHidden === true;
+  const dashboards = resolveDashboardDefinitions(config);
+  const requested = normalizeDashboardInstanceId(requestedId);
+  const visibleDashboards = includeHidden
+    ? dashboards
+    : dashboards.filter((entry) => canAccessDashboardDefinition(entry, role));
+  const visibleById = new Map(visibleDashboards.map((entry) => [entry.id, entry]));
+  const allById = new Map(dashboards.map((entry) => [entry.id, entry]));
+  const activeDashboard = (requested && (includeHidden ? allById.get(requested) : visibleById.get(requested)))
+    || (includeHidden ? (allById.get(DASHBOARD_MAIN_ID) || dashboards[0]) : (visibleById.get(DASHBOARD_MAIN_ID) || visibleDashboards[0]))
+    || null;
+  return {
+    dashboards,
+    visibleDashboards,
+    activeDashboard,
+    activeDashboardId: String(activeDashboard?.id || '').trim() || DASHBOARD_MAIN_ID,
+  };
+}
+
+function resolveDashboardVisibilityRolesFromRequest(body, fallbackEntry = null) {
+  const source = body && typeof body === 'object' ? body : {};
+  const fallbackRoles = resolveDashboardDefinitionVisibilityRoles(fallbackEntry || {}, 'user');
+  const hasMultiSelectField = Object.prototype.hasOwnProperty.call(source, 'dashboard_visibility_roles')
+    || Object.prototype.hasOwnProperty.call(source, 'dashboard_visibility_roles_present');
+  if (hasMultiSelectField) {
+    return normalizeDashboardVisibilityRoles(source.dashboard_visibility_roles, []);
+  }
+  return normalizeDashboardVisibilityRoles(
+    source.dashboard_visibility_role,
+    fallbackRoles.length ? fallbackRoles : 'user',
+  );
+}
+
+function extractDashboardStateSnapshot(config) {
+  const apps = Array.isArray(config?.apps) ? config.apps : [];
+  const appStates = {};
+  apps.forEach((appItem) => {
+    const appId = normalizeAppId(appItem?.id) || String(appItem?.id || '').trim();
+    if (!appId) return;
+    const snapshot = {};
+    if (Array.isArray(appItem?.overviewElements)) {
+      snapshot.overviewElements = cloneJsonValue(appItem.overviewElements, []);
+    }
+    if (Array.isArray(appItem?.tautulliCards)) {
+      snapshot.tautulliCards = cloneJsonValue(appItem.tautulliCards, []);
+    }
+    if (Object.keys(snapshot).length) {
+      appStates[appId] = snapshot;
+    }
+  });
+  return {
+    dashboardRemovedElements: cloneJsonValue(config?.dashboardRemovedElements, {}),
+    dashboardCombinedOrder: cloneJsonValue(config?.dashboardCombinedOrder, {}),
+    dashboardCombinedSettings: cloneJsonValue(config?.dashboardCombinedSettings, {}),
+    arrDashboardCombine: cloneJsonValue(config?.arrDashboardCombine, {}),
+    mediaDashboardCombine: cloneJsonValue(config?.mediaDashboardCombine, {}),
+    downloaderDashboardCombine: cloneJsonValue(config?.downloaderDashboardCombine, {}),
+    arrCombinedQueueDisplay: cloneJsonValue(config?.arrCombinedQueueDisplay, {}),
+    downloaderCombinedQueueDisplay: cloneJsonValue(config?.downloaderCombinedQueueDisplay, {}),
+    arrDashboardCombinedCards: cloneJsonValue(config?.arrDashboardCombinedCards, []),
+    downloaderDashboardCards: cloneJsonValue(config?.downloaderDashboardCards, []),
+    mediaDashboardCards: cloneJsonValue(config?.mediaDashboardCards, []),
+    dashboardWidgets: cloneJsonValue(config?.dashboardWidgets, []),
+    apps: appStates,
+  };
+}
+
+function buildEmptyDashboardStateSnapshot(config) {
+  const apps = Array.isArray(config?.apps) ? config.apps : [];
+  const appStates = {};
+  const dashboardRemovedElements = {};
+  apps.forEach((appItem) => {
+    const appId = normalizeAppId(appItem?.id) || String(appItem?.id || '').trim();
+    if (!appId) return;
+    const rawAppId = String(appItem?.id || '').trim();
+    const overviewElements = getOverviewElements(appItem).map((element, index) => {
+      const elementId = String(element?.id || '').trim();
+      if (rawAppId && elementId) {
+        dashboardRemovedElements[`app:${rawAppId}:${elementId}`] = true;
+      }
+      return {
+        id: elementId,
+        enable: false,
+        dashboard: false,
+        overviewVisibilityRole: 'disabled',
+        dashboardVisibilityRole: 'disabled',
+        favourite: false,
+        order: index + 1,
+      };
+    });
+    const tautulliCards = getTautulliCards(appItem).map((card, index) => ({
+      id: String(card?.id || '').trim(),
+      enable: false,
+      order: index + 1,
+    })).filter((card) => card.id);
+    const snapshot = {};
+    if (overviewElements.length) snapshot.overviewElements = overviewElements;
+    if (tautulliCards.length) snapshot.tautulliCards = tautulliCards;
+    if (Object.keys(snapshot).length) appStates[appId] = snapshot;
+  });
+  ARR_COMBINE_SECTIONS.forEach((section) => {
+    dashboardRemovedElements[`combined:arr:${section.key}`] = true;
+  });
+  DOWNLOADER_COMBINE_SECTIONS.forEach((section) => {
+    dashboardRemovedElements[`combined:downloader:${section.key}`] = true;
+  });
+  MEDIA_COMBINE_SECTIONS.forEach((section) => {
+    dashboardRemovedElements[`combined:media:${section.key}`] = true;
+  });
+  resolveArrDashboardCombinedCards(config, apps).forEach((card, index) => {
+    const token = normalizeCombinedCardToken(card?.id || '') || `card-${index + 1}`;
+    dashboardRemovedElements[`combined:arrcustom:${token}`] = true;
+  });
+  resolveDownloaderDashboardCards(config, apps).forEach((card, index) => {
+    const token = normalizeCombinedCardToken(card?.id || '') || `card-${index + 1}`;
+    dashboardRemovedElements[`combined:downloadercustom:${token}`] = true;
+  });
+  resolveMediaDashboardCards(config, apps).forEach((card, index) => {
+    const token = normalizeCombinedCardToken(card?.id || '') || `card-${index + 1}`;
+    dashboardRemovedElements[`combined:mediacustom:${token}`] = true;
+  });
+  return {
+    dashboardRemovedElements,
+    dashboardCombinedOrder: {},
+    dashboardCombinedSettings: {},
+    arrDashboardCombine: {},
+    mediaDashboardCombine: {},
+    downloaderDashboardCombine: {},
+    arrCombinedQueueDisplay: {},
+    downloaderCombinedQueueDisplay: {},
+    arrDashboardCombinedCards: [],
+    downloaderDashboardCards: [],
+    mediaDashboardCards: [],
+    dashboardWidgets: [],
+    apps: appStates,
+  };
+}
+
+function applyDashboardStateSnapshot(config, dashboardEntry) {
+  if (!dashboardEntry || dashboardEntry.id === DASHBOARD_MAIN_ID) return config;
+  const snapshot = dashboardEntry.state && typeof dashboardEntry.state === 'object' ? dashboardEntry.state : null;
+  if (!snapshot) return config;
+  const nextConfig = { ...config };
+  if (snapshot.dashboardRemovedElements && typeof snapshot.dashboardRemovedElements === 'object') {
+    nextConfig.dashboardRemovedElements = cloneJsonValue(snapshot.dashboardRemovedElements, {});
+  }
+  if (snapshot.dashboardCombinedOrder && typeof snapshot.dashboardCombinedOrder === 'object') {
+    nextConfig.dashboardCombinedOrder = cloneJsonValue(snapshot.dashboardCombinedOrder, {});
+  }
+  if (snapshot.dashboardCombinedSettings && typeof snapshot.dashboardCombinedSettings === 'object') {
+    nextConfig.dashboardCombinedSettings = cloneJsonValue(snapshot.dashboardCombinedSettings, {});
+  }
+  if (snapshot.arrDashboardCombine && typeof snapshot.arrDashboardCombine === 'object') {
+    nextConfig.arrDashboardCombine = cloneJsonValue(snapshot.arrDashboardCombine, {});
+  }
+  if (snapshot.mediaDashboardCombine && typeof snapshot.mediaDashboardCombine === 'object') {
+    nextConfig.mediaDashboardCombine = cloneJsonValue(snapshot.mediaDashboardCombine, {});
+  }
+  if (snapshot.downloaderDashboardCombine && typeof snapshot.downloaderDashboardCombine === 'object') {
+    nextConfig.downloaderDashboardCombine = cloneJsonValue(snapshot.downloaderDashboardCombine, {});
+  }
+  if (snapshot.arrCombinedQueueDisplay && typeof snapshot.arrCombinedQueueDisplay === 'object') {
+    nextConfig.arrCombinedQueueDisplay = cloneJsonValue(snapshot.arrCombinedQueueDisplay, {});
+  }
+  if (snapshot.downloaderCombinedQueueDisplay && typeof snapshot.downloaderCombinedQueueDisplay === 'object') {
+    nextConfig.downloaderCombinedQueueDisplay = cloneJsonValue(snapshot.downloaderCombinedQueueDisplay, {});
+  }
+  if (Array.isArray(snapshot.arrDashboardCombinedCards)) {
+    nextConfig.arrDashboardCombinedCards = cloneJsonValue(snapshot.arrDashboardCombinedCards, []);
+  }
+  if (Array.isArray(snapshot.downloaderDashboardCards)) {
+    nextConfig.downloaderDashboardCards = cloneJsonValue(snapshot.downloaderDashboardCards, []);
+  }
+  if (Array.isArray(snapshot.mediaDashboardCards)) {
+    nextConfig.mediaDashboardCards = cloneJsonValue(snapshot.mediaDashboardCards, []);
+  }
+  if (Array.isArray(snapshot.dashboardWidgets)) {
+    nextConfig.dashboardWidgets = cloneJsonValue(snapshot.dashboardWidgets, []);
+  }
+
+  const snapshotApps = snapshot.apps && typeof snapshot.apps === 'object' ? snapshot.apps : {};
+  if (Array.isArray(config?.apps)) {
+    nextConfig.apps = config.apps.map((appItem) => {
+      const appId = normalizeAppId(appItem?.id) || String(appItem?.id || '').trim();
+      const appSnapshot = (appId && snapshotApps[appId] && typeof snapshotApps[appId] === 'object')
+        ? snapshotApps[appId]
+        : null;
+      if (!appSnapshot) return appItem;
+      const nextApp = { ...appItem };
+      if (Array.isArray(appSnapshot.overviewElements)) {
+        nextApp.overviewElements = cloneJsonValue(appSnapshot.overviewElements, []);
+      }
+      if (Array.isArray(appSnapshot.tautulliCards)) {
+        nextApp.tautulliCards = cloneJsonValue(appSnapshot.tautulliCards, []);
+      }
+      return nextApp;
+    });
+  }
+  return nextConfig;
+}
+
+function buildDashboardScopedConfigForSave(baseConfig, nextEffectiveConfig, dashboardId, nextDashboards) {
+  const selectedDashboardId = normalizeDashboardInstanceId(dashboardId) || DASHBOARD_MAIN_ID;
+  if (selectedDashboardId === DASHBOARD_MAIN_ID) {
+    const dashboards = Array.isArray(nextDashboards) ? nextDashboards : resolveDashboardDefinitions(nextEffectiveConfig);
+    return {
+      ...nextEffectiveConfig,
+      dashboards,
+    };
+  }
+  const baseDashboards = Array.isArray(nextDashboards) ? nextDashboards : resolveDashboardDefinitions(baseConfig);
+  const snapshot = extractDashboardStateSnapshot(nextEffectiveConfig);
+  const updatedDashboards = baseDashboards.map((entry) => (
+    entry.id === selectedDashboardId
+      ? { ...entry, state: snapshot }
+      : entry
+  ));
+  return {
+    ...baseConfig,
+    dashboards: updatedDashboards,
+  };
+}
+
+function saveDashboardScopedConfig(baseConfig, nextEffectiveConfig, dashboardId, nextDashboards) {
+  saveConfig(buildDashboardScopedConfigForSave(baseConfig, nextEffectiveConfig, dashboardId, nextDashboards));
+}
+
+function buildDashboardSettingsRedirect(req, extraParams = {}) {
+  const params = new URLSearchParams({
+    tab: 'custom',
+    settingsCustomTab: 'dashboard',
+  });
+  const dashboardId = normalizeDashboardInstanceId(extraParams.dashboardId || resolveRequestedDashboardId(req));
+  if (dashboardId) params.set('dashboard', dashboardId);
+  Object.entries(extraParams || {}).forEach(([key, value]) => {
+    if (key === 'dashboardId') return;
+    if (value === undefined || value === null || value === '') return;
+    params.set(key, String(value));
+  });
+  return `/settings?${params.toString()}`;
 }
 
 function resolveCombinedSourceSelectionIds(appIds = [], sectionMap = {}) {
@@ -14724,6 +15414,10 @@ function loadConfig() {
     const mergedApps = mergeAppDefaults(defaults, overrideApps);
     const mergedCategories = mergeCategoryDefaults(defaultCategories, overrideCategories);
     const nextConfig = { ...parsed, apps: mergedApps, categories: mergedCategories };
+    if (seededNewConfig) {
+      Object.assign(nextConfig, buildEmptyDashboardStateSnapshot(nextConfig));
+      saveConfig(nextConfig);
+    }
     const hasActiveApps = mergedApps.some((appItem) => !appItem?.removed);
     if (seededNewConfig || !hasActiveApps) {
       refreshRuntimeMultiInstanceBaseIds(mergedApps);
@@ -15235,8 +15929,105 @@ function getActualRole(req) {
 function getEffectiveRole(req) {
   const actualRole = getActualRole(req);
   const viewRole = req.session?.viewRole;
-  if (actualRole === 'admin' && viewRole === 'user') return 'user';
+  if (actualRole === 'admin' && ['guest', 'user', 'co-admin'].includes(String(viewRole || '').trim().toLowerCase())) {
+    return String(viewRole || '').trim().toLowerCase();
+  }
   return actualRole;
+}
+
+function buildRoleViewDashboardAvailability(config) {
+  const sourceConfig = config && typeof config === 'object' ? config : loadConfig();
+  return ['guest', 'user', 'co-admin', 'admin'].reduce((acc, role) => {
+    const selection = resolveDashboardSelection(sourceConfig, '', role);
+    acc[role] = {
+      hasDashboard: Boolean(selection?.visibleDashboards?.length),
+      firstDashboardId: String(selection?.visibleDashboards?.[0]?.id || '').trim(),
+    };
+    return acc;
+  }, {});
+}
+
+function resolveFirstAccessibleAppPath(config, req, role) {
+  const apps = Array.isArray(config?.apps) ? config.apps : [];
+  const categoryEntries = resolveCategoryEntries(config, apps);
+  const categoryOrder = categoryEntries.map((entry) => entry.name);
+  const navApps = getNavApps(apps, role, req, categoryOrder, resolveGeneralSettings(config));
+  const appItem = Array.isArray(navApps) && navApps.length ? navApps[0] : null;
+  if (!appItem?.id) return '';
+  const appId = encodeURIComponent(String(appItem.id).trim());
+  if (appItem.menuAccess?.overview) return `/apps/${appId}`;
+  if (appItem.menuAccess?.launch) return `/apps/${appId}/launch`;
+  if (appItem.menuAccess?.settings && role === 'admin') return `/apps/${appId}/settings`;
+  if (appItem.menuAccess?.activity && role === 'admin') return `/apps/${appId}/activity`;
+  return '';
+}
+
+function resolveBestRoleLandingPath(req, role, options = {}) {
+  const config = options.config && typeof options.config === 'object' ? options.config : loadConfig();
+  const excludeDashboard = options.excludeDashboard === true;
+  if (!excludeDashboard) {
+    const dashboardSelection = resolveDashboardSelection(config, resolveRequestedDashboardId(req), role);
+    if (dashboardSelection.visibleDashboards.length) {
+      const targetDashboard = dashboardSelection.activeDashboard || dashboardSelection.visibleDashboards[0];
+      const dashboardId = normalizeDashboardInstanceId(targetDashboard?.id) || DASHBOARD_MAIN_ID;
+      return `/dashboard?dashboard=${encodeURIComponent(dashboardId)}`;
+    }
+  }
+  const firstAppPath = resolveFirstAccessibleAppPath(config, req, role);
+  if (firstAppPath) return firstAppPath;
+  if (getActualRole(req) === 'admin') return '/settings';
+  return '/user-settings';
+}
+
+function resolveRoleSwitchRedirectPath(req, targetRole, options = {}) {
+  const config = options.config && typeof options.config === 'object' ? options.config : loadConfig();
+  const fallback = resolveBestRoleLandingPath(req, targetRole, { config });
+  const referrer = resolveReturnPath(req, fallback);
+  try {
+    const host = req.headers.host || '';
+    const url = new URL(referrer, `http://${host}`);
+    const path = String(url.pathname || '').trim();
+    if (!path) return fallback;
+
+    if (path === '/dashboard') {
+      const requestedDashboardId = normalizeDashboardInstanceId(url.searchParams.get('dashboard'));
+      const dashboardSelection = resolveDashboardSelection(config, requestedDashboardId, targetRole);
+      if (!dashboardSelection.visibleDashboards.length || !dashboardSelection.activeDashboard) {
+        return resolveBestRoleLandingPath(req, targetRole, { config, excludeDashboard: true });
+      }
+      const activeDashboardId = normalizeDashboardInstanceId(dashboardSelection.activeDashboard.id) || DASHBOARD_MAIN_ID;
+      const requestedIsVisible = requestedDashboardId
+        ? dashboardSelection.visibleDashboards.some((entry) => entry.id === requestedDashboardId)
+        : false;
+      if (!requestedDashboardId || requestedIsVisible) return referrer;
+      return `/dashboard?dashboard=${encodeURIComponent(activeDashboardId)}`;
+    }
+
+    const appOverviewMatch = path.match(/^\/apps\/([^/]+)$/);
+    if (appOverviewMatch) {
+      const appId = decodeURIComponent(appOverviewMatch[1] || '');
+      const appItem = (Array.isArray(config?.apps) ? config.apps : []).find((entry) => String(entry?.id || '') === appId);
+      return (appItem && canAccess(appItem, targetRole, 'overview'))
+        ? referrer
+        : resolveBestRoleLandingPath(req, targetRole, { config });
+    }
+
+    const appLaunchMatch = path.match(/^\/apps\/([^/]+)\/launch$/);
+    if (appLaunchMatch) {
+      const appId = decodeURIComponent(appLaunchMatch[1] || '');
+      const appItem = (Array.isArray(config?.apps) ? config.apps : []).find((entry) => String(entry?.id || '') === appId);
+      return (appItem && canAccess(appItem, targetRole, 'launch'))
+        ? referrer
+        : resolveBestRoleLandingPath(req, targetRole, { config });
+    }
+
+    if (/^\/apps\/[^/]+\/(?:settings|activity)$/.test(path) && targetRole !== 'admin') {
+      return resolveBestRoleLandingPath(req, targetRole, { config });
+    }
+  } catch (err) {
+    return fallback;
+  }
+  return referrer;
 }
 
 function resolveReturnPath(req, fallback = '/dashboard') {

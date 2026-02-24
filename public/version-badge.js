@@ -22,8 +22,11 @@
     status.appendChild(supportLink);
   }
 
+  const activeRoleViewOption = document.querySelector('.user-menu-role-option.is-active[href^="/switch-view?role="]');
   const switchViewLink = document.querySelector('.user-menu-item[href^="/switch-view?role="]');
-  const inAdminView = Boolean(switchViewLink && /[?&]role=user(?:&|$)/.test(switchViewLink.getAttribute('href') || ''));
+  const inAdminView = activeRoleViewOption
+    ? /[?&]role=admin(?:&|$)/.test(activeRoleViewOption.getAttribute('href') || '')
+    : Boolean(switchViewLink && /[?&]role=user(?:&|$)/.test(switchViewLink.getAttribute('href') || ''));
   const normalizeVersionTag = (value) => {
     const raw = String(value || '').trim();
     if (!raw) return '';

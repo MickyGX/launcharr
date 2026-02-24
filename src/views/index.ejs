@@ -124,16 +124,32 @@
           <span class="user-pill-caret" aria-hidden="true"></span>
           <div class="user-menu" role="menu">
             <% if (actualRole === 'admin') { %>
-              <a class="user-menu-item" href="/settings">
-                <img class="user-menu-icon" src="/icons/settings.svg" alt="" />
-                <span class="user-menu-text">Settings</span>
-              </a>
-            <% } %>
-            <% if (role === 'admin') { %>
-              <a class="user-menu-item" href="/switch-view?role=<%= role === 'admin' ? 'user' : 'admin' %>">
-                <img class="user-menu-icon" src="/icons/window.svg" alt="" />
-                <span class="user-menu-text"><%= role === 'admin' ? 'User view' : 'Admin view' %></span>
-              </a>
+              <details class="user-menu-role-picker" data-user-role-picker>
+                <summary class="user-menu-item user-menu-role-trigger">
+                  <img class="user-menu-icon" src="/icons/view.svg" alt="" />
+                  <span class="user-menu-text">Role view</span>
+                  <span class="user-menu-role-caret" aria-hidden="true"></span>
+                </summary>
+                <div class="user-menu-role-options" role="group" aria-label="Role view options">
+                  <% const roleViewDashboardMap = (roleViewDashboardAvailability && typeof roleViewDashboardAvailability === 'object') ? roleViewDashboardAvailability : {}; %>
+                  <a class="user-menu-item user-menu-role-option<%= role === 'guest' ? ' is-active' : '' %>" href="/switch-view?role=guest">
+                    <span class="user-menu-role-state" aria-hidden="true"><% if (roleViewDashboardMap.guest?.hasDashboard) { %><img class="user-menu-role-state-icon" src="/icons/dashboard.svg" alt="" /><% } else { %><span class="user-menu-role-state-x">x</span><% } %></span>
+                    <span class="user-menu-role-name">Guest</span>
+                  </a>
+                  <a class="user-menu-item user-menu-role-option<%= role === 'user' ? ' is-active' : '' %>" href="/switch-view?role=user">
+                    <span class="user-menu-role-state" aria-hidden="true"><% if (roleViewDashboardMap.user?.hasDashboard) { %><img class="user-menu-role-state-icon" src="/icons/dashboard.svg" alt="" /><% } else { %><span class="user-menu-role-state-x">x</span><% } %></span>
+                    <span class="user-menu-role-name">User</span>
+                  </a>
+                  <a class="user-menu-item user-menu-role-option<%= role === 'co-admin' ? ' is-active' : '' %>" href="/switch-view?role=co-admin">
+                    <span class="user-menu-role-state" aria-hidden="true"><% if (roleViewDashboardMap['co-admin']?.hasDashboard) { %><img class="user-menu-role-state-icon" src="/icons/dashboard.svg" alt="" /><% } else { %><span class="user-menu-role-state-x">x</span><% } %></span>
+                    <span class="user-menu-role-name">Co-admin</span>
+                  </a>
+                  <a class="user-menu-item user-menu-role-option<%= role === 'admin' ? ' is-active' : '' %>" href="/switch-view?role=admin">
+                    <span class="user-menu-role-state" aria-hidden="true"><% if (roleViewDashboardMap.admin?.hasDashboard) { %><img class="user-menu-role-state-icon" src="/icons/dashboard.svg" alt="" /><% } else { %><span class="user-menu-role-state-x">x</span><% } %></span>
+                    <span class="user-menu-role-name">Admin</span>
+                  </a>
+                </div>
+              </details>
             <% } %>
             <a class="user-menu-item" href="/user-settings">
               <img class="user-menu-icon" src="/icons/user-profile.svg" alt="" />
@@ -144,6 +160,12 @@
               <img class="user-menu-icon" src="/icons/logout.svg" alt="" />
               <span class="user-menu-text">Sign out</span>
             </a>
+            <% if (actualRole === 'admin') { %>
+              <a class="user-menu-item" href="/settings">
+                <img class="user-menu-icon" src="/icons/settings.svg" alt="" />
+                <span class="user-menu-text">Settings</span>
+              </a>
+            <% } %>
           </div>
         </div>
       <% } else { %>
@@ -200,6 +222,7 @@
     function closeUserMenus(except) {
       userMenus.forEach((menu) => {
         if (menu === except) return;
+        menu.querySelectorAll('[data-user-role-picker][open]').forEach((picker) => { picker.open = false; });
         menu.classList.remove('user-pill--open');
         menu.setAttribute('aria-expanded', 'false');
       });
@@ -216,6 +239,7 @@
         menu.setAttribute('aria-expanded', !isOpen ? 'true' : 'false');
       });
       menu.addEventListener('keydown', (event) => {
+        if (event.target.closest('.user-menu')) return;
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();
         menu.click();
