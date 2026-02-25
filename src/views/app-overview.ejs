@@ -1,4 +1,4 @@
-<%- include('partials/head', { pageTitle: 'Launcharr · ' + (app.name || 'App') + ' Overview' }) %>
+<%- include('partials/head', { pageTitle: 'Launcharr · ' + (app.name || 'App') + ' Overview', extraCss: ['/styles-layout.css', '/styles-overview.css'] }) %>
 <body class="dash-body">
   <%
     const dashboardNavEntries = (Array.isArray(dashboardDefinitions) ? dashboardDefinitions : [])

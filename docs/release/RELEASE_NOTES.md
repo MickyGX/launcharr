@@ -1,4 +1,20 @@
-# Release Notes (v0.1.0 -> v0.2.40)
+# Release Notes (v0.1.0 -> v0.2.41)
+
+## v0.2.41 (2026-02-25)
+
+- [Added]
+- Added local login rate limiting for `POST /login` with temporary lockout (`429`) and retry messaging after repeated failed attempts.
+- Added auth and route-guard automated tests (`npm test`) using `node:test` + `supertest`.
+- Added modular route registration files under `src/routes/*` and shared EJS partials to reduce duplication.
+- Added split page-specific CSS bundles (`styles-auth`, `styles-home`, `styles-layout`, `styles-overview`, `styles-settings`) alongside shared `styles.css`.
+- [Changed]
+- Refactored `src/index.js` route wiring to register route groups via `register*()` modules while preserving existing endpoints.
+- Updated package scripts/dev tooling to include `npm test` and `supertest` for HTTP route coverage.
+- [Fixed]
+- Fixed Romm iframe viewer launch cookie priming for embedded Romm launches.
+- Hardened log persistence writes with temp-file + rename behavior to reduce partial writes on interruption.
+- [Security]
+- Removed the insecure fallback session secret (`change-me`); Launcharr now generates a random secret and logs a warning when `SESSION_SECRET` is unset.
 
 ## v0.2.40 (2026-02-24)
 

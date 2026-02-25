@@ -25,3 +25,5 @@ docker-compose.local.yml
 public/icons/custom
 seekarr
 private
+.claude
+.Claude

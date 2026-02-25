@@ -47,5 +47,9 @@ bfg.jar
 # Local helper scripts
 scripts/
 
+# Local AI assistant settings
+.claude/
+.Claude/
+
 config/config.quickstart-backup.json
 launcharr-test-build.tar

@@ -1,4 +1,4 @@
-<%- include('partials/head', { pageTitle: 'Launcharr · ' + (app.name || 'App') + ' Settings' }) %>
+<%- include('partials/head', { pageTitle: 'Launcharr · ' + (app.name || 'App') + ' Settings', extraCss: ['/styles-layout.css', '/styles-settings.css'] }) %>
 <body class="dash-body <%= app.id === 'plex' ? 'plex-settings-body' : '' %>">
   <%
     const dashboardNavEntries = (Array.isArray(dashboardDefinitions) ? dashboardDefinitions : [])
