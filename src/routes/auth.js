@@ -45,6 +45,35 @@ function clearLoginFailures(ip) {
 export function resetLoginAttempts() { loginAttempts.clear(); }
 export { checkLoginRateLimit, recordLoginFailure, clearLoginFailures };
 
+function normalizePostLoginRedirectPath(value, fallback = '/dashboard') {
+  const raw = String(value || '').trim();
+  if (!raw) return fallback;
+  if (!raw.startsWith('/') || raw.startsWith('//')) return fallback;
+  const normalized = raw;
+  const lowerPath = normalized.split('?')[0].toLowerCase();
+  if (['/login', '/logout', '/setup', '/auth/plex'].includes(lowerPath)) return fallback;
+  return normalized;
+}
+
+function setPostLoginRedirect(req, value) {
+  try {
+    if (!req?.session) return;
+    req.session.postLoginRedirect = normalizePostLoginRedirectPath(value, '/dashboard');
+  } catch (err) {
+    /* ignore session write failures */
+  }
+}
+
+function consumePostLoginRedirect(req, fallback = '/dashboard') {
+  try {
+    const next = normalizePostLoginRedirectPath(req?.session?.postLoginRedirect, fallback);
+    if (req?.session) delete req.session.postLoginRedirect;
+    return next;
+  } catch (err) {
+    return fallback;
+  }
+}
+
 export function registerAuth(app, ctx) {
   const {
     loadConfig,
@@ -78,7 +107,8 @@ export function registerAuth(app, ctx) {
 
   app.get('/login', (req, res) => {
     const user = req.session?.user || null;
-    if (user) return res.redirect('/dashboard');
+    if (user) return res.redirect(consumePostLoginRedirect(req, '/dashboard'));
+    if (req.query?.next) setPostLoginRedirect(req, req.query.next);
     const config = loadConfig();
     if (!hasLocalAdmin(config)) return res.redirect('/setup');
     res.render('login', {
@@ -92,7 +122,8 @@ export function registerAuth(app, ctx) {
 
   app.post('/login', (req, res) => {
     const user = req.session?.user || null;
-    if (user) return res.redirect('/dashboard');
+    if (user) return res.redirect(consumePostLoginRedirect(req, '/dashboard'));
+    if (req.body?.next) setPostLoginRedirect(req, req.body.next);
 
     const ip = getClientIp(req);
     const blockedMinutes = checkLoginRateLimit(ip);
@@ -141,7 +172,7 @@ export function registerAuth(app, ctx) {
       launcharr: true,
     });
     if (loginConfig !== config) saveConfig(loginConfig);
-    return res.redirect('/dashboard');
+    return res.redirect(consumePostLoginRedirect(req, '/dashboard'));
   });
 
   app.get('/setup', (req, res) => {
@@ -311,7 +342,7 @@ export function registerAuth(app, ctx) {
       }
 
       await completePlexLogin(req, authToken);
-      res.redirect('/');
+      res.redirect(consumePostLoginRedirect(req, '/dashboard'));
     } catch (err) {
       console.error('Plex callback failed:', err);
       pushLog({
@@ -332,7 +363,7 @@ export function registerAuth(app, ctx) {
       const authToken = await exchangePin(pinId);
       if (!authToken) return res.json({ ok: false });
       await completePlexLogin(req, authToken);
-      return res.json({ ok: true });
+      return res.json({ ok: true, redirect: consumePostLoginRedirect(req, '/dashboard') });
     } catch (err) {
       const status = err?.status || 500;
       return res.status(status).json({ error: safeMessage(err) || 'PIN status check failed.' });

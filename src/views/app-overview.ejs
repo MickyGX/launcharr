@@ -951,91 +951,64 @@
         <%
           const overviewItems = Array.isArray(overviewElements) ? overviewElements : [];
           const overviewById = new Map(overviewItems.map((item) => [item.id, item]));
-          const recentMatchesSettings = overviewById.get('recent-matches') || { enable: true, order: 1 };
-          const deliveryQueueSettings = overviewById.get('delivery-queue') || { enable: true, order: 2 };
+          const releasesSettings = overviewById.get('recent-matches') || { enable: true };
           const appPrefix = app.id;
-          const orderedAutobrrSections = [
-            { id: 'recent-matches', settings: recentMatchesSettings },
-            { id: 'delivery-queue', settings: deliveryQueueSettings },
-          ]
-            .filter((item) => item.settings?.enable !== false)
-            .sort((a, b) => {
-              const favouriteDelta = (b.settings?.favourite ? 1 : 0) - (a.settings?.favourite ? 1 : 0);
-              if (favouriteDelta !== 0) return favouriteDelta;
-              const orderDelta = (a.settings?.order || 0) - (b.settings?.order || 0);
-              if (orderDelta !== 0) return orderDelta;
-              return a.id.localeCompare(b.id);
-            });
+          const queueVisibleRows = releasesSettings?.queueVisibleRows || 10;
         %>
+        <% if (releasesSettings?.enable !== false) { %>
         <div class="plex-overview">
-          <% orderedAutobrrSections.forEach((section) => { %>
-            <%
-              const isRecentMatches = section.id === 'recent-matches';
-              const controlPrefix = `${appPrefix}${isRecentMatches ? 'RecentMatches' : 'DeliveryQueue'}`;
-              const queueClasses = [
-                section.settings?.queueShowDetail === false ? 'queue-hide-detail' : '',
-                section.settings?.queueShowSubDetail === false ? 'queue-hide-subdetail' : '',
-                section.settings?.queueShowSize === false ? 'queue-hide-size' : '',
-                section.settings?.queueShowProtocol === false ? 'queue-hide-protocol' : '',
-                section.settings?.queueShowTimeLeft === false ? 'queue-hide-timeleft' : '',
-                section.settings?.queueShowProgress === false ? 'queue-hide-progress' : '',
-              ].filter(Boolean).join(' ');
-              const queueVisibleRows = section.settings?.queueVisibleRows || 10;
-            %>
-            <section class="plex-module plex-module--no-subtitle" id="<%= appPrefix %>-<%= section.id %>">
-              <div class="plex-topbar">
-                <div class="plex-title-wrap">
-                  <div class="plex-title">
-                    <img class="plex-logo" src="<%= resolveAppIconPath(app) %>" alt="<%= app.name %>" loading="eager" />
-                    <span><%= isRecentMatches ? 'Recent Matches' : 'Delivery Queue' %></span>
-                  </div>
-                  <div class="plex-subtitle"></div>
+          <section class="plex-module plex-module--no-subtitle" id="<%= appPrefix %>-recent-matches">
+            <div class="plex-topbar">
+              <div class="plex-title-wrap">
+                <div class="plex-title">
+                  <img class="plex-logo" src="<%= resolveAppIconPath(app) %>" alt="<%= app.name %>" loading="eager" />
+                  <span>Releases</span>
                 </div>
-                <div class="plex-spacer"></div>
-                <div class="plex-controls-right">
-                  <div class="plex-select plex-icon plex-filter-media" title="Type">
-                    <select id="<%= controlPrefix %>TypeFilter" aria-label="Release type">
-                      <option value="all" selected>All</option>
-                      <option value="torrent">Torrent</option>
-                      <option value="usenet">Usenet</option>
-                    </select>
+                <div class="plex-subtitle"></div>
+              </div>
+              <div class="plex-spacer"></div>
+              <div class="plex-controls-right">
+                <div class="plex-select plex-icon plex-filter-media" title="Type">
+                  <select id="<%= appPrefix %>RecentMatchesTypeFilter" aria-label="Release type">
+                    <option value="all" selected>All</option>
+                    <option value="torrent">Torrent</option>
+                    <option value="usenet">Usenet</option>
+                  </select>
+                </div>
+                <div class="plex-select plex-icon plex-filter-status" title="Push Status">
+                  <select id="<%= appPrefix %>RecentMatchesStatusFilter" aria-label="Push Status">
+                    <option value="all" selected>All</option>
+                    <option value="completed">Approved</option>
+                    <option value="error">Rejected</option>
+                    <option value="active">Active</option>
+                    <option value="queued">Queued</option>
+                  </select>
+                </div>
+                <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="<%= appPrefix %>-recent-matches" data-collapse-global="true">
+                  <div class="plex-doublechev">
+                    <div class="plex-chev plex-up"></div>
+                    <div class="plex-chev plex-down"></div>
                   </div>
-                  <div class="plex-select plex-icon plex-filter-status" title="Status">
-                    <select id="<%= controlPrefix %>StatusFilter" aria-label="Status">
-                      <option value="all" selected>All</option>
-                      <option value="active">Active</option>
-                      <option value="queued">Queued</option>
-                      <option value="completed">Completed</option>
-                      <option value="error">Error</option>
-                    </select>
-                  </div>
-                  <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="<%= appPrefix %>-<%= section.id %>" data-collapse-global="true">
-                    <div class="plex-doublechev">
-                      <div class="plex-chev plex-up"></div>
-                      <div class="plex-chev plex-down"></div>
-                    </div>
-                  </button>
+                </button>
+              </div>
+            </div>
+            <div class="plex-panel queue-panel">
+              <div class="queue-table queue-mode-releases" style="--queue-visible-rows:<%= queueVisibleRows %>">
+                <div class="queue-row header">
+                  <div class="queue-col-detail">Age</div>
+                  <div class="queue-col-title">Release</div>
+                  <div class="queue-col-links">Links</div>
+                  <div class="queue-col-actions">Actions</div>
+                  <div class="queue-col-size">Indexer</div>
+                </div>
+                <div id="<%= appPrefix %>RecentMatchesBody" class="queue-body">
+                  <div class="queue-empty">Loading…</div>
                 </div>
               </div>
-              <div class="plex-panel queue-panel">
-                <div class="queue-table <%= queueClasses %>" style="--queue-visible-rows:<%= queueVisibleRows %>">
-                  <div class="queue-row header">
-                    <div class="queue-col-title">Title</div>
-                    <div class="queue-col-detail"><%= isRecentMatches ? 'Indexer' : 'Destination' %></div>
-                    <div class="queue-col-subdetail">Release</div>
-                    <div class="queue-col-size">Size</div>
-                    <div class="queue-col-protocol">Protocol</div>
-                    <div class="queue-col-time">Time Left</div>
-                    <div class="queue-col-progress">Progress</div>
-                  </div>
-                  <div id="<%= controlPrefix %>Body" class="queue-body">
-                    <div class="queue-empty">Loading…</div>
-                  </div>
-                </div>
-              </div>
-            </section>
-          <% }) %>
+            </div>
+          </section>
         </div>
+        <% } %>
       <% } %>
 
       <% if (appBaseId === 'romm') { %>
@@ -2345,24 +2318,15 @@
           appName: app.name || 'Bazarr',
         }];
       } else if (appBaseId === 'autobrr') {
-        queueCardConfigs = [
-          {
-            moduleId: `${app.id}-recent-matches`,
-            bodyId: `${app.id}RecentMatchesBody`,
-            typeFilterId: `${app.id}RecentMatchesTypeFilter`,
-            statusFilterId: `${app.id}RecentMatchesStatusFilter`,
-            endpoint: '/api/autobrr/recent-matches',
-            appName: app.name || 'Autobrr',
-          },
-          {
-            moduleId: `${app.id}-delivery-queue`,
-            bodyId: `${app.id}DeliveryQueueBody`,
-            typeFilterId: `${app.id}DeliveryQueueTypeFilter`,
-            statusFilterId: `${app.id}DeliveryQueueStatusFilter`,
-            endpoint: '/api/autobrr/delivery-queue',
-            appName: app.name || 'Autobrr',
-          },
-        ];
+        queueCardConfigs = [{
+          moduleId: `${app.id}-recent-matches`,
+          bodyId: `${app.id}RecentMatchesBody`,
+          typeFilterId: `${app.id}RecentMatchesTypeFilter`,
+          statusFilterId: `${app.id}RecentMatchesStatusFilter`,
+          endpoint: '/api/autobrr/recent-matches',
+          appName: app.name || 'Autobrr',
+          mode: 'releases',
+        }];
       }
     %>
     <script>

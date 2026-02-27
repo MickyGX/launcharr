@@ -1,4 +1,25 @@
-# Release Notes (v0.1.0 -> v0.2.41)
+# Release Notes (v0.1.0 -> v0.2.42)
+
+## v0.2.42 (2026-02-27)
+
+- [Added]
+- Added a major System Info widget expansion (`sys-resources`) with configurable CPU, RAM, multi-disk, search, and weather elements.
+- Added `Show Total Space (RAM + Disks)` support for System Info cards so widgets can switch between free and total-space displays.
+- Added widget status notifications via Apprise with explicit `Enable widget status alerts` and delay-seconds controls.
+- Added a background widget-state monitor that polls widget apps and sends online/offline notifications after sustained state transitions.
+- Added widget monitor debugging surfaces:
+  - `GET /api/widget-status-monitor`
+  - Live monitor summary line in `Settings -> Log`.
+- Added widget-focused runtime/icon assets (`public/widgets-stat-cards.js`, CPU/RAM/disk/weather icon set).
+- [Changed]
+- Updated widget row editing UX with compact up/down row insertion strips and reduced row action footprint.
+- Updated widget add-menu/popup layering so floating menus and config panels render above surrounding settings/topbar UI.
+- Updated System Info widget theming/layout to better match dashboard styling, including improved mobile wrapping and search/weather placement behavior.
+- Updated widget configuration behavior to allow multiple System Info widgets in the same widget bar.
+- [Fixed]
+- Fixed widget status transition tracking so transient `unknown` probe results do not reset pending notification timers.
+- Fixed System Info disk output consistency for multi-disk path configurations.
+- Improved settings-preview/dashboard-runtime parity for System Info widget rendering.
 
 ## v0.2.41 (2026-02-25)
 

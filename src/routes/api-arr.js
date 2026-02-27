@@ -753,11 +753,13 @@ export function registerApiArr(app, ctx) {
           continue;
         }
         const parsed = text ? JSON.parse(text) : {};
-        const list = Array.isArray(parsed?.items)
-          ? parsed.items
-          : (Array.isArray(parsed?.releases)
-            ? parsed.releases
-            : (Array.isArray(parsed) ? parsed : []));
+        const list = Array.isArray(parsed?.data)
+          ? parsed.data
+          : (Array.isArray(parsed?.items)
+            ? parsed.items
+            : (Array.isArray(parsed?.releases)
+              ? parsed.releases
+              : (Array.isArray(parsed) ? parsed : [])));
         const mapped = list.map((entry) => mapAutobrrQueueItem(entry, kind)).filter((item) => Boolean(item?.title));
         const filtered = kind === 'delivery-queue'
           ? mapped.filter((item) => ['queued', 'active', 'paused', 'completed', 'error'].includes(item.statusKey))

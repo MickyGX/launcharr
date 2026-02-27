@@ -306,6 +306,10 @@
               <img class="settings-subtab-icon" src="/icons/dashboard.svg" alt="" />
               <span class="settings-subtab-text">Dashboard</span>
             </button>
+            <button class="settings-subtab-btn" type="button" data-subtab="widgets">
+              <img class="settings-subtab-icon" src="/icons/dashboard.svg" alt="" />
+              <span class="settings-subtab-text">Widgets</span>
+            </button>
             <button class="settings-subtab-btn" type="button" data-subtab="images">
               <img class="settings-subtab-icon" src="/icons/view.svg" alt="" />
               <span class="settings-subtab-text">Images</span>
@@ -1170,7 +1174,7 @@
                   <% const unifiedCardToken = isUnifiedMediaCard
                     ? mediaCardToken
                     : (isUnifiedArrCard ? arrCardToken : (isUnifiedDownloaderCard ? downloaderCardToken : '')); %>
-                  <% const hasCarouselDisplayOptions = element.id !== 'activity-queue' && !isTableCard; %>
+                  <% const hasCarouselDisplayOptions = element.id !== 'activity-queue' && !isTableCard && !item.isWidgetBar; %>
                   <% const showAppDisplayOptionsInFilter = !item.combined && !item.dashboardIsDeprecated && (isQueue || isTableCard); %>
                   <% const hasFilterPanel = isUnifiedMediaCard
                     || isUnifiedArrCard
@@ -1204,6 +1208,7 @@
                       <span class="settings-element-name"><%= displayName %></span>
                     </div>
                     <div class="settings-cell settings-cell--visibility settings-col-visibility">
+                      <% if (!item.isWidgetBar) { %>
                       <div class="settings-visibility-popover" data-dashboard-visibility-popover>
                         <button class="settings-visibility-trigger" type="button" aria-label="Configure dashboard visibility role" aria-expanded="false" aria-haspopup="true" <%= isDisabled ? 'disabled' : '' %>></button>
                         <div class="settings-visibility-menu<%= isUnifiedCard ? ' settings-filter-menu' : '' %>" hidden>
@@ -1275,6 +1280,7 @@
                           <% } %>
                         </div>
                       </div>
+                      <% } %>
                     </div>
                     <div class="settings-cell settings-cell--visibility settings-col-filter">
                       <% if (hasFilterPanel) { %>
@@ -1656,132 +1662,6 @@
                     </div>
                   </div>
                 <% }) %>
-                <% (Array.isArray(dashboardWidgets) ? dashboardWidgets : []).forEach((widget, widgetIndex) => { %>
-                  <% const widgetId = String(widget.id || '').trim(); %>
-                  <% if (!widgetId) return; %>
-                  <% const widgetPrefix = `dashboard_widget_${widgetId}`; %>
-                  <% const widgetSupports = widget.supports || {}; %>
-                  <% const widgetOrder = Number.isFinite(Number(widget.order)) ? Number(widget.order) : ((Array.isArray(dashboardElements) ? dashboardElements.length : 0) + widgetIndex + 1); %>
-                  <% const widgetVisibilityRole = normalizeDashboardVisibilityRole(widget.visibilityRole, 'user'); %>
-                  <% const widgetDisabled = widgetVisibilityRole === 'disabled'; %>
-                  <% const widgetSource = String(widget.source || '').trim().toLowerCase(); %>
-                  <% const widgetSourceName = String(widget.sourceName || widget.source || 'Widget').trim() || 'Widget'; %>
-                  <% const widgetTitle = String(widget.title || widgetSourceName || 'Widget').trim() || 'Widget'; %>
-                  <% const widgetIcon = String(widget.sourceIcon || '/icons/app.svg').trim() || '/icons/app.svg'; %>
-                  <div class="settings-row settings-row--elements settings-row--with-expand settings-row--draggable settings-row--card-current <%= widgetDisabled ? 'is-disabled' : '' %>" data-app-id="widget" data-category="Widgets" data-category-rank="999" data-app-access-disabled="0" draggable="true">
-                    <div class="settings-element">
-                      <button class="order-button settings-drag-handle" type="button" title="Drag to reorder" aria-label="Drag to reorder">&#x2630;</button>
-                      <img class="settings-element-icon" src="<%= widgetIcon %>" alt="" onerror="this.src='/icons/app.svg'" />
-                      <span class="settings-element-name"><%= widgetTitle %></span>
-                    </div>
-                    <div class="settings-cell settings-cell--visibility settings-col-visibility">
-                      <div class="settings-visibility-popover" data-dashboard-visibility-popover>
-                        <button class="settings-visibility-trigger" type="button" aria-label="Configure dashboard visibility role" aria-expanded="false" aria-haspopup="true"></button>
-                        <div class="settings-visibility-menu" hidden>
-                          <label class="settings-visibility-group">
-                            <span class="settings-visibility-label">Dashboard Visibility</span>
-                            <select class="settings-select settings-visibility-select dashboard-visibility-select" name="<%= widgetPrefix %>_visibility_role" data-dashboard-visibility-role>
-                              <% dashboardVisibilityRoles.forEach((option) => { %>
-                                <option value="<%= option.value %>" <%= option.value === widgetVisibilityRole ? 'selected' : '' %>><%= option.label %></option>
-                              <% }) %>
-                            </select>
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-                    <div class="settings-cell settings-cell--visibility settings-col-visibility">
-                      <div class="settings-visibility-popover" data-dashboard-filter-popover>
-                        <button class="settings-visibility-trigger" type="button" aria-label="Configure widget settings" aria-expanded="false" aria-haspopup="true"></button>
-                        <div class="settings-visibility-menu settings-filter-menu" hidden>
-                          <div class="settings-filter-group-title">Widget Card</div>
-                          <div class="settings-grid">
-                            <label class="field">
-                              <span>Title</span>
-                              <input type="text" name="<%= widgetPrefix %>_title" value="<%= widgetTitle %>" />
-                            </label>
-                            <label class="field">
-                              <span>Source</span>
-                              <select class="settings-select" name="<%= widgetPrefix %>_source">
-                                <% (Array.isArray(dashboardWidgetSources) ? dashboardWidgetSources : []).forEach((sourceOption) => { %>
-                                  <% const sourceValue = String(sourceOption.id || '').trim().toLowerCase(); %>
-                                  <% if (!sourceValue) return; %>
-                                  <% const sourceLabel = `${sourceOption.name || sourceValue}${sourceOption.available === false ? ' (Unavailable)' : ''}`; %>
-                                  <option value="<%= sourceValue %>" <%= sourceValue === widgetSource ? 'selected' : '' %>><%= sourceLabel %></option>
-                                <% }) %>
-                              </select>
-                            </label>
-                            <label class="field">
-                              <span>Rows</span>
-                              <input type="number" min="1" max="6" step="1" name="<%= widgetPrefix %>_rows" value="<%= Number.isFinite(Number(widget.rows)) ? Number(widget.rows) : 2 %>" />
-                            </label>
-                            <label class="field">
-                              <span>Columns</span>
-                              <input type="number" min="1" max="8" step="1" name="<%= widgetPrefix %>_columns" value="<%= Number.isFinite(Number(widget.columns)) ? Number(widget.columns) : 4 %>" />
-                            </label>
-                            <label class="field">
-                              <span>Item Limit</span>
-                              <input type="number" min="1" max="200" step="1" name="<%= widgetPrefix %>_limit" value="<%= Number.isFinite(Number(widget.limit)) ? Number(widget.limit) : 12 %>" />
-                            </label>
-                            <label class="field">
-                              <span>Refresh (sec)</span>
-                              <input type="number" min="15" max="3600" step="1" name="<%= widgetPrefix %>_refresh_seconds" value="<%= Number.isFinite(Number(widget.refreshSeconds)) ? Number(widget.refreshSeconds) : 120 %>" />
-                            </label>
-                          </div>
-                          <div class="settings-filter-group-title">Filters</div>
-                          <div class="settings-grid">
-                            <label class="field">
-                              <span>Media</span>
-                              <select class="settings-select" name="<%= widgetPrefix %>_filter_media" <%= widgetSupports.media ? '' : 'disabled' %>>
-                                <option value="all" <%= (widget.filters?.media || 'all') === 'all' ? 'selected' : '' %>>All media</option>
-                                <option value="movie" <%= (widget.filters?.media || '') === 'movie' ? 'selected' : '' %>>Movies</option>
-                                <option value="show" <%= (widget.filters?.media || '') === 'show' ? 'selected' : '' %>>TV</option>
-                              </select>
-                            </label>
-                            <label class="field">
-                              <span>Letters</span>
-                              <select class="settings-select" name="<%= widgetPrefix %>_filter_letter" <%= widgetSupports.letter ? '' : 'disabled' %>>
-                                <option value="all" <%= (widget.filters?.letter || 'all') === 'all' ? 'selected' : '' %>>All letters</option>
-                                <option value="#" <%= (widget.filters?.letter || '') === '#' ? 'selected' : '' %>>#</option>
-                                <% 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').forEach((letter) => { %>
-                                  <option value="<%= letter.toLowerCase() %>" <%= (widget.filters?.letter || '') === letter.toLowerCase() ? 'selected' : '' %>><%= letter %></option>
-                                <% }) %>
-                              </select>
-                            </label>
-                            <label class="field">
-                              <span>Status</span>
-                              <select class="settings-select" name="<%= widgetPrefix %>_filter_status" <%= widgetSupports.status ? '' : 'disabled' %>>
-                                <option value="all" <%= (widget.filters?.status || 'all') === 'all' ? 'selected' : '' %>>All status</option>
-                                <option value="active" <%= (widget.filters?.status || '') === 'active' ? 'selected' : '' %>>Active</option>
-                                <option value="inactive" <%= (widget.filters?.status || '') === 'inactive' ? 'selected' : '' %>>Inactive</option>
-                                <option value="added" <%= (widget.filters?.status || '') === 'added' ? 'selected' : '' %>>Added</option>
-                                <option value="changed" <%= (widget.filters?.status || '') === 'changed' ? 'selected' : '' %>>Changed</option>
-                                <option value="fixed" <%= (widget.filters?.status || '') === 'fixed' ? 'selected' : '' %>>Fixed</option>
-                                <option value="error" <%= (widget.filters?.status || '') === 'error' ? 'selected' : '' %>>Error</option>
-                              </select>
-                            </label>
-                          </div>
-                          <div class="settings-grid">
-                            <label class="radio-pill">
-                              <input type="checkbox" name="<%= widgetPrefix %>_auto_scroll" <%= widget.autoScroll !== false ? 'checked' : '' %> />
-                              <span>Auto-scroll</span>
-                            </label>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <input type="hidden" class="settings-order-input" name="<%= widgetPrefix %>_order" value="<%= widgetOrder %>" />
-                    <input type="hidden" name="<%= widgetPrefix %>_present" value="1" />
-                    <div class="settings-cell settings-delete-cell">
-                      <button
-                        class="order-button default-app-delete settings-dashboard-delete"
-                        type="button"
-                        data-dashboard-element-key="widget:<%= widgetId %>"
-                        title="Remove widget card"
-                        aria-label="Remove widget card"
-                      >&times;</button>
-                    </div>
-                  </div>
-                <% }) %>
               </div>
               <%
                 const dashboardAddResultMap = {
@@ -1843,6 +1723,323 @@
               <% } %>
               <button class="primary-button" type="submit">Save dashboard settings</button>
             </form>
+          </div>
+          <div class="settings-subtab-panel" data-subtab="widgets">
+            <div class="settings-card">
+              <div class="settings-card-title">Widget Bars</div>
+              <p class="settings-users-note">Widget bars show live stat cards on the dashboard. Build each bar below, then add it via the Dashboard tab to set its position.</p>
+              <script>window._widgetBarApps = <%- JSON.stringify((widgetBarApps || []).map(function(a) { return { id: a.id, name: a.name, icon: a.icon, typeId: a.typeId, metricFields: Array.isArray(a.metricFields) ? a.metricFields : [] }; })) %>;</script>
+              <script>window._widgetBarSystemIcons = <%- JSON.stringify([].concat(Array.isArray(systemIconDefaults) ? systemIconDefaults : [], Array.isArray(systemIconCustom) ? systemIconCustom : [])) %>;</script>
+              <script>window._systemWidgetTypes = <%- JSON.stringify(Array.isArray(systemWidgetTypes) ? systemWidgetTypes : []) %>;</script>
+              <script>window._systemWidgetSearchProviders = <%- JSON.stringify(Array.isArray(systemWidgetSearchProviders) ? systemWidgetSearchProviders : []) %>;</script>
+              <script>window._systemWidgetTimezones = <%- JSON.stringify(Array.isArray(systemWidgetTimezones) ? systemWidgetTimezones : []) %>;</script>
+              <div class="widget-manager-canvas" id="widgetManagerCanvas">
+                <% widgetBars.forEach(function(bar) { %>
+                  <%
+                    const widgetBarRoleOptions = [
+                      { value: 'guest', label: 'Guest' },
+                      { value: 'user', label: 'User' },
+                      { value: 'co-admin', label: 'Co-admin' },
+                      { value: 'admin', label: 'Admin' },
+                    ];
+                    const widgetBarVisibilityRoles = Array.isArray(bar.visibilityRoles)
+                      ? ['guest', 'user', 'co-admin', 'admin'].filter(function(role) { return bar.visibilityRoles.includes(role); })
+                      : (function() {
+                          const minRole = String(bar.visibilityRole || 'user').trim().toLowerCase();
+                          const roleOrder = ['guest', 'user', 'co-admin', 'admin'];
+                          const idx = roleOrder.indexOf(minRole);
+                          return idx >= 0 ? roleOrder.slice(idx) : ['user', 'co-admin', 'admin'];
+                        })();
+                    const widgetBarRefreshOption = [0, 30, 60, 120].includes(Number(bar.refreshSeconds)) ? Number(bar.refreshSeconds) : 60;
+                    const widgetBarIconValue = String(bar.icon || '/icons/dashboard.svg').trim() || '/icons/dashboard.svg';
+                  %>
+                  <div class="widget-bar-canvas-row" data-bar-id="<%= bar.id %>">
+                    <div class="widget-bar-canvas-header">
+                      <div class="icon-picker widget-bar-canvas-icon-picker" data-widget-bar-icon-picker>
+                        <button class="widget-bar-canvas-icon-trigger icon-picker-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Select widget bar icon" title="Select widget bar icon">
+                          <span class="icon-picker-preview" aria-hidden="true">
+                            <img src="<%= widgetBarIconValue %>" alt="" onerror="this.src='/icons/dashboard.svg'" />
+                          </span>
+                        </button>
+                        <div class="icon-picker-menu" role="listbox" aria-label="Widget bar icon"></div>
+                        <input type="hidden" value="<%= widgetBarIconValue %>" data-bar-icon />
+                      </div>
+                      <input class="settings-input widget-bar-canvas-name" type="text" value="<%= bar.name || 'Widget Bar' %>" maxlength="80" aria-label="Widget bar name" data-bar-name />
+                      <div class="widget-bar-canvas-header-actions">
+                        <button class="order-button default-app-delete widget-bar-canvas-delete" type="button" data-bar-delete="<%= bar.id %>" aria-label="Delete widget bar" title="Delete widget bar">
+                          <img class="widget-bar-canvas-delete-icon" src="/icons/delete.svg" alt="" />
+                        </button>
+                        <div class="widget-bar-canvas-role-filter settings-dashboard-role-filter settings-visibility-popover" data-widget-bar-role-filter>
+                          <button class="settings-visibility-trigger settings-dashboard-role-filter-trigger" type="button" aria-label="Configure widget bar visibility" aria-haspopup="true" aria-expanded="false" data-widget-bar-role-filter-trigger></button>
+                          <div class="settings-visibility-menu settings-filter-menu settings-dashboard-role-filter-menu" hidden data-widget-bar-role-filter-menu>
+                            <div class="settings-filter-group-title">Visible To Roles</div>
+                            <div class="settings-dashboard-role-filter-list">
+                              <% widgetBarRoleOptions.forEach(function(option) { %>
+                                <label class="settings-dashboard-role-filter-option">
+                                  <input type="checkbox" data-bar-role-value="<%= option.value %>" <%= widgetBarVisibilityRoles.includes(option.value) ? 'checked' : '' %> />
+                                  <span class="settings-dashboard-role-filter-option-label"><%= option.label %></span>
+                                </label>
+                              <% }) %>
+                            </div>
+                            <div class="settings-users-note settings-dashboard-role-filter-note">No roles selected hides this widget bar.</div>
+                          </div>
+                        </div>
+                        <select class="settings-select widget-bar-canvas-refresh widget-bar-canvas-refresh-select" aria-label="Refresh interval" data-bar-refresh title="Refresh interval">
+                          <option value="0" <%= widgetBarRefreshOption === 0 ? 'selected' : '' %>>Off</option>
+                          <option value="30" <%= widgetBarRefreshOption === 30 ? 'selected' : '' %>>30s</option>
+                          <option value="60" <%= widgetBarRefreshOption === 60 ? 'selected' : '' %>>60s</option>
+                          <option value="120" <%= widgetBarRefreshOption === 120 ? 'selected' : '' %>>120s</option>
+                        </select>
+                        <button class="plex-iconbtn widget-bar-canvas-scroll-nav widget-bar-canvas-scroll-prev" type="button" data-widget-bar-scroll-prev aria-label="Previous" title="Previous">
+                          <div class="plex-chev plex-left" aria-hidden="true"></div>
+                        </button>
+                        <button class="plex-iconbtn widget-bar-canvas-scroll-nav widget-bar-canvas-scroll-next" type="button" data-widget-bar-scroll-next aria-label="Next" title="Next">
+                          <div class="plex-chev plex-right" aria-hidden="true"></div>
+                        </button>
+                        <button class="plex-iconbtn widget-bar-canvas-collapse" type="button"
+                          data-bar-collapse-toggle="<%= bar.id %>"
+                          aria-expanded="true"
+                          aria-label="Collapse widget bar"
+                          title="Collapse widget bar">
+                          <div class="plex-doublechev" aria-hidden="true">
+                            <div class="plex-chev plex-up"></div>
+                            <div class="plex-chev plex-down"></div>
+                          </div>
+                        </button>
+                        <button class="primary-button widget-bar-canvas-save" type="button" data-bar-save="<%= bar.id %>">Save</button>
+                      </div>
+                    </div>
+                    <div class="widget-bar-rows-wrap" data-rows-wrap>
+                      <div class="widget-bar-row-add-strip widget-bar-row-add-strip--top">
+                        <button class="secondary-button widget-bar-add-row-btn" type="button"
+                          data-bar-add-row="<%= bar.id %>"
+                          data-bar-add-row-position="top"
+                          aria-label="Add row above"
+                          title="Add row above">&#8593;</button>
+                      </div>
+                      <% (bar.rows || []).forEach(function(row) { %>
+                        <div class="widget-bar-row" data-row-id="<%= row.id %>" data-bar-id="<%= bar.id %>">
+                          <%
+                            const rowPreviewSettings = row.settings || {};
+                            const rowPreviewClasses = ['widget-bar-row-body',
+                              rowPreviewSettings.fixedWidth ? 'row--fixed-width' : '',
+                              rowPreviewSettings.scroll ? 'row--scroll' : '',
+                              rowPreviewSettings.fill ? 'row--fill' : '',
+                            ].filter(Boolean).join(' ');
+                            const rowPreviewMaxCols = rowPreviewSettings.maxCols > 0 ? rowPreviewSettings.maxCols : 0;
+                          %>
+                          <div class="widget-bar-row-settings-slot">
+                            <button class="widget-bar-row-settings-btn" type="button"
+                              data-row-settings-toggle="<%= row.id %>"
+                              aria-label="Row settings" title="Row settings">&#8250;</button>
+                            <div class="widget-bar-row-settings-panel" hidden data-row-settings-panel="<%= row.id %>">
+                              <div class="widget-bar-row-settings-inner">
+                                <label class="widget-row-settings-label">
+                                  Max columns
+                                  <input type="number" min="0" max="20"
+                                    value="<%= (row.settings && row.settings.maxCols) || 0 %>"
+                                    data-row-setting="maxCols"
+                                    class="settings-input widget-row-settings-num" />
+                                  <span class="muted-hint">0 = unlimited</span>
+                                </label>
+                                <label class="widget-row-settings-check">
+                                  <input type="checkbox" data-row-setting="fixedWidth"
+                                    <%= (row.settings && row.settings.fixedWidth) ? 'checked' : '' %>>
+                                  Fixed width
+                                </label>
+                                <label class="widget-row-settings-check">
+                                  <input type="checkbox" data-row-setting="scroll"
+                                    <%= (row.settings && row.settings.scroll) ? 'checked' : '' %>>
+                                  Scroll (no wrap)
+                                </label>
+                                <label class="widget-row-settings-check">
+                                  <input type="checkbox" data-row-setting="fill"
+                                    <%= (row.settings && row.settings.fill) ? 'checked' : '' %>>
+                                  Fill row width
+                                </label>
+                                <div class="widget-row-settings-actions">
+                                  <button class="primary-button widget-row-settings-apply" type="button"
+                                    data-row-settings-apply
+                                    data-bar-id="<%= bar.id %>"
+                                    data-row-id="<%= row.id %>">Apply</button>
+                                  <button class="secondary-button widget-row-delete-btn" type="button"
+                                    data-row-delete
+                                    data-bar-id="<%= bar.id %>"
+                                    data-row-id="<%= row.id %>">Delete Row</button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          <div class="<%= rowPreviewClasses %>" data-bar-body data-row-id="<%= row.id %>"<% if (rowPreviewMaxCols > 0) { %> style="--row-max-cols: <%= rowPreviewMaxCols %>"<% } %>>
+                            <% (row.widgets || []).forEach(function(widget) { %>
+                              <% if (widget.systemType) { %>
+                                <div class="widget-canvas-card widget-canvas-system-chip"
+                                  draggable="true"
+                                  data-widget-id="<%= widget.id %>"
+                                  data-system-type="<%= widget.systemType %>"
+                                  data-system-config="<%= JSON.stringify(widget.systemConfig || {}) %>">
+                                  <img class="system-chip-icon" src="<%= widget.icon || '/icons/app.svg' %>" alt="" onerror="this.src='/icons/app.svg'" />
+                                  <%
+                                    const _sysCfg = (widget.systemConfig && typeof widget.systemConfig === 'object') ? widget.systemConfig : {};
+                                    const _sysSummary = widget.systemType === 'sys-resources'
+                                      ? [
+                                        _sysCfg.cpu !== false ? 'CPU' : '',
+                                        _sysCfg.memory !== false ? 'RAM' : '',
+                                        (Array.isArray(_sysCfg.disks) && _sysCfg.disks.length > 0) ? (_sysCfg.disks.length + ' Disk' + (_sysCfg.disks.length === 1 ? '' : 's')) : '',
+                                        _sysCfg.showTotalSpace === true ? 'Total Space' : '',
+                                        (_sysCfg.search && _sysCfg.search.enabled) ? 'Search' : '',
+                                        (_sysCfg.weather && _sysCfg.weather.enabled) ? 'Weather' : '',
+                                      ].filter(Boolean).join(' · ')
+                                      : '';
+                                  %>
+                                  <span class="system-chip-canvas-label">
+                                    <%= widget.typeName %>
+                                    <% if (_sysSummary) { %><small class="muted-hint"> <%= _sysSummary %></small><% } %>
+                                  </span>
+                                  <% if (widget.systemType === 'sys-resources') { %>
+                                    <div class="widget-canvas-system-preview dashboard-system-bar"
+                                      data-system-preview
+                                      data-system-config="<%= JSON.stringify(widget.systemConfig || {}) %>"></div>
+                                  <% } %>
+                                  <button class="widget-canvas-system-chip-edit" type="button"
+                                    data-sys-widget-edit
+                                    data-widget-id="<%= widget.id %>"
+                                    data-bar-id="<%= bar.id %>"
+                                    data-row-id="<%= row.id %>"
+                                    data-system-type="<%= widget.systemType %>"
+                                    data-system-config="<%= JSON.stringify(widget.systemConfig || {}) %>"
+                                    title="Edit config" aria-label="Edit <%= widget.typeName %> config">✎</button>
+                                  <button class="widget-canvas-card-remove" type="button"
+                                    data-widget-remove-bar="<%= bar.id %>"
+                                    data-widget-remove-row="<%= row.id %>"
+                                    data-widget-remove-id="<%= widget.id %>"
+                                    title="Remove" aria-label="Remove <%= widget.typeName %>">&times;</button>
+                                </div>
+                              <% } else { %>
+                                <%
+                                  const widgetSelectedMetricKeys = Array.isArray(widget.selectedMetricKeys)
+                                    ? widget.selectedMetricKeys.map(function(k) { return String(k || '').trim().toLowerCase(); }).filter(Boolean)
+                                    : null;
+                                  const widgetMetricColumns = Number.isFinite(Number(widget.metricColumns)) ? Math.max(1, Math.min(4, Math.round(Number(widget.metricColumns)))) : null;
+                                  const widgetSelectedLibraryKeys = (widget.selectedLibraryKeys && typeof widget.selectedLibraryKeys === 'object' && !Array.isArray(widget.selectedLibraryKeys) && Object.keys(widget.selectedLibraryKeys).length) ? widget.selectedLibraryKeys : null;
+                                %>
+                                <div class="widget-canvas-card dashboard-stat-card is-loading"
+                                  draggable="true"
+                                  data-widget-id="<%= widget.id %>"
+                                  data-app-id="<%= widget.appId %>"
+                                  <% if (widgetMetricColumns) { %>data-widget-metric-cols="<%= widgetMetricColumns %>" <% } %>
+                                  <% if (widget.typeId) { %>data-widget-type-id="<%= widget.typeId %>" <% } %>
+                                  <% if (widgetSelectedMetricKeys !== null) { %>data-has-selected-metric-keys="1" data-selected-metric-keys="<%= widgetSelectedMetricKeys.join(',') %>" <% } %>
+                                  <% if (widgetSelectedLibraryKeys) { %>data-selected-library-keys="<%= JSON.stringify(widgetSelectedLibraryKeys) %>" <% } %>>
+                                  <div class="stat-card-header">
+                                    <img class="stat-card-icon" src="<%= widget.icon || '/icons/app.svg' %>" alt="" onerror="this.src='/icons/app.svg'" />
+                                    <span class="stat-card-name"><%= widget.typeName || widget.appId %></span>
+                                    <span class="stat-card-status is-unknown">Unknown</span>
+                                  </div>
+                                  <div class="stat-card-metrics"></div>
+                                  <button class="widget-canvas-card-remove" type="button"
+                                    data-widget-remove-bar="<%= bar.id %>"
+                                    data-widget-remove-row="<%= row.id %>"
+                                    data-widget-remove-id="<%= widget.id %>"
+                                    title="Remove"
+                                    aria-label="Remove <%= widget.typeName || widget.appId %>">&times;</button>
+                                </div>
+                              <% } %>
+                            <% }) %>
+                            <div class="widget-canvas-add-slot" data-bar-add-slot="<%= bar.id %>">
+                              <button class="widget-canvas-add-btn" type="button"
+                                data-bar-add="<%= bar.id %>" data-row-add="<%= row.id %>"
+                                aria-label="Add widget to row" aria-haspopup="true">
+                                <span class="widget-canvas-add-icon">+</span>
+                              </button>
+                              <div class="widget-canvas-add-menu" hidden data-add-menu>
+                                <div class="widget-canvas-add-group-label">System</div>
+                                <% (systemWidgetTypes || []).forEach(function(sysType) { %>
+                                  <button class="widget-canvas-add-option" type="button"
+                                    data-add-system-type="<%= sysType.typeId %>"
+                                    data-has-config="<%= sysType.hasConfig ? '1' : '' %>"
+                                    data-bar-id="<%= bar.id %>"
+                                    data-row-id="<%= row.id %>">
+                                    <img src="<%= sysType.icon %>" alt="" onerror="this.src='/icons/app.svg'" />
+                                    <span><%= sysType.label %></span>
+                                  </button>
+                                <% }) %>
+                                <% if (widgetBarApps.length > 0) { %>
+                                  <div class="widget-canvas-add-group-label">Apps</div>
+                                  <% widgetBarApps.forEach(function(app) { %>
+                                    <button class="widget-canvas-add-option" type="button"
+                                      data-add-app-id="<%= app.id %>"
+                                      data-bar-id="<%= bar.id %>"
+                                      data-row-id="<%= row.id %>">
+                                      <img src="<%= app.icon %>" alt="" onerror="this.src='/icons/app.svg'" />
+                                      <span><%= app.name %></span>
+                                    </button>
+                                  <% }) %>
+                                <% } %>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      <% }) %>
+                      <div class="widget-bar-row-add-strip widget-bar-row-add-strip--bottom">
+                        <button class="secondary-button widget-bar-add-row-btn" type="button"
+                          data-bar-add-row="<%= bar.id %>"
+                          data-bar-add-row-position="bottom"
+                          aria-label="Add row below"
+                          title="Add row below">&#8595;</button>
+                      </div>
+                    </div>
+                  </div>
+                <% }) %>
+                <p class="settings-users-note widget-manager-empty" id="widgetBarEmpty"<%= widgetBars.length > 0 ? ' hidden' : '' %>>No widget bars yet. Create your first one below.</p>
+              </div>
+              <div class="widget-bar-add-row">
+                <button class="primary-button" type="button" id="createWidgetBarBtn">+ Add Widget Bar</button>
+                <span class="settings-users-note" id="widgetBarCreateStatus" hidden></span>
+              </div>
+              <div class="widget-card-customize-modal" hidden data-widget-customize-modal>
+                <div class="widget-card-customize-backdrop" data-widget-customize-close></div>
+                <div class="widget-card-customize-panel" role="dialog" aria-modal="true" aria-labelledby="widgetCardCustomizeTitle">
+                  <div class="widget-card-customize-header">
+                    <div class="widget-card-customize-title" id="widgetCardCustomizeTitle">Widget Stats</div>
+                    <button class="widget-card-customize-close" type="button" data-widget-customize-close aria-label="Close">×</button>
+                  </div>
+                  <div class="widget-card-customize-subtitle" data-widget-customize-subtitle></div>
+                  <label class="widget-card-customize-field">
+                    <span>Stat Columns (Wrap)</span>
+                    <select class="settings-select" data-widget-customize-metric-cols>
+                      <option value="1">1</option>
+                      <option value="2">2</option>
+                      <option value="3">3</option>
+                      <option value="4">4</option>
+                    </select>
+                  </label>
+                  <div class="widget-card-customize-options" data-widget-customize-options></div>
+                  <div class="widget-card-customize-empty" hidden data-widget-customize-empty>No configurable stats are available for this widget.</div>
+                  <div class="widget-card-customize-actions">
+                    <button class="secondary-button" type="button" data-widget-customize-cancel>Cancel</button>
+                    <button class="secondary-button" type="button" data-widget-customize-all>Select All</button>
+                    <button class="primary-button" type="button" data-widget-customize-apply>Apply</button>
+                  </div>
+                </div>
+              </div>
+              <div class="system-widget-config-modal" hidden data-sys-widget-modal>
+                <div class="system-widget-config-backdrop" data-sys-widget-modal-close></div>
+                <div class="system-widget-config-panel" role="dialog" aria-modal="true" aria-labelledby="sysWidgetModalTitle">
+                  <div class="system-widget-config-header">
+                    <div class="system-widget-config-title" id="sysWidgetModalTitle">Configure Widget</div>
+                    <button class="system-widget-config-close" type="button" data-sys-widget-modal-close aria-label="Close">×</button>
+                  </div>
+                  <div class="system-widget-config-body" data-sys-widget-modal-body>
+                    <!-- Populated by JS -->
+                  </div>
+                  <div class="system-widget-config-actions">
+                    <button class="secondary-button" type="button" data-sys-widget-modal-cancel>Cancel</button>
+                    <button class="primary-button" type="button" data-sys-widget-modal-apply>Apply</button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="settings-subtab-panel" data-subtab="images">
             <div class="settings-card">
@@ -2042,6 +2239,11 @@
               <span class="settings-toggle-slider" aria-hidden="true"></span>
               <span class="settings-toggle-text">Enable Apprise notifications</span>
             </label>
+            <label class="settings-toggle">
+              <input type="checkbox" name="widget_status_enabled" <%= notificationSettings?.widgetStatusEnabled ? 'checked' : '' %> />
+              <span class="settings-toggle-slider" aria-hidden="true"></span>
+              <span class="settings-toggle-text">Enable widget status alerts</span>
+            </label>
             <label class="field">
               <span>Apprise API URL</span>
               <input
@@ -2083,6 +2285,18 @@
                 value="<%= notificationSettings?.appriseTag || '' %>"
                 placeholder="launcharr"
               />
+            </label>
+            <label class="field">
+              <span>Widget status delay (seconds)</span>
+              <input
+                type="number"
+                min="5"
+                max="3600"
+                step="1"
+                name="widget_status_delay_seconds"
+                value="<%= Number(notificationSettings?.widgetStatusDelaySeconds) || 60 %>"
+              />
+              <small>Send an alert only if a widget app stays in the changed state for this long.</small>
             </label>
             <%
               const notifyResult = String(notificationResult || '').trim();
@@ -2178,6 +2392,7 @@
             <button class="primary-button log-refresh" type="button" id="settingsLogRefresh">Refresh</button>
             <span class="log-status" id="settingsLogStatus">Loading...</span>
           </div>
+          <div class="log-monitor-debug" id="settingsWidgetStatusDebug">Widget monitor: loading...</div>
           <div class="log-list" id="settingsLogList" style="--log-visible-rows:<%= logSettings?.visibleRows || 10 %>"></div>
         </div>
       </div>
@@ -3595,9 +3810,1959 @@
       });
     };
 
+    const attachWidgetBarManager = () => {
+      const panel = document.querySelector('.settings-subtab-panel[data-subtab="widgets"]');
+      if (!panel) return;
+
+      const canvas = panel.querySelector('#widgetManagerCanvas');
+      const emptyMsg = panel.querySelector('#widgetBarEmpty');
+      const widgetCustomizeModal = panel.querySelector('[data-widget-customize-modal]');
+      const widgetCustomizeOptions = panel.querySelector('[data-widget-customize-options]');
+      const widgetCustomizeEmpty = panel.querySelector('[data-widget-customize-empty]');
+      const widgetCustomizeSubtitle = panel.querySelector('[data-widget-customize-subtitle]');
+      const widgetCustomizeMetricCols = panel.querySelector('[data-widget-customize-metric-cols]');
+      const setCreateStatus = (msg, isError) => {
+        const el = panel.querySelector('#widgetBarCreateStatus');
+        if (!el) return;
+        el.hidden = !msg;
+        el.textContent = msg || '';
+        el.style.color = isError ? 'var(--color-error, #f44336)' : '';
+      };
+
+      const escHtml = (str) => String(str || '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      const normalizeWidgetAppChoiceId = (value) => String(value || '').trim().toLowerCase();
+      const WIDGET_BAR_ROLE_ORDER = ['guest', 'user', 'co-admin', 'admin'];
+      const WIDGET_BAR_ROLE_LABELS = { guest: 'Guest', user: 'User', 'co-admin': 'Co-admin', admin: 'Admin' };
+      const DEFAULT_WIDGET_BAR_ICON = '/icons/dashboard.svg';
+      const widgetAppCatalog = Array.isArray(window._widgetBarApps) ? window._widgetBarApps : [];
+      const widgetBarSystemIcons = Array.from(new Set(
+        (Array.isArray(window._widgetBarSystemIcons) ? window._widgetBarSystemIcons : [])
+          .map((iconPath) => String(iconPath || '').trim())
+          .filter((iconPath) => iconPath.startsWith('/icons/'))
+      ));
+      if (!widgetBarSystemIcons.includes(DEFAULT_WIDGET_BAR_ICON)) widgetBarSystemIcons.unshift(DEFAULT_WIDGET_BAR_ICON);
+      const widgetAppById = new Map(widgetAppCatalog.map((app) => [normalizeWidgetAppChoiceId(app && app.id), app]).filter(([id]) => Boolean(id)));
+      const normalizeWidgetBarIconValue = (value) => {
+        const raw = String(value || '').trim();
+        return raw.startsWith('/icons/') ? raw : DEFAULT_WIDGET_BAR_ICON;
+      };
+      const buildWidgetBarIconPickerMenuHtml = () => (
+        widgetBarSystemIcons.map((iconPath) => (
+          `<button class="icon-picker-option" type="button" data-value="${escHtml(iconPath)}" data-label="${escHtml(formatIconLabel(iconPath) || 'icon')}" data-preview="${escHtml(iconPath)}" role="option">` +
+          `<img class="icon-picker-icon" src="${escHtml(iconPath)}" alt="" onerror="this.src='${escHtml(DEFAULT_WIDGET_BAR_ICON)}'" />` +
+          `<span class="icon-picker-option-label">${escHtml(formatIconLabel(iconPath) || iconPath)}</span>` +
+          `</button>`
+        )).join('')
+      );
+      const buildWidgetBarIconPickerHtml = (iconValue) => {
+        const iconPath = normalizeWidgetBarIconValue(iconValue);
+        const iconPathEsc = escHtml(iconPath);
+        return (
+          `<div class="icon-picker widget-bar-canvas-icon-picker" data-widget-bar-icon-picker>` +
+          `<button class="widget-bar-canvas-icon-trigger icon-picker-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Select widget bar icon" title="Select widget bar icon">` +
+          `<span class="icon-picker-preview" aria-hidden="true"><img src="${iconPathEsc}" alt="" onerror="this.src='${escHtml(DEFAULT_WIDGET_BAR_ICON)}'" /></span>` +
+          `</button>` +
+          `<div class="icon-picker-menu" role="listbox" aria-label="Widget bar icon">${buildWidgetBarIconPickerMenuHtml()}</div>` +
+          `<input type="hidden" value="${iconPathEsc}" data-bar-icon />` +
+          `</div>`
+        );
+      };
+      const syncWidgetBarIconTriggerMeta = (root, iconValue) => {
+        const trigger = root && root.querySelector('.icon-picker-trigger');
+        if (!trigger) return;
+        const label = formatIconLabel(iconValue || DEFAULT_WIDGET_BAR_ICON) || 'dashboard.svg';
+        trigger.title = `Widget bar icon: ${label}`;
+        trigger.setAttribute('aria-label', `Select widget bar icon (${label})`);
+      };
+      const initWidgetBarIconPicker = (barEl) => {
+        const root = (barEl instanceof Element) ? barEl.querySelector('[data-widget-bar-icon-picker]') : null;
+        if (!root || root.dataset.widgetBarIconPickerInit === '1') return;
+        const hiddenInput = root.querySelector('[data-bar-icon]');
+        const menu = root.querySelector('.icon-picker-menu');
+        if (!(hiddenInput instanceof HTMLInputElement) || !menu) return;
+        if (!menu.childElementCount) menu.innerHTML = buildWidgetBarIconPickerMenuHtml();
+        const pickerApi = initIconPicker(root, hiddenInput, {
+          onChange: (nextValue) => {
+            hiddenInput.value = normalizeWidgetBarIconValue(nextValue);
+            syncWidgetBarIconTriggerMeta(root, hiddenInput.value);
+          },
+        });
+        root.dataset.widgetBarIconPickerInit = '1';
+        const current = normalizeWidgetBarIconValue(hiddenInput.value);
+        pickerApi.setSelection(current, formatIconLabel(current));
+        syncWidgetBarIconTriggerMeta(root, current);
+      };
+      const initAllWidgetBarIconPickers = (scope) => {
+        const rootEl = (scope instanceof Element) ? scope : canvas;
+        if (!rootEl) return;
+        rootEl.querySelectorAll('.widget-bar-canvas-row[data-bar-id]').forEach((barEl) => initWidgetBarIconPicker(barEl));
+      };
+      const normalizeMetricKey = (value) => String(value || '').trim().toLowerCase();
+      const getWidgetAppMeta = (appId, typeId) => {
+        const byApp = widgetAppById.get(normalizeWidgetAppChoiceId(appId));
+        if (byApp) return byApp;
+        const normalizedTypeId = normalizeWidgetAppChoiceId(typeId);
+        if (!normalizedTypeId) return null;
+        for (const app of widgetAppCatalog) {
+          if (normalizeWidgetAppChoiceId(app && app.typeId) === normalizedTypeId) return app;
+        }
+        return null;
+      };
+      const normalizeMetricFieldList = (fields) => Array.isArray(fields)
+        ? fields.map((f) => ({
+            key: normalizeMetricKey(f && f.key),
+            label: String((f && (f.label || f.key)) || '').trim(),
+          })).filter((f) => f.key)
+        : [];
+      const parseCardSelectedMetricKeys = (cardEl) => {
+        if (!cardEl || !cardEl.hasAttribute('data-has-selected-metric-keys')) return null;
+        const raw = String(cardEl.getAttribute('data-selected-metric-keys') || '');
+        if (!raw.trim()) return [];
+        return Array.from(new Set(raw.split(',').map(normalizeMetricKey).filter(Boolean)));
+      };
+      const parseCardSelectedLibraryKeys = (cardEl) => {
+        const raw = cardEl && cardEl.getAttribute && cardEl.getAttribute('data-selected-library-keys');
+        if (!raw) return null;
+        try { const p = JSON.parse(raw); return (p && typeof p === 'object' && !Array.isArray(p)) ? p : null; } catch (_e) { return null; }
+      };
+      const applyCardLibraryKeysData = (cardEl, selectedLibraryKeys) => {
+        if (!cardEl) return;
+        if (!selectedLibraryKeys || typeof selectedLibraryKeys !== 'object' || Array.isArray(selectedLibraryKeys) || !Object.keys(selectedLibraryKeys).length) {
+          cardEl.removeAttribute('data-selected-library-keys');
+          return;
+        }
+        cardEl.setAttribute('data-selected-library-keys', JSON.stringify(selectedLibraryKeys));
+      };
+      const applyCardSelectedMetricKeysData = (cardEl, selectedMetricKeys) => {
+        if (!cardEl) return;
+        if (!Array.isArray(selectedMetricKeys)) {
+          cardEl.removeAttribute('data-has-selected-metric-keys');
+          cardEl.removeAttribute('data-selected-metric-keys');
+          return;
+        }
+        const normalized = Array.from(new Set(selectedMetricKeys.map(normalizeMetricKey).filter(Boolean)));
+        cardEl.setAttribute('data-has-selected-metric-keys', '1');
+        cardEl.setAttribute('data-selected-metric-keys', normalized.join(','));
+      };
+      const buildWidgetCardMetricAttrs = (widget) => {
+        const attrs = [];
+        const metricCols = Number(widget && widget.metricColumns);
+        if (Number.isFinite(metricCols)) attrs.push(`data-widget-metric-cols="${Math.max(1, Math.min(4, Math.round(metricCols)))}"`);
+        const typeId = String(widget && widget.typeId || '').trim();
+        if (typeId) attrs.push(`data-widget-type-id="${escHtml(typeId)}"`);
+        if (Array.isArray(widget && widget.selectedMetricKeys)) {
+          const keys = Array.from(new Set(widget.selectedMetricKeys.map(normalizeMetricKey).filter(Boolean)));
+          attrs.push('data-has-selected-metric-keys="1"');
+          attrs.push(`data-selected-metric-keys="${escHtml(keys.join(','))}"`);
+        }
+        const libKeys = widget && widget.selectedLibraryKeys;
+        if (libKeys && typeof libKeys === 'object' && !Array.isArray(libKeys) && Object.keys(libKeys).length) {
+          attrs.push(`data-selected-library-keys="${escHtml(JSON.stringify(libKeys))}"`);
+        }
+        return attrs.length ? ' ' + attrs.join(' ') : '';
+      };
+      const parseCardMetricColumns = (cardEl, metricFields) => {
+        const raw = Number(cardEl && cardEl.dataset && cardEl.dataset.widgetMetricCols);
+        if (Number.isFinite(raw)) return Math.max(1, Math.min(4, Math.round(raw)));
+        const visibleMetricCount = cardEl ? cardEl.querySelectorAll('.stat-card-metric').length : 0;
+        if (visibleMetricCount > 0) return Math.max(1, Math.min(4, visibleMetricCount));
+        const configuredMetricCount = Array.isArray(metricFields) ? metricFields.length : 0;
+        if (configuredMetricCount > 0) return Math.max(1, Math.min(4, configuredMetricCount));
+        return 2;
+      };
+      const applyCardMetricColumnsData = (cardEl, metricColumns) => {
+        if (!cardEl) return;
+        const n = Number(metricColumns);
+        cardEl.dataset.widgetMetricCols = String(Number.isFinite(n) ? Math.max(1, Math.min(4, Math.round(n))) : 2);
+      };
+      const widgetBarCollapseStorageKey = (barId) => `widgetBarCollapsed:${String(barId || '').trim().toLowerCase()}`;
+      let widgetCustomizeState = null;
+      const getStoredBarCollapsed = (barId) => safeStorage.get(widgetBarCollapseStorageKey(barId)) === '1';
+      const setStoredBarCollapsed = (barId, collapsed) => safeStorage.set(widgetBarCollapseStorageKey(barId), collapsed ? '1' : '0');
+      const applyBarCollapsedState = (barEl, collapsed) => {
+        if (!barEl) return;
+        const nextCollapsed = Boolean(collapsed);
+        barEl.classList.toggle('is-collapsed', nextCollapsed);
+        const rowsWrap = barEl.querySelector('[data-rows-wrap]');
+        if (rowsWrap) rowsWrap.hidden = nextCollapsed;
+        const btn = barEl.querySelector('[data-bar-collapse-toggle]');
+        if (btn) {
+          btn.setAttribute('aria-expanded', nextCollapsed ? 'false' : 'true');
+          btn.setAttribute('aria-label', nextCollapsed ? 'Expand widget bar' : 'Collapse widget bar');
+          btn.setAttribute('title', nextCollapsed ? 'Expand widget bar' : 'Collapse widget bar');
+        }
+      };
+      const applyStoredBarCollapseStates = () => {
+        if (!canvas) return;
+        canvas.querySelectorAll('.widget-bar-canvas-row[data-bar-id]').forEach((barEl) => {
+          applyBarCollapsedState(barEl, getStoredBarCollapsed(barEl.dataset.barId));
+        });
+      };
+
+      const closeAllMenus = (except) => {
+        if (!panel) return;
+        panel.querySelectorAll('[data-add-menu]').forEach((m) => {
+          if (m === except) return;
+          m.hidden = true;
+          m.classList.remove('is-floating');
+          m.style.left = '';
+          m.style.top = '';
+        });
+      };
+
+      const positionAddMenuFloating = (menu, anchorEl) => {
+        if (!menu || !anchorEl || !(menu instanceof HTMLElement) || !(anchorEl instanceof HTMLElement)) return;
+        menu.classList.add('is-floating');
+        const margin = 12;
+        const anchorRect = anchorEl.getBoundingClientRect();
+        const menuRect = menu.getBoundingClientRect();
+        const viewportW = window.innerWidth || document.documentElement.clientWidth || 0;
+        const viewportH = window.innerHeight || document.documentElement.clientHeight || 0;
+
+        let left = anchorRect.right - menuRect.width;
+        if (!Number.isFinite(left)) left = anchorRect.left;
+        left = Math.max(margin, Math.min(left, Math.max(margin, viewportW - menuRect.width - margin)));
+
+        let top = anchorRect.bottom + 6;
+        const maxTop = viewportH - menuRect.height - margin;
+        if (top > maxTop) top = Math.max(margin, anchorRect.top - menuRect.height - 6);
+
+        menu.style.left = `${Math.round(left)}px`;
+        menu.style.top = `${Math.round(top)}px`;
+      };
+
+      const getBarCanvasEl = (barId) => {
+        if (!canvas || !barId) return null;
+        return canvas.querySelector(`.widget-bar-canvas-row[data-bar-id="${CSS.escape(String(barId))}"]`);
+      };
+      const getWidgetBarRoleFilter = (barEl) => (barEl instanceof Element ? barEl.querySelector('[data-widget-bar-role-filter]') : null);
+      const getWidgetBarSelectedRoles = (barEl) => {
+        const filterEl = getWidgetBarRoleFilter(barEl);
+        if (!filterEl) return [];
+        return WIDGET_BAR_ROLE_ORDER.filter((role) => {
+          const input = filterEl.querySelector(`input[type="checkbox"][data-bar-role-value="${role}"]`);
+          return Boolean(input && input.checked);
+        });
+      };
+      const buildWidgetBarRoleSummary = (roles) => {
+        if (!Array.isArray(roles) || !roles.length) return 'Hidden (no roles selected)';
+        if (roles.length === WIDGET_BAR_ROLE_ORDER.length) return 'All roles';
+        return roles.map((role) => WIDGET_BAR_ROLE_LABELS[role] || role).join(', ');
+      };
+      const updateWidgetBarRoleFilterSummary = (barEl) => {
+        const filterEl = getWidgetBarRoleFilter(barEl);
+        if (!filterEl) return;
+        const trigger = filterEl.querySelector('[data-widget-bar-role-filter-trigger]');
+        if (!trigger) return;
+        const summary = buildWidgetBarRoleSummary(getWidgetBarSelectedRoles(barEl));
+        trigger.title = summary;
+        trigger.setAttribute('aria-label', `Configure widget bar visibility (${summary})`);
+      };
+      const closeAllWidgetBarRoleFilters = (exceptFilterEl) => {
+        if (!panel) return;
+        panel.querySelectorAll('[data-widget-bar-role-filter]').forEach((filterEl) => {
+          if (filterEl === exceptFilterEl) return;
+          const trigger = filterEl.querySelector('[data-widget-bar-role-filter-trigger]');
+          const menu = filterEl.querySelector('[data-widget-bar-role-filter-menu]');
+          if (trigger) trigger.setAttribute('aria-expanded', 'false');
+          if (menu) menu.hidden = true;
+        });
+      };
+      const refreshAllWidgetBarRoleFilterSummaries = () => {
+        if (!canvas) return;
+        canvas.querySelectorAll('.widget-bar-canvas-row[data-bar-id]').forEach((barEl) => updateWidgetBarRoleFilterSummary(barEl));
+      };
+      const getBarScrollRows = (barEl) => Array.from((barEl || document).querySelectorAll('.widget-bar-row-body.row--scroll'));
+      const refreshBarScrollButtons = (barId) => {
+        const barEl = getBarCanvasEl(barId);
+        if (!barEl) return;
+        const hasScrollRows = getBarScrollRows(barEl).length > 0;
+        const prevBtn = barEl.querySelector('[data-widget-bar-scroll-prev]');
+        const nextBtn = barEl.querySelector('[data-widget-bar-scroll-next]');
+        if (prevBtn) prevBtn.disabled = !hasScrollRows;
+        if (nextBtn) nextBtn.disabled = !hasScrollRows;
+      };
+      const refreshAllBarScrollButtons = () => {
+        if (!canvas) return;
+        canvas.querySelectorAll('.widget-bar-canvas-row[data-bar-id]').forEach((barEl) => {
+          refreshBarScrollButtons(barEl.dataset.barId || '');
+        });
+      };
+      const scrollBarPreviewRows = (barEl, dir) => {
+        if (!barEl) return;
+        getBarScrollRows(barEl).forEach((rowEl) => {
+          const amount = Math.max(160, Math.round(rowEl.clientWidth * 0.85));
+          rowEl.scrollBy({ left: (dir < 0 ? -amount : amount), behavior: 'smooth' });
+        });
+      };
+
+      const refreshBarAddMenus = (barId) => {
+        const barEl = getBarCanvasEl(barId);
+        if (!barEl) return;
+        const usedAppIds = new Set(
+          Array.from(barEl.querySelectorAll('.widget-canvas-card[data-app-id]'))
+            .map((card) => normalizeWidgetAppChoiceId(card.dataset.appId))
+            .filter(Boolean)
+        );
+        barEl.querySelectorAll('[data-bar-add-slot]').forEach((slot) => {
+          const addBtn = slot.querySelector('[data-bar-add]');
+          const menu = slot.querySelector('[data-add-menu]');
+          if (!menu) return;
+          let visibleCount = 0;
+          menu.querySelectorAll('[data-add-system-type]').forEach((opt) => {
+            opt.hidden = false;
+            opt.disabled = false;
+            visibleCount += 1;
+          });
+          menu.querySelectorAll('[data-add-app-id]').forEach((opt) => {
+            const appId = normalizeWidgetAppChoiceId(opt.dataset.addAppId);
+            const hide = usedAppIds.has(appId);
+            opt.hidden = hide;
+            opt.disabled = hide;
+            if (!hide) visibleCount += 1;
+          });
+          if (addBtn) {
+            addBtn.disabled = visibleCount === 0;
+            addBtn.title = visibleCount === 0 ? 'All available widgets are already used in this widget bar' : 'Add widget to row';
+            addBtn.setAttribute('aria-label', visibleCount === 0 ? 'No widgets left to add in this widget bar' : 'Add widget to row');
+          }
+          slot.classList.toggle('is-empty', visibleCount === 0);
+          if (visibleCount === 0) {
+            menu.hidden = true;
+            menu.classList.remove('is-floating');
+            menu.style.left = '';
+            menu.style.top = '';
+          }
+        });
+      };
+
+      const refreshAllBarAddMenus = () => {
+        if (!canvas) return;
+        canvas.querySelectorAll('.widget-bar-canvas-row[data-bar-id]').forEach((barEl) => refreshBarAddMenus(barEl.dataset.barId || ''));
+      };
+      const getRowWidgetCards = (rowBodyEl) => Array.from((rowBodyEl || document).querySelectorAll('.widget-canvas-card[data-widget-id]'));
+      const getRowWidgetOrder = (rowBodyEl) => getRowWidgetCards(rowBodyEl)
+        .map((card) => String(card.dataset.widgetId || '').trim())
+        .filter(Boolean);
+      const getClosestWidgetCard = (rowBodyEl, targetEl) => {
+        if (!rowBodyEl || !(targetEl instanceof Element)) return null;
+        const directCard = targetEl.closest('.widget-canvas-card[data-widget-id]');
+        if (directCard && rowBodyEl.contains(directCard)) return directCard;
+        return null;
+      };
+      const persistRowWidgetOrder = async (barId, rowId, rowBodyEl) => {
+        if (!barId || !rowId || !rowBodyEl) return;
+        const widgetOrder = getRowWidgetOrder(rowBodyEl);
+        if (!widgetOrder.length) return;
+        const resp = await fetch(`/api/widget-bars/${encodeURIComponent(barId)}/rows/${encodeURIComponent(rowId)}`, {
+          method: 'PUT',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ widgetOrder }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.ok) throw new Error(data.error || 'Failed to save widget order.');
+      };
+      let widgetDragState = null;
+      const clearWidgetDragVisuals = () => {
+        if (!canvas) return;
+        canvas.querySelectorAll('.widget-canvas-card.is-dragging').forEach((el) => el.classList.remove('is-dragging'));
+        canvas.querySelectorAll('.widget-canvas-card.drag-insert-before').forEach((el) => el.classList.remove('drag-insert-before'));
+        canvas.querySelectorAll('.widget-canvas-card.drag-insert-after').forEach((el) => el.classList.remove('drag-insert-after'));
+        canvas.querySelectorAll('.widget-bar-row-body.drag-over').forEach((el) => el.classList.remove('drag-over'));
+      };
+      const placeDraggedWidgetCard = (rowBodyEl, draggedCard, targetCard, insertAfter) => {
+        if (!rowBodyEl || !draggedCard) return false;
+        const addSlot = rowBodyEl.querySelector('.widget-canvas-add-slot');
+        if (!targetCard || targetCard === draggedCard) {
+          const beforeNode = addSlot && addSlot.parentElement === rowBodyEl ? addSlot : null;
+          if (beforeNode) rowBodyEl.insertBefore(draggedCard, beforeNode);
+          else rowBodyEl.appendChild(draggedCard);
+          return true;
+        }
+        if (insertAfter) {
+          if (targetCard.nextSibling) rowBodyEl.insertBefore(draggedCard, targetCard.nextSibling);
+          else rowBodyEl.appendChild(draggedCard);
+        } else {
+          rowBodyEl.insertBefore(draggedCard, targetCard);
+        }
+        return true;
+      };
+      const updateWidgetDragHoverPosition = (event, rowBodyEl) => {
+        if (!widgetDragState || !rowBodyEl) return;
+        const draggedCard = widgetDragState.cardEl;
+        if (!draggedCard) return;
+        clearWidgetDragVisuals();
+        draggedCard.classList.add('is-dragging');
+        rowBodyEl.classList.add('drag-over');
+        const targetCard = getClosestWidgetCard(rowBodyEl, event.target);
+        if (targetCard === draggedCard) {
+          return;
+        }
+        if (!targetCard) {
+          placeDraggedWidgetCard(rowBodyEl, draggedCard, null, false);
+          return;
+        }
+        const rect = targetCard.getBoundingClientRect();
+        const rowRect = rowBodyEl.getBoundingClientRect();
+        const isVerticalStack = rowRect.width > 0 && rowRect.height > rowRect.width * 0.9;
+        const insertAfter = isVerticalStack
+          ? (event.clientY > (rect.top + rect.height / 2))
+          : (event.clientX > (rect.left + rect.width / 2));
+        targetCard.classList.add(insertAfter ? 'drag-insert-after' : 'drag-insert-before');
+        placeDraggedWidgetCard(rowBodyEl, draggedCard, targetCard, insertAfter);
+      };
+
+      const closeAllRowSettingsPanels = (exceptRowId) => {
+        if (!canvas) return;
+        canvas.querySelectorAll('[data-row-settings-panel]').forEach((p) => {
+          if (exceptRowId && p.dataset.rowSettingsPanel === exceptRowId) return;
+          p.classList.remove('is-open');
+          p.hidden = true;
+          const btn = canvas.querySelector(`[data-row-settings-toggle="${CSS.escape(p.dataset.rowSettingsPanel)}"]`);
+          if (btn) btn.classList.remove('is-open');
+        });
+      };
+
+      const closeWidgetCustomizeModal = () => {
+        widgetCustomizeState = null;
+        if (!widgetCustomizeModal) return;
+        widgetCustomizeModal.hidden = true;
+        if (widgetCustomizeOptions) widgetCustomizeOptions.innerHTML = '';
+        if (widgetCustomizeSubtitle) widgetCustomizeSubtitle.textContent = '';
+        if (widgetCustomizeEmpty) widgetCustomizeEmpty.hidden = true;
+      };
+
+      const getWidgetMetricOptionsForCard = (cardEl) => {
+        if (!cardEl) return [];
+        const renderedMetricOptionsRaw = String(cardEl.dataset.widgetMetricOptions || '').trim();
+        if (renderedMetricOptionsRaw) {
+          try {
+            const parsed = JSON.parse(renderedMetricOptionsRaw);
+            const normalizedParsed = normalizeMetricFieldList(parsed);
+            if (normalizedParsed.length) return normalizedParsed;
+          } catch (_err) {
+            /* ignore and fall back */
+          }
+        }
+        const appId = String(cardEl.dataset.appId || '').trim();
+        const typeId = String(cardEl.dataset.widgetTypeId || '').trim();
+        const meta = getWidgetAppMeta(appId, typeId);
+        return normalizeMetricFieldList(meta && meta.metricFields);
+      };
+
+      const openWidgetCustomizeModal = (cardEl) => {
+        if (!widgetCustomizeModal || !widgetCustomizeOptions || !cardEl) return;
+        const rowEl = cardEl.closest('.widget-bar-row[data-row-id][data-bar-id]');
+        if (!rowEl) return;
+        const barId = String(rowEl.dataset.barId || '').trim();
+        const rowId = String(rowEl.dataset.rowId || '').trim();
+        const widgetId = String(cardEl.dataset.widgetId || '').trim();
+        const appId = String(cardEl.dataset.appId || '').trim();
+        if (!barId || !rowId || !widgetId || !appId) return;
+
+        const metricFields = getWidgetMetricOptionsForCard(cardEl);
+        const selectedMetricKeys = parseCardSelectedMetricKeys(cardEl);
+        const metricColumns = parseCardMetricColumns(cardEl, metricFields);
+        const selectedSet = new Set(Array.isArray(selectedMetricKeys)
+          ? selectedMetricKeys.map(normalizeMetricKey)
+          : metricFields.map((f) => f.key));
+        const cardTitle = String(cardEl.querySelector('.stat-card-name')?.textContent || appId).trim() || appId;
+
+        // Build per-metric library info map from cached data on card
+        const libraryInfoByMetric = {};
+        const libraryInfoRaw = cardEl.dataset.widgetLibraryInfo;
+        if (libraryInfoRaw) {
+          try {
+            const parsed = JSON.parse(libraryInfoRaw);
+            if (Array.isArray(parsed)) {
+              parsed.forEach((lib) => {
+                const mk = normalizeMetricKey(lib && lib.metricKey);
+                if (!mk) return;
+                if (!libraryInfoByMetric[mk]) libraryInfoByMetric[mk] = [];
+                libraryInfoByMetric[mk].push(lib);
+              });
+            }
+          } catch (_e) { /* ignore */ }
+        }
+        const selectedLibraryKeys = parseCardSelectedLibraryKeys(cardEl) || {};
+
+        widgetCustomizeState = { barId, rowId, widgetId, appId, cardEl, metricFields, libraryInfoByMetric };
+        if (widgetCustomizeSubtitle) widgetCustomizeSubtitle.textContent = cardTitle;
+        if (widgetCustomizeMetricCols) widgetCustomizeMetricCols.value = String(metricColumns);
+        widgetCustomizeOptions.innerHTML = '';
+
+        if (!metricFields.length) {
+          if (widgetCustomizeEmpty) widgetCustomizeEmpty.hidden = false;
+        } else {
+          if (widgetCustomizeEmpty) widgetCustomizeEmpty.hidden = true;
+          widgetCustomizeOptions.innerHTML = metricFields.map((field) => {
+            const checked = selectedSet.has(field.key) ? ' checked' : '';
+            const libs = libraryInfoByMetric[field.key] || [];
+            const selectedLibs = selectedLibraryKeys[field.key];
+            const selectedLibSet = Array.isArray(selectedLibs) ? new Set(selectedLibs.map((k) => String(k || '').trim())) : null;
+            const libsHtml = libs.length > 1
+              ? `<div class="widget-customize-library-list">${libs.map((lib) => {
+                  const libKey = String(lib.key || '').trim();
+                  const libChecked = !selectedLibSet || selectedLibSet.has(libKey) ? ' checked' : '';
+                  return `<label class="widget-card-customize-check widget-customize-library-check">` +
+                    `<input type="checkbox" data-widget-library-key="${escHtml(libKey)}" data-widget-library-metric="${escHtml(field.key)}"${libChecked}>` +
+                    `<span>${escHtml(String(lib.title || lib.key || ''))} <em class="widget-library-count">${Number(lib.count) || 0}</em></span>` +
+                    `</label>`;
+                }).join('')}</div>`
+              : '';
+            return `<div class="widget-customize-metric-group">` +
+              `<label class="widget-card-customize-check">` +
+              `<input type="checkbox" data-widget-metric-key="${escHtml(field.key)}"${checked}>` +
+              `<span>${escHtml(field.label || field.key)}</span>` +
+              `</label>` +
+              libsHtml +
+              `</div>`;
+          }).join('');
+        }
+
+        widgetCustomizeModal.hidden = false;
+      };
+
+      const saveWidgetCustomizeSelection = async (btn) => {
+        if (!widgetCustomizeState || !widgetCustomizeModal || !widgetCustomizeOptions) return;
+        const { barId, rowId, widgetId, cardEl, metricFields, libraryInfoByMetric = {} } = widgetCustomizeState;
+        if (!barId || !rowId || !widgetId || !cardEl) return;
+        const metricFieldKeys = new Set(metricFields.map((f) => f.key));
+        const metricColumns = widgetCustomizeMetricCols
+          ? Math.max(1, Math.min(4, Math.round(Number(widgetCustomizeMetricCols.value || 2) || 2)))
+          : 2;
+        const selectedMetricKeys = Array.from(widgetCustomizeOptions.querySelectorAll('input[data-widget-metric-key]:checked'))
+          .map((input) => normalizeMetricKey(input && input.dataset && input.dataset.widgetMetricKey))
+          .filter((key) => !metricFieldKeys.size || metricFieldKeys.has(key));
+        // Collect per-library selections (only for metrics with >1 library)
+        const selectedLibraryKeys = {};
+        for (const [metricKey, libs] of Object.entries(libraryInfoByMetric)) {
+          if (libs.length <= 1) continue;
+          const allLibInputs = Array.from(widgetCustomizeOptions.querySelectorAll(`input[data-widget-library-metric="${CSS.escape(metricKey)}"]`));
+          if (!allLibInputs.length) continue;
+          const checkedKeys = allLibInputs.filter((inp) => inp.checked).map((inp) => String(inp.dataset.widgetLibraryKey || '').trim()).filter(Boolean);
+          if (checkedKeys.length < allLibInputs.length) selectedLibraryKeys[metricKey] = checkedKeys;
+        }
+        const finalLibraryKeys = Object.keys(selectedLibraryKeys).length ? selectedLibraryKeys : null;
+        const origText = btn ? btn.textContent : '';
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = 'Saving...';
+        }
+        try {
+          const resp = await fetch(`/api/widget-bars/${encodeURIComponent(barId)}/rows/${encodeURIComponent(rowId)}/widgets/${encodeURIComponent(widgetId)}`, {
+            method: 'PUT',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ selectedMetricKeys, metricColumns, ...(finalLibraryKeys ? { selectedLibraryKeys: finalLibraryKeys } : { selectedLibraryKeys: null }) }),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok || !data.ok) throw new Error(data.error || 'Failed to update widget.');
+          applyCardSelectedMetricKeysData(cardEl, selectedMetricKeys);
+          applyCardLibraryKeysData(cardEl, finalLibraryKeys);
+          applyCardMetricColumnsData(cardEl, metricColumns);
+          const savedRow = (data.item && Array.isArray(data.item.rows)) ? data.item.rows.find((r) => r && r.id === rowId) : null;
+          const savedWidget = savedRow && Array.isArray(savedRow.widgets) ? savedRow.widgets.find((w) => String(w && w.id || '') === widgetId) : null;
+          if (savedWidget && savedWidget.typeId) cardEl.dataset.widgetTypeId = String(savedWidget.typeId);
+          if (savedWidget && Number.isFinite(Number(savedWidget.metricColumns))) applyCardMetricColumnsData(cardEl, savedWidget.metricColumns);
+          await fetchAndRenderCard(cardEl);
+          closeWidgetCustomizeModal();
+        } catch (err) {
+          alert(err.message || 'Failed to update widget.');
+        } finally {
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = origText;
+          }
+        }
+      };
+
+      document.addEventListener('pointerdown', (e) => {
+        const targetEl = (e.target instanceof Element) ? e.target : null;
+        if (!targetEl || !targetEl.closest('[data-bar-add-slot]')) closeAllMenus(null);
+        if (!targetEl || !targetEl.closest('.widget-bar-row-settings-slot')) closeAllRowSettingsPanels(null);
+        if (!targetEl || !targetEl.closest('[data-widget-bar-role-filter]')) closeAllWidgetBarRoleFilters(null);
+      });
+      if (widgetCustomizeModal) {
+        widgetCustomizeModal.addEventListener('click', async (e) => {
+          const closeBtn = e.target.closest('[data-widget-customize-close], [data-widget-customize-cancel]');
+          if (closeBtn && widgetCustomizeModal.contains(closeBtn)) {
+            e.preventDefault();
+            closeWidgetCustomizeModal();
+            return;
+          }
+          const allBtn = e.target.closest('[data-widget-customize-all]');
+          if (allBtn && widgetCustomizeModal.contains(allBtn)) {
+            e.preventDefault();
+            widgetCustomizeModal.querySelectorAll('input[data-widget-metric-key], input[data-widget-library-key]').forEach((input) => { input.checked = true; });
+            return;
+          }
+          const applyBtn = e.target.closest('[data-widget-customize-apply]');
+          if (applyBtn && widgetCustomizeModal.contains(applyBtn)) {
+            e.preventDefault();
+            await saveWidgetCustomizeSelection(applyBtn);
+            return;
+          }
+        });
+      }
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && widgetCustomizeModal && !widgetCustomizeModal.hidden) closeWidgetCustomizeModal();
+      });
+
+      // ── DOM helpers ──────────────────────────────────────────────────────
+      const getSystemWidgetSummary = (systemType, cfgRaw) => {
+        const systemTypeKey = String(systemType || '').trim().toLowerCase();
+        if (systemTypeKey !== 'sys-resources') return '';
+        const cfg = (cfgRaw && typeof cfgRaw === 'object') ? cfgRaw : {};
+        const parts = [];
+        if (cfg.cpu !== false) parts.push('CPU');
+        if (cfg.memory !== false) parts.push('RAM');
+        const diskCount = Array.isArray(cfg.disks) ? cfg.disks.length : 0;
+        if (diskCount > 0) parts.push(`${diskCount} Disk${diskCount === 1 ? '' : 's'}`);
+        if (cfg.showTotalSpace === true) parts.push('Total Space');
+        if (cfg.search && cfg.search.enabled) parts.push('Search');
+        if (cfg.weather && cfg.weather.enabled) parts.push('Weather');
+        return parts.join(' · ');
+      };
+
+      const buildSystemWidgetChipHtml = (widget, barId, rowId) => {
+        const wId = escHtml(widget.id);
+        const bId = escHtml(barId);
+        const rId = escHtml(rowId);
+        const sysType = escHtml(widget.systemType);
+        const sysTypeKey = String(widget.systemType || '').trim().toLowerCase();
+        const typeName = escHtml(widget.typeName || widget.systemType);
+        const cfg = widget.systemConfig || {};
+        const cfgEsc = escHtml(JSON.stringify(cfg));
+        const icon = escHtml(widget.icon || '/icons/app.svg');
+        const summary = getSystemWidgetSummary(widget.systemType, cfg);
+        const previewHtml = sysTypeKey === 'sys-resources'
+          ? `<div class="widget-canvas-system-preview dashboard-system-bar" data-system-preview data-system-config="${cfgEsc}"></div>`
+          : '';
+        return `<div class="widget-canvas-card widget-canvas-system-chip" draggable="true" data-widget-id="${wId}" data-system-type="${sysType}" data-system-config="${cfgEsc}">` +
+          `<img class="system-chip-icon" src="${icon}" alt="" onerror="this.src='/icons/app.svg'" />` +
+          `<span class="system-chip-canvas-label">${typeName}${summary ? ` <small class="muted-hint"> ${escHtml(summary)}</small>` : ''}</span>` +
+          previewHtml +
+          `<button class="widget-canvas-system-chip-edit" type="button" data-sys-widget-edit data-widget-id="${wId}" data-bar-id="${bId}" data-row-id="${rId}" data-system-type="${sysType}" data-system-config="${cfgEsc}" title="Edit config" aria-label="Edit ${typeName} config">✎</button>` +
+          `<button class="widget-canvas-card-remove" type="button" data-widget-remove-bar="${bId}" data-widget-remove-row="${rId}" data-widget-remove-id="${wId}" title="Remove" aria-label="Remove ${typeName}">&times;</button>` +
+          `</div>`;
+      };
+
+      const buildRowHtml = (barId, row, apps) => {
+        const rowId = escHtml(row.id);
+        const bId = escHtml(barId);
+        const s = row.settings || {};
+        const rowBodyClasses = ['widget-bar-row-body',
+          s.fixedWidth ? 'row--fixed-width' : '',
+          s.scroll ? 'row--scroll' : '',
+          s.fill ? 'row--fill' : '',
+        ].filter(Boolean).join(' ');
+        const rowMaxCols = Number(s.maxCols || 0) > 0 ? Math.max(1, Math.min(20, Math.round(Number(s.maxCols || 0)))) : 0;
+        const rowBodyStyleAttr = rowMaxCols > 0 ? ` style="--row-max-cols: ${rowMaxCols}"` : '';
+        const sysTypes = Array.isArray(window._systemWidgetTypes) ? window._systemWidgetTypes : [];
+        const sysMenuHtml = sysTypes.length
+          ? `<div class="widget-canvas-add-group-label">System</div>` +
+            sysTypes.map((t) =>
+              `<button class="widget-canvas-add-option" type="button" data-add-system-type="${escHtml(t.typeId)}" data-has-config="${t.hasConfig ? '1' : ''}" data-bar-id="${bId}" data-row-id="${rowId}">` +
+              `<img src="${escHtml(t.icon)}" alt="" onerror="this.src='/icons/app.svg'" /><span>${escHtml(t.label)}</span></button>`
+            ).join('')
+          : '';
+        const appMenuHtml = apps.length
+          ? `<div class="widget-canvas-add-group-label">Apps</div>` +
+            apps.map((app) =>
+              `<button class="widget-canvas-add-option" type="button" data-add-app-id="${escHtml(app.id)}" data-bar-id="${bId}" data-row-id="${rowId}">` +
+              `<img src="${escHtml(app.icon)}" alt="" onerror="this.src='/icons/app.svg'" /><span>${escHtml(app.name)}</span></button>`
+            ).join('')
+          : '';
+        const addMenuHtml = sysMenuHtml + appMenuHtml;
+        const addSlot = `<div class="widget-canvas-add-slot" data-bar-add-slot="${bId}">` +
+          `<button class="widget-canvas-add-btn" type="button" data-bar-add="${bId}" data-row-add="${rowId}" aria-label="Add widget to row" aria-haspopup="true">` +
+          `<span class="widget-canvas-add-icon">+</span></button>` +
+          `<div class="widget-canvas-add-menu" hidden data-add-menu>${addMenuHtml}</div></div>`;
+        const widgetsHtml = (row.widgets || []).map((widget) => {
+          if (widget.systemType) return buildSystemWidgetChipHtml(widget, barId, row.id);
+          const wId = escHtml(widget.id);
+          const wApp = escHtml(widget.appId);
+          const wLabel = escHtml(widget.typeName || widget.appId);
+          const metricAttrs = buildWidgetCardMetricAttrs(widget);
+          return `<div class="widget-canvas-card dashboard-stat-card is-loading" draggable="true" data-widget-id="${wId}" data-app-id="${wApp}"${metricAttrs}>` +
+            `<div class="stat-card-header">` +
+            `<img class="stat-card-icon" src="${escHtml(widget.icon || '/icons/app.svg')}" alt="" onerror="this.src='/icons/app.svg'" />` +
+            `<span class="stat-card-name">${wLabel}</span>` +
+            `<span class="stat-card-status is-unknown">Unknown</span>` +
+            `</div><div class="stat-card-metrics"></div>` +
+            `<button class="widget-canvas-card-remove" type="button" data-widget-remove-bar="${bId}" data-widget-remove-row="${rowId}" data-widget-remove-id="${wId}" title="Remove" aria-label="Remove ${wLabel}">&times;</button>` +
+            `</div>`;
+        }).join('');
+        return `<div class="widget-bar-row" data-row-id="${rowId}" data-bar-id="${bId}">` +
+          `<div class="widget-bar-row-settings-slot">` +
+          `<button class="widget-bar-row-settings-btn" type="button" data-row-settings-toggle="${rowId}" aria-label="Row settings" title="Row settings">&#8250;</button>` +
+          `<div class="widget-bar-row-settings-panel" hidden data-row-settings-panel="${rowId}">` +
+          `<div class="widget-bar-row-settings-inner">` +
+          `<label class="widget-row-settings-label">Max columns<input type="number" min="0" max="20" value="${Number(s.maxCols || 0)}" data-row-setting="maxCols" class="settings-input widget-row-settings-num" /><span class="muted-hint">0 = unlimited</span></label>` +
+          `<label class="widget-row-settings-check"><input type="checkbox" data-row-setting="fixedWidth"${s.fixedWidth ? ' checked' : ''}> Fixed width</label>` +
+          `<label class="widget-row-settings-check"><input type="checkbox" data-row-setting="scroll"${s.scroll ? ' checked' : ''}> Scroll (no wrap)</label>` +
+          `<label class="widget-row-settings-check"><input type="checkbox" data-row-setting="fill"${s.fill ? ' checked' : ''}> Fill row width</label>` +
+          `<div class="widget-row-settings-actions">` +
+          `<button class="primary-button widget-row-settings-apply" type="button" data-row-settings-apply data-bar-id="${bId}" data-row-id="${rowId}">Apply</button>` +
+          `<button class="secondary-button widget-row-delete-btn" type="button" data-row-delete data-bar-id="${bId}" data-row-id="${rowId}">Delete Row</button>` +
+          `</div></div></div></div>` +
+          `<div class="${rowBodyClasses}" data-bar-body data-row-id="${rowId}"${rowBodyStyleAttr}>${widgetsHtml}${addSlot}</div>` +
+          `</div>`;
+      };
+
+      const buildBarRowsWrapHtml = (bar, apps) => {
+        const barId = bar.id;
+        const rowsHtml = (bar.rows || []).map((row) => buildRowHtml(barId, row, apps)).join('');
+        return `<div class="widget-bar-row-add-strip widget-bar-row-add-strip--top">` +
+          `<button class="secondary-button widget-bar-add-row-btn" type="button" data-bar-add-row="${escHtml(barId)}" data-bar-add-row-position="top" aria-label="Add row above" title="Add row above">&#8593;</button>` +
+          `</div>` +
+          rowsHtml +
+          `<div class="widget-bar-row-add-strip widget-bar-row-add-strip--bottom">` +
+          `<button class="secondary-button widget-bar-add-row-btn" type="button" data-bar-add-row="${escHtml(barId)}" data-bar-add-row-position="bottom" aria-label="Add row below" title="Add row below">&#8595;</button>` +
+          `</div>`;
+      };
+
+      // Delegated event handling on canvas
+      if (canvas) {
+        canvas.addEventListener('change', (e) => {
+          const targetEl = (e.target instanceof Element) ? e.target : null;
+          if (!targetEl || !targetEl.matches('input[type="checkbox"][data-bar-role-value]')) return;
+          const barEl = targetEl.closest('.widget-bar-canvas-row[data-bar-id]');
+          if (barEl) updateWidgetBarRoleFilterSummary(barEl);
+        });
+        canvas.addEventListener('dragstart', (e) => {
+          const targetEl = (e.target instanceof Element) ? e.target : null;
+          const cardEl = targetEl && targetEl.closest('.widget-canvas-card[data-widget-id]');
+          if (!cardEl || !canvas.contains(cardEl)) return;
+          if (targetEl.closest('.widget-canvas-card-remove')) { e.preventDefault(); return; }
+          const rowBodyEl = cardEl.closest('.widget-bar-row-body[data-bar-body]');
+          const rowEl = cardEl.closest('.widget-bar-row[data-row-id][data-bar-id]');
+          if (!rowBodyEl || !rowEl) return;
+          widgetDragState = {
+            cardEl,
+            rowBodyEl,
+            rowEl,
+            barId: String(rowEl.dataset.barId || '').trim(),
+            rowId: String(rowEl.dataset.rowId || '').trim(),
+            startOrder: getRowWidgetOrder(rowBodyEl),
+          };
+          cardEl.classList.add('is-dragging');
+          try {
+            if (e.dataTransfer) {
+              e.dataTransfer.effectAllowed = 'move';
+              e.dataTransfer.setData('text/plain', String(cardEl.dataset.widgetId || 'widget'));
+            }
+          } catch (_err) { /* ignore */ }
+        });
+        canvas.addEventListener('dragover', (e) => {
+          if (!widgetDragState) return;
+          const targetEl = (e.target instanceof Element) ? e.target : null;
+          const rowBodyEl = targetEl && targetEl.closest('.widget-bar-row-body[data-bar-body]');
+          if (!rowBodyEl || rowBodyEl !== widgetDragState.rowBodyEl) return;
+          e.preventDefault();
+          try { if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'; } catch (_err) { /* ignore */ }
+          updateWidgetDragHoverPosition(e, rowBodyEl);
+        });
+        canvas.addEventListener('drop', async (e) => {
+          if (!widgetDragState) return;
+          const targetEl = (e.target instanceof Element) ? e.target : null;
+          const rowBodyEl = targetEl && targetEl.closest('.widget-bar-row-body[data-bar-body]');
+          if (!rowBodyEl || rowBodyEl !== widgetDragState.rowBodyEl) return;
+          e.preventDefault();
+          const { barId, rowId, startOrder } = widgetDragState;
+          const endOrder = getRowWidgetOrder(rowBodyEl);
+          const changed = (startOrder.length !== endOrder.length) || startOrder.some((id, idx) => id !== endOrder[idx]);
+          if (!changed) {
+            clearWidgetDragVisuals();
+            widgetDragState = null;
+            return;
+          }
+          try {
+            await persistRowWidgetOrder(barId, rowId, rowBodyEl);
+          } catch (err) {
+            alert(err.message || 'Failed to save widget order.');
+          } finally {
+            clearWidgetDragVisuals();
+            widgetDragState = null;
+          }
+        });
+        canvas.addEventListener('dragend', () => {
+          clearWidgetDragVisuals();
+          widgetDragState = null;
+        });
+        canvas.addEventListener('click', async (e) => {
+          const roleFilterTrigger = e.target.closest('[data-widget-bar-role-filter-trigger]');
+          if (roleFilterTrigger && canvas.contains(roleFilterTrigger)) {
+            e.preventDefault();
+            e.stopPropagation();
+            const filterEl = roleFilterTrigger.closest('[data-widget-bar-role-filter]');
+            const menu = filterEl && filterEl.querySelector('[data-widget-bar-role-filter-menu]');
+            if (!filterEl || !menu) return;
+            const isOpen = roleFilterTrigger.getAttribute('aria-expanded') === 'true';
+            if (isOpen) {
+              roleFilterTrigger.setAttribute('aria-expanded', 'false');
+              menu.hidden = true;
+            } else {
+              closeAllWidgetBarRoleFilters(filterEl);
+              roleFilterTrigger.setAttribute('aria-expanded', 'true');
+              menu.hidden = false;
+            }
+            return;
+          }
+          const roleFilterMenu = e.target.closest('[data-widget-bar-role-filter-menu]');
+          if (roleFilterMenu && canvas.contains(roleFilterMenu)) {
+            e.stopPropagation();
+          }
+          // Toggle add menu
+          const addBtn = e.target.closest('[data-bar-add]');
+          if (addBtn) {
+            e.stopPropagation();
+            const slot = addBtn.closest('[data-bar-add-slot]');
+            const menu = slot && slot.querySelector('[data-add-menu]');
+            if (menu) {
+              const wasHidden = menu.hidden;
+              closeAllMenus(null);
+              menu.hidden = !wasHidden;
+              if (!menu.hidden) {
+                positionAddMenuFloating(menu, addBtn);
+              } else {
+                menu.classList.remove('is-floating');
+                menu.style.left = '';
+                menu.style.top = '';
+              }
+            }
+            return;
+          }
+          // Pick system widget type from menu
+          const sysOptBtn = e.target.closest('[data-add-system-type]');
+          if (sysOptBtn) {
+            const barId = String(sysOptBtn.dataset.barId || '').trim();
+            const rowId = String(sysOptBtn.dataset.rowId || '').trim();
+            const systemType = String(sysOptBtn.dataset.addSystemType || '').trim();
+            if (!barId || !rowId || !systemType) return;
+            const slot = sysOptBtn.closest('[data-bar-add-slot]');
+            const menu = slot && slot.querySelector('[data-add-menu]');
+            if (menu) { menu.hidden = true; menu.classList.remove('is-floating'); menu.style.left = ''; menu.style.top = ''; }
+            const hasConfig = sysOptBtn.dataset.hasConfig === '1';
+            if (hasConfig) {
+              openSysWidgetConfigModal(barId, rowId, systemType, null, null);
+            } else {
+              await addSystemWidgetToRow(barId, rowId, systemType, {});
+            }
+            return;
+          }
+          // Edit system widget config
+          const sysEditBtn = e.target.closest('[data-sys-widget-edit]');
+          if (sysEditBtn && canvas.contains(sysEditBtn)) {
+            const barId = String(sysEditBtn.dataset.barId || '').trim();
+            const rowId = String(sysEditBtn.dataset.rowId || '').trim();
+            const systemType = String(sysEditBtn.dataset.systemType || '').trim();
+            const widgetId = String(sysEditBtn.dataset.widgetId || '').trim();
+            let existingConfig = {};
+            try { existingConfig = JSON.parse(sysEditBtn.dataset.systemConfig || '{}'); } catch (_e) {}
+            openSysWidgetConfigModal(barId, rowId, systemType, existingConfig, widgetId);
+            return;
+          }
+          // Pick app from menu
+          const optBtn = e.target.closest('[data-add-app-id]');
+          if (optBtn) {
+            const barId = String(optBtn.dataset.barId || '').trim();
+            const rowId = String(optBtn.dataset.rowId || '').trim();
+            const appId = String(optBtn.dataset.addAppId || '').trim();
+            if (!barId || !rowId || !appId) return;
+            const slot = optBtn.closest('[data-bar-add-slot]');
+            const menu = slot && slot.querySelector('[data-add-menu]');
+            if (menu) {
+              menu.hidden = true;
+              menu.classList.remove('is-floating');
+              menu.style.left = '';
+              menu.style.top = '';
+            }
+            const img = optBtn.querySelector('img');
+            const lbl = optBtn.querySelector('span');
+            await addWidgetToRow(barId, rowId, appId, img ? img.src : '/icons/app.svg', lbl ? lbl.textContent : appId);
+            return;
+          }
+          // Save bar
+          const collapseBtn = e.target.closest('[data-bar-collapse-toggle]');
+          const prevScrollBtn = e.target.closest('[data-widget-bar-scroll-prev]');
+          if (prevScrollBtn && canvas.contains(prevScrollBtn)) {
+            e.preventDefault();
+            if (prevScrollBtn.disabled) return;
+            scrollBarPreviewRows(prevScrollBtn.closest('.widget-bar-canvas-row[data-bar-id]'), -1);
+            return;
+          }
+          const nextScrollBtn = e.target.closest('[data-widget-bar-scroll-next]');
+          if (nextScrollBtn && canvas.contains(nextScrollBtn)) {
+            e.preventDefault();
+            if (nextScrollBtn.disabled) return;
+            scrollBarPreviewRows(nextScrollBtn.closest('.widget-bar-canvas-row[data-bar-id]'), 1);
+            return;
+          }
+          if (collapseBtn) {
+            const barId = String(collapseBtn.dataset.barCollapseToggle || '').trim();
+            if (!barId || !canvas) return;
+            const barEl = canvas.querySelector(`.widget-bar-canvas-row[data-bar-id="${CSS.escape(barId)}"]`);
+            if (!barEl) return;
+            const collapsed = !barEl.classList.contains('is-collapsed');
+            applyBarCollapsedState(barEl, collapsed);
+            setStoredBarCollapsed(barId, collapsed);
+            return;
+          }
+          // Save bar
+          const saveBtn = e.target.closest('[data-bar-save]');
+          if (saveBtn) { await saveBar(String(saveBtn.dataset.barSave || '').trim(), saveBtn); return; }
+          // Delete bar
+          const delBtn = e.target.closest('[data-bar-delete]');
+          if (delBtn) { await deleteBar(String(delBtn.dataset.barDelete || '').trim(), delBtn); return; }
+          // Remove widget from row
+          const rmBtn = e.target.closest('[data-widget-remove-bar]');
+          if (rmBtn) {
+            await removeWidgetFromRow(
+              String(rmBtn.dataset.widgetRemoveBar || '').trim(),
+              String(rmBtn.dataset.widgetRemoveRow || '').trim(),
+              String(rmBtn.dataset.widgetRemoveId || '').trim(),
+              rmBtn
+            );
+            return;
+          }
+          // Open widget metric customization
+          const widgetCard = e.target.closest('.widget-canvas-card[data-widget-id][data-app-id]');
+          if (widgetCard && canvas.contains(widgetCard) && !e.target.closest('.widget-canvas-card-remove')) {
+            openWidgetCustomizeModal(widgetCard);
+            return;
+          }
+          // Toggle row settings panel
+          const settingsToggle = e.target.closest('[data-row-settings-toggle]');
+          if (settingsToggle) {
+            e.stopPropagation();
+            const rowId = String(settingsToggle.dataset.rowSettingsToggle || '').trim();
+            const panelEl = canvas.querySelector(`[data-row-settings-panel="${CSS.escape(rowId)}"]`);
+            if (!panelEl) return;
+            const isOpen = !panelEl.hidden;
+            closeAllRowSettingsPanels(null);
+            if (!isOpen) {
+              panelEl.hidden = false;
+              panelEl.classList.add('is-open');
+              settingsToggle.classList.add('is-open');
+            }
+            return;
+          }
+          // Apply row settings
+          const applyBtn = e.target.closest('[data-row-settings-apply]');
+          if (applyBtn) {
+            const barId = String(applyBtn.dataset.barId || '').trim();
+            const rowId = String(applyBtn.dataset.rowId || '').trim();
+            const panelEl = canvas.querySelector(`[data-row-settings-panel="${CSS.escape(rowId)}"]`);
+            if (!barId || !rowId || !panelEl) return;
+            await saveRowSettings(barId, rowId, panelEl, applyBtn);
+            return;
+          }
+          // Delete row
+          const deleteRowBtn = e.target.closest('[data-row-delete]');
+          if (deleteRowBtn) {
+            const barId = String(deleteRowBtn.dataset.barId || '').trim();
+            const rowId = String(deleteRowBtn.dataset.rowId || '').trim();
+            await deleteRow(barId, rowId, deleteRowBtn);
+            return;
+          }
+          // Add row
+          const addRowBtn = e.target.closest('[data-bar-add-row]');
+          if (addRowBtn) {
+            const barId = String(addRowBtn.dataset.barAddRow || '').trim();
+            const rowPosition = String(addRowBtn.dataset.barAddRowPosition || '').trim().toLowerCase() === 'top' ? 'top' : 'bottom';
+            await addRow(barId, addRowBtn, rowPosition);
+            return;
+          }
+        });
+      }
+
+      // Save bar settings via PUT
+      const saveBar = async (barId, btn) => {
+        if (!barId || !canvas) return;
+        const row = canvas.querySelector(`[data-bar-id="${CSS.escape(barId)}"]`);
+        if (!row) return;
+        const name = String(row.querySelector('[data-bar-name]')?.value || '').trim() || 'Widget Bar';
+        const icon = normalizeWidgetBarIconValue(row.querySelector('[data-bar-icon]')?.value || DEFAULT_WIDGET_BAR_ICON);
+        const visibilityRoles = getWidgetBarSelectedRoles(row);
+        const refreshSeconds = Number(row.querySelector('[data-bar-refresh]')?.value || 60);
+        const origText = btn.textContent;
+        btn.disabled = true;
+        try {
+          const resp = await fetch(`/api/widget-bars/${encodeURIComponent(barId)}`, {
+            method: 'PUT',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, icon, visibilityRoles, refreshSeconds }),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok || !data.ok) throw new Error(data.error || 'Failed to save.');
+          btn.textContent = 'Saved!';
+          setTimeout(() => { btn.textContent = origText; }, 1500);
+        } catch (err) {
+          alert(err.message || 'Failed to save widget bar settings.');
+        } finally {
+          btn.disabled = false;
+        }
+      };
+
+      // Delete bar via DELETE
+      const deleteBar = async (barId, btn) => {
+        if (!barId) return;
+        if (!confirm('Delete this widget bar? It will be removed from all dashboards.')) return;
+        const row = canvas && canvas.querySelector(`[data-bar-id="${CSS.escape(barId)}"]`);
+        btn.disabled = true;
+        try {
+          const resp = await fetch(`/api/widget-bars/${encodeURIComponent(barId)}`, { method: 'DELETE', credentials: 'same-origin' });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok || !data.ok) throw new Error(data.error || 'Failed to delete widget bar.');
+          if (row) row.remove();
+          if (emptyMsg && canvas && !canvas.querySelector('[data-bar-id]')) emptyMsg.hidden = false;
+        } catch (err) {
+          btn.disabled = false;
+          alert(err.message || 'Failed to delete widget bar.');
+        }
+      };
+
+      // Add widget to a specific row
+      const addWidgetToRow = async (barId, rowId, appId, iconSrc, appLabel) => {
+        try {
+          const resp = await fetch(`/api/widget-bars/${encodeURIComponent(barId)}/rows/${encodeURIComponent(rowId)}/widgets`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ appId }),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok || !data.ok) throw new Error(data.error || 'Failed to add widget.');
+          const savedBar = data.item;
+          const savedRow = (savedBar?.rows || []).find((r) => r.id === rowId);
+          const addedWidget = savedRow
+            ? ((savedRow.widgets || []).find((w) => String(w.appId || '') === appId) || (savedRow.widgets || []).slice(-1)[0])
+            : null;
+          if (!addedWidget || !canvas) return;
+          // Find the add slot in this specific row
+          const rowEl = canvas.querySelector(`.widget-bar-row[data-row-id="${CSS.escape(rowId)}"][data-bar-id="${CSS.escape(barId)}"]`);
+          const slot = rowEl && rowEl.querySelector('[data-bar-add-slot]');
+          if (!slot) return;
+          const resolvedAppId = escHtml(addedWidget.appId || appLabel);
+          const metricAttrs = buildWidgetCardMetricAttrs(addedWidget);
+          const typeName = escHtml(addedWidget.typeName || addedWidget.appId || appLabel);
+          const cardHtml = `<div class="widget-canvas-card dashboard-stat-card is-loading" draggable="true" data-widget-id="${escHtml(addedWidget.id)}" data-app-id="${resolvedAppId}"${metricAttrs}>` +
+            `<div class="stat-card-header">` +
+            `<img class="stat-card-icon" src="${escHtml(addedWidget.icon || iconSrc)}" alt="" onerror="this.src='/icons/app.svg'" />` +
+            `<span class="stat-card-name">${typeName}</span>` +
+            `<span class="stat-card-status is-unknown">Unknown</span>` +
+            `</div><div class="stat-card-metrics"></div>` +
+            `<button class="widget-canvas-card-remove" type="button" data-widget-remove-bar="${escHtml(barId)}" data-widget-remove-row="${escHtml(rowId)}" data-widget-remove-id="${escHtml(addedWidget.id)}" title="Remove" aria-label="Remove ${resolvedAppId}">&times;</button>` +
+            `</div>`;
+          slot.insertAdjacentHTML('beforebegin', cardHtml);
+          const newCard = slot.previousElementSibling;
+          if (newCard && newCard.dataset.appId) fetchAndRenderCard(newCard);
+          refreshBarAddMenus(barId);
+        } catch (err) {
+          alert(err.message || 'Failed to add widget.');
+        }
+      };
+
+      // Add system widget to a specific row
+      const addSystemWidgetToRow = async (barId, rowId, systemType, systemConfig) => {
+        try {
+          const resp = await fetch(`/api/widget-bars/${encodeURIComponent(barId)}/rows/${encodeURIComponent(rowId)}/widgets`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ systemType, systemConfig: systemConfig || {} }),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok || !data.ok) throw new Error(data.error || 'Failed to add system widget.');
+          const savedBar = data.item;
+          const savedRow = (savedBar?.rows || []).find((r) => r.id === rowId);
+          const addedWidget = savedRow ? (savedRow.widgets || []).slice(-1)[0] : null;
+          if (!addedWidget || !canvas) return;
+          const rowEl = canvas.querySelector(`.widget-bar-row[data-row-id="${CSS.escape(rowId)}"][data-bar-id="${CSS.escape(barId)}"]`);
+          const slot = rowEl && rowEl.querySelector('[data-bar-add-slot]');
+          if (!slot) return;
+          const chipHtml = buildSystemWidgetChipHtml(addedWidget, barId, rowId);
+          slot.insertAdjacentHTML('beforebegin', chipHtml);
+          refreshBarAddMenus(barId);
+          const newChip = slot.previousElementSibling;
+          if (newChip) {
+            const previewEl = newChip.querySelector('[data-system-preview]');
+            if (previewEl) refreshSystemPreviewCard(previewEl);
+          }
+        } catch (err) {
+          alert(err.message || 'Failed to add system widget.');
+        }
+      };
+
+      // System widget config modal
+      const sysWidgetModal = panel.querySelector('[data-sys-widget-modal]');
+      const sysWidgetModalBody = panel.querySelector('[data-sys-widget-modal-body]');
+      let sysWidgetModalState = null;
+
+      const SEARCH_PROVIDERS = Array.isArray(window._systemWidgetSearchProviders) ? window._systemWidgetSearchProviders : [
+        { id: 'duckduckgo', label: 'DuckDuckGo' }, { id: 'google', label: 'Google' },
+        { id: 'bing', label: 'Bing' }, { id: 'brave', label: 'Brave' }, { id: 'searxng', label: 'SearXNG' },
+      ];
+      const TIMEZONES = Array.isArray(window._systemWidgetTimezones) ? window._systemWidgetTimezones : ['UTC', 'Europe/London', 'America/New_York'];
+      const SEARCH_PROVIDER_IDS = new Set(SEARCH_PROVIDERS.map((p) => String(p.id || '').trim().toLowerCase()).filter(Boolean));
+
+      const normalizeSysResourcesConfigForForm = (cfgRaw) => {
+        const cfg = (cfgRaw && typeof cfgRaw === 'object') ? cfgRaw : {};
+        const rawDisks = Array.isArray(cfg.disks) ? cfg.disks : [];
+        const searchCfg = (cfg.search && typeof cfg.search === 'object') ? cfg.search : {};
+        const weatherCfg = (cfg.weather && typeof cfg.weather === 'object') ? cfg.weather : {};
+        const lat = Number(weatherCfg.latitude);
+        const lon = Number(weatherCfg.longitude);
+        const cache = Number(weatherCfg.cache);
+        const provider = String(searchCfg.provider || 'duckduckgo').trim().toLowerCase();
+        return {
+          cpu: cfg.cpu !== false,
+          memory: cfg.memory !== false,
+          showTotalSpace: cfg.showTotalSpace === true,
+          disks: rawDisks
+            .map((disk) => ({
+              path: String((disk && disk.path) || '/').trim() || '/',
+              label: String((disk && disk.label) || '').trim(),
+            }))
+            .filter((disk) => disk.path),
+          search: {
+            enabled: searchCfg.enabled === true,
+            provider: SEARCH_PROVIDER_IDS.has(provider) ? provider : 'duckduckgo',
+            target: searchCfg.target === '_self' ? '_self' : '_blank',
+            baseUrl: String(searchCfg.baseUrl || '').trim(),
+          },
+          weather: {
+            enabled: weatherCfg.enabled === true,
+            label: String(weatherCfg.label || '').trim() || 'Home',
+            latitude: Number.isFinite(lat) ? Math.max(-90, Math.min(90, lat)) : 0,
+            longitude: Number.isFinite(lon) ? Math.max(-180, Math.min(180, lon)) : 0,
+            timezone: String(weatherCfg.timezone || 'UTC').trim() || 'UTC',
+            units: weatherCfg.units === 'imperial' ? 'imperial' : 'metric',
+            cache: Number.isFinite(cache) ? Math.max(1, Math.min(60, Math.round(cache))) : 5,
+          },
+        };
+      };
+
+      const buildSysDiskRowHtml = (disk) => {
+        const safeDisk = (disk && typeof disk === 'object') ? disk : {};
+        return `<div class="sys-widget-disk-row" data-sys-disk-row>` +
+          `<label class="sys-widget-field"><span>Path</span><input type="text" class="settings-input" name="disk_path" value="${escHtml(String(safeDisk.path || '/').trim() || '/')}" placeholder="/" /></label>` +
+          `<label class="sys-widget-field"><span>Label</span><input type="text" class="settings-input" name="disk_label" value="${escHtml(String(safeDisk.label || '').trim())}" placeholder="e.g. Media" /></label>` +
+          `<button class="secondary-button sys-widget-disk-remove" type="button" data-sys-disk-remove aria-label="Remove disk">Remove</button>` +
+          `</div>`;
+      };
+
+      const buildSysWidgetConfigForm = (systemType, cfg) => {
+        cfg = cfg || {};
+        if (systemType === 'sys-resources') {
+          const merged = normalizeSysResourcesConfigForForm(cfg);
+          const providerOpts = SEARCH_PROVIDERS
+            .map((p) => `<option value="${escHtml(p.id)}"${merged.search.provider === p.id ? ' selected' : ''}>${escHtml(p.label)}</option>`)
+            .join('');
+          const tzOpts = TIMEZONES
+            .map((tz) => `<option value="${escHtml(tz)}"${merged.weather.timezone === tz ? ' selected' : ''}>${escHtml(tz)}</option>`)
+            .join('');
+          const diskRows = merged.disks.length
+            ? merged.disks.map((disk) => buildSysDiskRowHtml(disk)).join('')
+            : buildSysDiskRowHtml({ path: '/', label: '' });
+          return `<div class="sys-widget-grid">` +
+              `<label class="sys-widget-check"><input type="checkbox" name="cpu_enabled"${merged.cpu ? ' checked' : ''} /><span>Show CPU</span></label>` +
+              `<label class="sys-widget-check"><input type="checkbox" name="memory_enabled"${merged.memory ? ' checked' : ''} /><span>Show Memory</span></label>` +
+              `<label class="sys-widget-check"><input type="checkbox" name="space_show_total"${merged.showTotalSpace ? ' checked' : ''} /><span>Show Total Space (RAM + Disks)</span></label>` +
+            `</div>` +
+            `<div class="sys-widget-group">` +
+              `<div class="sys-widget-group-title">Disks</div>` +
+              `<div class="sys-widget-list" data-sys-disk-list>${diskRows}</div>` +
+              `<button class="secondary-button sys-widget-disk-add" type="button" data-sys-disk-add>+ Add Disk</button>` +
+            `</div>` +
+            `<div class="sys-widget-group">` +
+              `<label class="sys-widget-check"><input type="checkbox" name="search_enabled"${merged.search.enabled ? ' checked' : ''} /><span>Enable Search</span></label>` +
+              `<div class="sys-widget-section" data-sys-search-section${merged.search.enabled ? '' : ' hidden'}>` +
+                `<label class="sys-widget-field"><span>Search Provider</span><select class="settings-select" name="search_provider">${providerOpts}</select></label>` +
+                `<div class="sys-widget-field-searxng" data-sys-searxng-field${merged.search.provider === 'searxng' ? '' : ' hidden'}>` +
+                  `<label class="sys-widget-field"><span>SearXNG Base URL</span><input type="url" class="settings-input" name="search_base_url" value="${escHtml(merged.search.baseUrl || '')}" placeholder="https://searxng.example.com" /></label>` +
+                `</div>` +
+                `<label class="sys-widget-field"><span>Open In</span><select class="settings-select" name="search_target"><option value="_blank"${merged.search.target !== '_self' ? ' selected' : ''}>New Tab</option><option value="_self"${merged.search.target === '_self' ? ' selected' : ''}>Same Tab</option></select></label>` +
+              `</div>` +
+            `</div>` +
+            `<div class="sys-widget-group">` +
+              `<label class="sys-widget-check"><input type="checkbox" name="weather_enabled"${merged.weather.enabled ? ' checked' : ''} /><span>Enable Weather</span></label>` +
+              `<div class="sys-widget-section" data-sys-weather-section${merged.weather.enabled ? '' : ' hidden'}>` +
+                `<label class="sys-widget-field"><span>Location Label</span><input type="text" class="settings-input" name="weather_label" value="${escHtml(merged.weather.label || 'Home')}" /></label>` +
+                `<label class="sys-widget-field"><span>Latitude</span><input type="number" step="any" class="settings-input" name="weather_latitude" value="${escHtml(String(merged.weather.latitude ?? 0))}" /></label>` +
+                `<label class="sys-widget-field"><span>Longitude</span><input type="number" step="any" class="settings-input" name="weather_longitude" value="${escHtml(String(merged.weather.longitude ?? 0))}" /></label>` +
+                `<label class="sys-widget-field"><span>Timezone</span><select class="settings-select" name="weather_timezone">${tzOpts}</select></label>` +
+                `<label class="sys-widget-field"><span>Units</span><select class="settings-select" name="weather_units"><option value="metric"${merged.weather.units !== 'imperial' ? ' selected' : ''}>Metric (°C)</option><option value="imperial"${merged.weather.units === 'imperial' ? ' selected' : ''}>Imperial (°F)</option></select></label>` +
+                `<label class="sys-widget-field"><span>Cache (minutes)</span><input type="number" min="1" max="60" class="settings-input" name="weather_cache" value="${escHtml(String(merged.weather.cache || 5))}" /></label>` +
+              `</div>` +
+            `</div>`;
+        }
+        return '';
+      };
+
+      const readSysWidgetConfigForm = (systemType) => {
+        if (!sysWidgetModalBody) return {};
+        const get = (name) => { const el = sysWidgetModalBody.querySelector(`[name="${name}"]`); return el ? el.value : ''; };
+        const checked = (name) => {
+          const el = sysWidgetModalBody.querySelector(`[name="${name}"]`);
+          return Boolean(el && el.checked);
+        };
+        if (systemType === 'sys-resources') {
+          const provider = String(get('search_provider') || 'duckduckgo').trim().toLowerCase();
+          const searchProvider = SEARCH_PROVIDER_IDS.has(provider) ? provider : 'duckduckgo';
+          const searchEnabled = checked('search_enabled');
+          const weatherEnabled = checked('weather_enabled');
+          const disks = Array.from(sysWidgetModalBody.querySelectorAll('[data-sys-disk-row]'))
+            .map((rowEl) => ({
+              path: String(rowEl.querySelector('[name="disk_path"]')?.value || '').trim() || '/',
+              label: String(rowEl.querySelector('[name="disk_label"]')?.value || '').trim(),
+            }))
+            .filter((disk) => disk.path);
+          return {
+            cpu: checked('cpu_enabled'),
+            memory: checked('memory_enabled'),
+            showTotalSpace: checked('space_show_total'),
+            disks,
+            search: {
+              enabled: searchEnabled,
+              provider: searchProvider,
+              target: get('search_target') === '_self' ? '_self' : '_blank',
+              baseUrl: searchProvider === 'searxng' ? String(get('search_base_url') || '').trim() : '',
+            },
+            weather: {
+              enabled: weatherEnabled,
+              label: String(get('weather_label') || '').trim() || 'Home',
+              latitude: Number(get('weather_latitude')) || 0,
+              longitude: Number(get('weather_longitude')) || 0,
+              timezone: get('weather_timezone') || 'UTC',
+              units: get('weather_units') === 'imperial' ? 'imperial' : 'metric',
+              cache: Math.max(1, Math.min(60, Number(get('weather_cache')) || 5)),
+            },
+          };
+        }
+        return {};
+      };
+
+      const bindSysWidgetConfigFormInteractions = (systemType) => {
+        if (!sysWidgetModalBody || systemType !== 'sys-resources') return;
+        const diskList = sysWidgetModalBody.querySelector('[data-sys-disk-list]');
+        const addDiskBtn = sysWidgetModalBody.querySelector('[data-sys-disk-add]');
+        const searchEnabledEl = sysWidgetModalBody.querySelector('[name="search_enabled"]');
+        const searchSectionEl = sysWidgetModalBody.querySelector('[data-sys-search-section]');
+        const providerSelect = sysWidgetModalBody.querySelector('[name="search_provider"]');
+        const searxngField = sysWidgetModalBody.querySelector('[data-sys-searxng-field]');
+        const weatherEnabledEl = sysWidgetModalBody.querySelector('[name="weather_enabled"]');
+        const weatherSectionEl = sysWidgetModalBody.querySelector('[data-sys-weather-section]');
+
+        const syncSearchVisibility = () => {
+          if (searchSectionEl) searchSectionEl.hidden = !(searchEnabledEl && searchEnabledEl.checked);
+        };
+        const syncSearxngVisibility = () => {
+          if (!searxngField) return;
+          const enabled = Boolean(searchEnabledEl && searchEnabledEl.checked);
+          const provider = String(providerSelect && providerSelect.value || '').trim().toLowerCase();
+          searxngField.hidden = !enabled || provider !== 'searxng';
+        };
+        const syncWeatherVisibility = () => {
+          if (weatherSectionEl) weatherSectionEl.hidden = !(weatherEnabledEl && weatherEnabledEl.checked);
+        };
+
+        if (addDiskBtn && diskList) {
+          addDiskBtn.addEventListener('click', () => {
+            diskList.insertAdjacentHTML('beforeend', buildSysDiskRowHtml({ path: '/', label: '' }));
+          });
+        }
+        if (diskList) {
+          diskList.addEventListener('click', (e) => {
+            const removeBtn = e.target.closest('[data-sys-disk-remove]');
+            if (!removeBtn) return;
+            const rowEl = removeBtn.closest('[data-sys-disk-row]');
+            if (!rowEl) return;
+            const allRows = diskList.querySelectorAll('[data-sys-disk-row]');
+            if (allRows.length <= 1) {
+              const pathInput = rowEl.querySelector('[name="disk_path"]');
+              const labelInput = rowEl.querySelector('[name="disk_label"]');
+              if (pathInput) pathInput.value = '/';
+              if (labelInput) labelInput.value = '';
+              return;
+            }
+            rowEl.remove();
+          });
+        }
+        if (searchEnabledEl) searchEnabledEl.addEventListener('change', () => { syncSearchVisibility(); syncSearxngVisibility(); });
+        if (providerSelect) providerSelect.addEventListener('change', syncSearxngVisibility);
+        if (weatherEnabledEl) weatherEnabledEl.addEventListener('change', syncWeatherVisibility);
+
+        syncSearchVisibility();
+        syncSearxngVisibility();
+        syncWeatherVisibility();
+      };
+
+      const openSysWidgetConfigModal = (barId, rowId, systemType, existingConfig, widgetId) => {
+        if (!sysWidgetModal || !sysWidgetModalBody) return;
+        const titleEl = sysWidgetModal.querySelector('[id="sysWidgetModalTitle"]');
+        const sysTypes = Array.isArray(window._systemWidgetTypes) ? window._systemWidgetTypes : [];
+        const typeDef = sysTypes.find((t) => t.typeId === systemType);
+        if (titleEl) titleEl.textContent = widgetId ? `Edit ${typeDef ? typeDef.label : systemType}` : `Add ${typeDef ? typeDef.label : systemType}`;
+        sysWidgetModalBody.innerHTML = buildSysWidgetConfigForm(systemType, existingConfig);
+        bindSysWidgetConfigFormInteractions(systemType);
+        sysWidgetModalState = { barId, rowId, systemType, widgetId: widgetId || null };
+        sysWidgetModal.hidden = false;
+      };
+
+      const closeSysWidgetModal = () => {
+        if (sysWidgetModal) sysWidgetModal.hidden = true;
+        sysWidgetModalState = null;
+      };
+
+      // System widget modal button handlers
+      if (sysWidgetModal) {
+        sysWidgetModal.addEventListener('click', async (e) => {
+          if (e.target.closest('[data-sys-widget-modal-close]') || e.target.closest('[data-sys-widget-modal-cancel]')) {
+            closeSysWidgetModal();
+            return;
+          }
+          if (e.target.closest('[data-sys-widget-modal-apply]')) {
+            if (!sysWidgetModalState) return;
+            const { barId, rowId, systemType, widgetId } = sysWidgetModalState;
+            const systemConfig = readSysWidgetConfigForm(systemType);
+            if (widgetId) {
+              // Update existing system widget config
+              try {
+                const resp = await fetch(`/api/widget-bars/${encodeURIComponent(barId)}/rows/${encodeURIComponent(rowId)}/widgets/${encodeURIComponent(widgetId)}`, {
+                  method: 'PUT',
+                  credentials: 'same-origin',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ systemConfig }),
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok || !data.ok) throw new Error(data.error || 'Failed to update widget config.');
+                // Update the chip in the canvas
+                if (canvas) {
+                  const chipEl = canvas.querySelector(`.widget-canvas-system-chip[data-widget-id="${CSS.escape(widgetId)}"]`);
+                  if (chipEl) {
+                    chipEl.dataset.systemConfig = JSON.stringify(systemConfig);
+                    const editBtn = chipEl.querySelector('[data-sys-widget-edit]');
+                    if (editBtn) editBtn.dataset.systemConfig = JSON.stringify(systemConfig);
+                    const labelEl = chipEl.querySelector('.system-chip-canvas-label');
+                    if (labelEl) {
+                      const sysTypes2 = Array.isArray(window._systemWidgetTypes) ? window._systemWidgetTypes : [];
+                      const td = sysTypes2.find((t) => t.typeId === systemType);
+                      const typeName = td ? td.label : systemType;
+                      const summary = getSystemWidgetSummary(systemType, systemConfig);
+                      const sub = summary ? ` <small class="muted-hint"> ${escHtml(summary)}</small>` : '';
+                      labelEl.innerHTML = escHtml(typeName) + sub;
+                    }
+                    const previewEl = chipEl.querySelector('[data-system-preview]');
+                    if (previewEl) {
+                      previewEl.setAttribute('data-system-config', JSON.stringify(systemConfig));
+                      delete previewEl.dataset.renderedConfig;
+                      refreshSystemPreviewCard(previewEl);
+                    }
+                  }
+                }
+                closeSysWidgetModal();
+              } catch (err) { alert(err.message || 'Failed to update widget config.'); }
+            } else {
+              // Add new system widget
+              closeSysWidgetModal();
+              await addSystemWidgetToRow(barId, rowId, systemType, systemConfig);
+            }
+            return;
+          }
+        });
+      }
+
+      // Remove widget from a specific row
+      const removeWidgetFromRow = async (barId, rowId, widgetId, btn) => {
+        if (!barId || !rowId || !widgetId) return;
+        const card = btn.closest('[data-widget-id]');
+        btn.disabled = true;
+        try {
+          const resp = await fetch(`/api/widget-bars/${encodeURIComponent(barId)}/rows/${encodeURIComponent(rowId)}/widgets/${encodeURIComponent(widgetId)}`, { method: 'DELETE', credentials: 'same-origin' });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok || !data.ok) throw new Error(data.error || 'Failed to remove widget.');
+          if (widgetCustomizeState && widgetCustomizeState.cardEl === card) closeWidgetCustomizeModal();
+          if (card) card.remove();
+          refreshBarAddMenus(barId);
+        } catch (err) {
+          btn.disabled = false;
+          alert(err.message || 'Failed to remove widget.');
+        }
+      };
+
+      // Save row settings via PUT
+      const clampPreviewMaxCols = (value) => {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return 0;
+        return Math.max(0, Math.min(20, Math.round(n)));
+      };
+
+      const applyRowPreviewLayout = (barId, rowId, settings) => {
+        if (!canvas || !barId || !rowId) return;
+        const rowEl = canvas.querySelector(`.widget-bar-row[data-row-id="${CSS.escape(rowId)}"][data-bar-id="${CSS.escape(barId)}"]`);
+        const rowBody = rowEl && rowEl.querySelector('[data-bar-body]');
+        if (!rowBody) return;
+        const s = settings && typeof settings === 'object' ? settings : {};
+        rowBody.classList.toggle('row--fixed-width', Boolean(s.fixedWidth));
+        rowBody.classList.toggle('row--scroll', Boolean(s.scroll));
+        rowBody.classList.toggle('row--fill', Boolean(s.fill));
+        const maxCols = clampPreviewMaxCols(s.maxCols);
+        if (maxCols > 0) rowBody.style.setProperty('--row-max-cols', String(maxCols));
+        else rowBody.style.removeProperty('--row-max-cols');
+      };
+
+      const saveRowSettings = async (barId, rowId, panelEl, btn) => {
+        if (!barId || !rowId) return;
+        const maxCols = Number(panelEl.querySelector('[data-row-setting="maxCols"]')?.value || 0);
+        const fixedWidth = Boolean(panelEl.querySelector('[data-row-setting="fixedWidth"]')?.checked);
+        const scroll = Boolean(panelEl.querySelector('[data-row-setting="scroll"]')?.checked);
+        const fill = Boolean(panelEl.querySelector('[data-row-setting="fill"]')?.checked);
+        const origText = btn ? btn.textContent : '';
+        if (btn) btn.disabled = true;
+        try {
+          const resp = await fetch(`/api/widget-bars/${encodeURIComponent(barId)}/rows/${encodeURIComponent(rowId)}`, {
+            method: 'PUT',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ maxCols, fixedWidth, scroll, fill }),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok || !data.ok) throw new Error(data.error || 'Failed to save row settings.');
+          applyRowPreviewLayout(barId, rowId, { maxCols, fixedWidth, scroll, fill });
+          refreshBarScrollButtons(barId);
+          if (btn) { btn.textContent = 'Applied!'; setTimeout(() => { btn.textContent = origText; if (btn) btn.disabled = false; }, 1500); }
+          closeAllRowSettingsPanels(null);
+        } catch (err) {
+          if (btn) btn.disabled = false;
+          alert(err.message || 'Failed to save row settings.');
+        }
+      };
+
+      // Delete a row via DELETE
+      const deleteRow = async (barId, rowId, btn) => {
+        if (!barId || !rowId) return;
+        if (!confirm('Delete this row and all its widgets?')) return;
+        if (btn) btn.disabled = true;
+        try {
+          const resp = await fetch(`/api/widget-bars/${encodeURIComponent(barId)}/rows/${encodeURIComponent(rowId)}`, { method: 'DELETE', credentials: 'same-origin' });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok || !data.ok) throw new Error(data.error || 'Failed to delete row.');
+          const rowEl = canvas && canvas.querySelector(`.widget-bar-row[data-row-id="${CSS.escape(rowId)}"][data-bar-id="${CSS.escape(barId)}"]`);
+          if (rowEl) rowEl.remove();
+          refreshBarAddMenus(barId);
+          refreshBarScrollButtons(barId);
+        } catch (err) {
+          if (btn) btn.disabled = false;
+          alert(err.message || 'Failed to delete row.');
+        }
+      };
+
+      // Add a new row to a bar
+      const addRow = async (barId, btn, position = 'bottom') => {
+        if (!barId) return;
+        const insertAtTop = String(position || '').trim().toLowerCase() === 'top';
+        const barEl = canvas && canvas.querySelector(`.widget-bar-canvas-row[data-bar-id="${CSS.escape(barId)}"]`);
+        const rowsWrap = barEl && barEl.querySelector('[data-rows-wrap]');
+        const beforeRowId = insertAtTop
+          ? String(rowsWrap && rowsWrap.querySelector('.widget-bar-row[data-row-id]')?.dataset.rowId || '').trim()
+          : '';
+        if (btn) btn.disabled = true;
+        try {
+          const resp = await fetch(`/api/widget-bars/${encodeURIComponent(barId)}/rows`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(beforeRowId ? { beforeRowId } : {}),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok || !data.ok) throw new Error(data.error || 'Failed to add row.');
+          const savedBar = data.item;
+          if (!savedBar || !canvas) return;
+          const apps = Array.isArray(window._widgetBarApps) ? window._widgetBarApps : [];
+          if (!rowsWrap) return;
+          rowsWrap.innerHTML = buildBarRowsWrapHtml(savedBar, apps);
+          refreshBarAddMenus(barId);
+          refreshBarScrollButtons(barId);
+        } catch (err) {
+          alert(err.message || 'Failed to add row.');
+        } finally {
+          if (btn) btn.disabled = false;
+        }
+      };
+
+      // Create new bar
+      const createBtn = panel.querySelector('#createWidgetBarBtn');
+      if (createBtn) {
+        createBtn.addEventListener('click', async () => {
+          const name = 'Widgets';
+          createBtn.disabled = true;
+          setCreateStatus('Creating…', false);
+          try {
+            const resp = await fetch('/api/widget-bars', {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name, visibilityRoles: ['user', 'co-admin', 'admin'], refreshSeconds: 60 }),
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok || !data.ok) throw new Error(data.error || 'Failed to create widget bar.');
+            const bar = data.item;
+            if (!bar || !canvas) throw new Error('Unexpected response.');
+            const apps = Array.isArray(window._widgetBarApps) ? window._widgetBarApps : [];
+            const barId = escHtml(bar.id);
+            const widgetBarRoleOptions = [
+              { value: 'guest', label: 'Guest' },
+              { value: 'user', label: 'User' },
+              { value: 'co-admin', label: 'Co-admin' },
+              { value: 'admin', label: 'Admin' },
+            ];
+            const widgetBarVisibilityRoles = Array.isArray(bar.visibilityRoles) && bar.visibilityRoles.length
+              ? ['guest', 'user', 'co-admin', 'admin'].filter((role) => bar.visibilityRoles.includes(role))
+              : (function () {
+                  const roleOrder = ['guest', 'user', 'co-admin', 'admin'];
+                  const minRole = String(bar.visibilityRole || 'user').trim().toLowerCase();
+                  const idx = roleOrder.indexOf(minRole);
+                  return idx >= 0 ? roleOrder.slice(idx) : ['user', 'co-admin', 'admin'];
+                })();
+            const widgetBarRefreshValue = [0, 30, 60, 120].includes(Number(bar.refreshSeconds)) ? Number(bar.refreshSeconds) : 60;
+            const widgetBarRefreshSelectHtml =
+              `<select class="settings-select widget-bar-canvas-refresh widget-bar-canvas-refresh-select" aria-label="Refresh interval" data-bar-refresh title="Refresh interval">` +
+              `<option value="0"${widgetBarRefreshValue === 0 ? ' selected' : ''}>Off</option>` +
+              `<option value="30"${widgetBarRefreshValue === 30 ? ' selected' : ''}>30s</option>` +
+              `<option value="60"${widgetBarRefreshValue === 60 ? ' selected' : ''}>60s</option>` +
+              `<option value="120"${widgetBarRefreshValue === 120 ? ' selected' : ''}>120s</option>` +
+              `</select>`;
+            const widgetBarRoleFilterHtml =
+              `<div class="widget-bar-canvas-role-filter settings-dashboard-role-filter settings-visibility-popover" data-widget-bar-role-filter>` +
+              `<button class="settings-visibility-trigger settings-dashboard-role-filter-trigger" type="button" aria-label="Configure widget bar visibility" aria-haspopup="true" aria-expanded="false" data-widget-bar-role-filter-trigger></button>` +
+              `<div class="settings-visibility-menu settings-filter-menu settings-dashboard-role-filter-menu" hidden data-widget-bar-role-filter-menu>` +
+              `<div class="settings-filter-group-title">Visible To Roles</div>` +
+              `<div class="settings-dashboard-role-filter-list">` +
+              widgetBarRoleOptions.map((o) => (
+                `<label class="settings-dashboard-role-filter-option">` +
+                `<input type="checkbox" data-bar-role-value="${escHtml(o.value)}"${widgetBarVisibilityRoles.includes(o.value) ? ' checked' : ''} />` +
+                `<span class="settings-dashboard-role-filter-option-label">${escHtml(o.label)}</span>` +
+                `</label>`
+              )).join('') +
+              `</div>` +
+              `<div class="settings-users-note settings-dashboard-role-filter-note">No roles selected hides this widget bar.</div>` +
+              `</div>` +
+              `</div>`;
+            const rowsHtml = buildBarRowsWrapHtml(bar, apps);
+            const barHtml =
+              `<div class="widget-bar-canvas-row" data-bar-id="${barId}">` +
+              `<div class="widget-bar-canvas-header">` +
+              buildWidgetBarIconPickerHtml(bar.icon) +
+              `<input class="settings-input widget-bar-canvas-name" type="text" value="${escHtml(bar.name || 'Widget Bar')}" maxlength="80" aria-label="Widget bar name" data-bar-name />` +
+              `<div class="widget-bar-canvas-header-actions">` +
+              `<button class="order-button default-app-delete widget-bar-canvas-delete" type="button" data-bar-delete="${barId}" aria-label="Delete widget bar" title="Delete widget bar"><img class="widget-bar-canvas-delete-icon" src="/icons/delete.svg" alt="" /></button>` +
+              widgetBarRoleFilterHtml +
+              widgetBarRefreshSelectHtml +
+              `<button class="plex-iconbtn widget-bar-canvas-scroll-nav widget-bar-canvas-scroll-prev" type="button" data-widget-bar-scroll-prev aria-label="Previous" title="Previous"><div class="plex-chev plex-left" aria-hidden="true"></div></button>` +
+              `<button class="plex-iconbtn widget-bar-canvas-scroll-nav widget-bar-canvas-scroll-next" type="button" data-widget-bar-scroll-next aria-label="Next" title="Next"><div class="plex-chev plex-right" aria-hidden="true"></div></button>` +
+              `<button class="plex-iconbtn widget-bar-canvas-collapse" type="button" data-bar-collapse-toggle="${barId}" aria-expanded="true" aria-label="Collapse widget bar" title="Collapse widget bar"><div class="plex-doublechev" aria-hidden="true"><div class="plex-chev plex-up"></div><div class="plex-chev plex-down"></div></div></button>` +
+              `<button class="primary-button widget-bar-canvas-save" type="button" data-bar-save="${barId}">Save</button>` +
+              `</div>` +
+              `</div><div class="widget-bar-rows-wrap" data-rows-wrap>${rowsHtml}</div></div>`;
+            if (emptyMsg) emptyMsg.hidden = true;
+            canvas.insertAdjacentHTML('beforeend', barHtml);
+            initWidgetBarIconPicker(canvas.querySelector(`.widget-bar-canvas-row[data-bar-id="${CSS.escape(String(bar.id || ''))}"]`));
+            refreshBarAddMenus(bar.id);
+            refreshBarScrollButtons(bar.id);
+            refreshAllWidgetBarRoleFilterSummaries();
+            applyStoredBarCollapseStates();
+            setCreateStatus('', false);
+          } catch (err) {
+            setCreateStatus(err.message || 'Failed to create widget bar.', true);
+          } finally {
+            createBtn.disabled = false;
+          }
+        });
+      }
+
+      // ── Live stats for canvas cards ──────────────────────────────────────
+      const STAT_STATUS_CLASS = { up: 'is-up', down: 'is-down', unknown: 'is-unknown' };
+      const STAT_STATUS_LABEL = { up: 'Online', down: 'Offline', unknown: 'Unknown' };
+
+      const applyCanvasLibraryFilter = (metrics, libraryInfo, selectedLibraryKeys) => {
+        if (!Array.isArray(libraryInfo) || !libraryInfo.length || !selectedLibraryKeys) return metrics;
+        return metrics.map((m) => {
+          const metricKey = normalizeMetricKey(m && m.key);
+          const libFilter = selectedLibraryKeys[metricKey];
+          if (!Array.isArray(libFilter) || !libFilter.length) return m;
+          const libFilterSet = new Set(libFilter.map((k) => String(k || '').trim()));
+          const filteredTotal = libraryInfo
+            .filter((lib) => normalizeMetricKey(lib && lib.metricKey) === metricKey && libFilterSet.has(String(lib.key || '').trim()))
+            .reduce((sum, lib) => sum + (Number(lib.count) || 0), 0);
+          return { ...m, value: filteredTotal };
+        });
+      };
+
+      const renderCanvasCard = (cardEl, data) => {
+        const statusEl = cardEl.querySelector('.stat-card-status');
+        const metricsEl = cardEl.querySelector('.stat-card-metrics');
+        if (!statusEl || !metricsEl) return;
+        const statusKey = (data && (data.status === 'up' || data.status === 'down')) ? data.status : 'unknown';
+        Object.values(STAT_STATUS_CLASS).forEach((cls) => statusEl.classList.remove(cls));
+        statusEl.classList.add(STAT_STATUS_CLASS[statusKey]);
+        statusEl.textContent = STAT_STATUS_LABEL[statusKey] || 'Unknown';
+        const rawLibraryInfo = Array.isArray(data && data.libraryInfo) ? data.libraryInfo : null;
+        if (rawLibraryInfo) cardEl.dataset.widgetLibraryInfo = JSON.stringify(rawLibraryInfo);
+        else delete cardEl.dataset.widgetLibraryInfo;
+        const selectedLibraryKeys = parseCardSelectedLibraryKeys(cardEl);
+        let allMetrics = Array.isArray(data && data.metrics) ? data.metrics : [];
+        if (rawLibraryInfo && selectedLibraryKeys) allMetrics = applyCanvasLibraryFilter(allMetrics, rawLibraryInfo, selectedLibraryKeys);
+        const metricOptions = allMetrics
+          .map((m) => ({ key: normalizeMetricKey(m && m.key), label: String((m && (m.label || m.key)) || '').trim() }))
+          .filter((m) => m.key);
+        if (metricOptions.length) cardEl.dataset.widgetMetricOptions = JSON.stringify(metricOptions);
+        else delete cardEl.dataset.widgetMetricOptions;
+        const selectedMetricKeys = parseCardSelectedMetricKeys(cardEl);
+        const selectedMetricKeySet = Array.isArray(selectedMetricKeys) ? new Set(selectedMetricKeys.map(normalizeMetricKey)) : null;
+        const metrics = allMetrics
+          .filter((m) => !selectedMetricKeySet || selectedMetricKeySet.has(normalizeMetricKey(m && m.key)));
+        if (!cardEl.hasAttribute('data-widget-metric-cols')) {
+          const autoMetricCols = Math.max(1, Math.min(4, Math.round(Number(metrics.length || allMetrics.length || 2))));
+          applyCardMetricColumnsData(cardEl, autoMetricCols);
+        }
+        if (metrics.length) {
+          metricsEl.innerHTML = metrics.map((m) => {
+            const val = m.value !== undefined && m.value !== null ? String(m.value) : '—';
+            return '<span class="stat-card-metric">' +
+              '<span class="stat-card-metric-value">' + escHtml(val) + '</span>' +
+              '<span class="stat-card-metric-label">' + escHtml(String(m.label || m.key || '')) + '</span>' +
+              '</span>';
+          }).join('');
+        } else {
+          metricsEl.innerHTML = '';
+        }
+        cardEl.classList.remove('is-loading');
+      };
+
+      const renderCanvasCardError = (cardEl) => {
+        const statusEl = cardEl.querySelector('.stat-card-status');
+        const metricsEl = cardEl.querySelector('.stat-card-metrics');
+        if (statusEl) {
+          Object.values(STAT_STATUS_CLASS).forEach((cls) => statusEl.classList.remove(cls));
+          statusEl.classList.add(STAT_STATUS_CLASS.down);
+          statusEl.textContent = STAT_STATUS_LABEL.down;
+        }
+        if (metricsEl) metricsEl.innerHTML = '';
+        cardEl.classList.remove('is-loading');
+      };
+
+      const SYS_PREVIEW_SEARCH_PROVIDER_URLS = {
+        duckduckgo: 'https://duckduckgo.com/?q={query}',
+        google: 'https://www.google.com/search?q={query}',
+        bing: 'https://www.bing.com/search?q={query}',
+        brave: 'https://search.brave.com/search?q={query}',
+      };
+      const SYS_PREVIEW_WEATHER_ICONS = {
+        'clear': '/icons/weather-clear.svg',
+        'mainly-clear': '/icons/weather-mainly-clear.svg',
+        'partly-cloudy': '/icons/weather-partly-cloudy.svg',
+        'overcast': '/icons/weather-overcast.svg',
+        'foggy': '/icons/weather-foggy.svg',
+        'drizzle': '/icons/weather-drizzle.svg',
+        'rainy': '/icons/weather-rainy.svg',
+        'snowy': '/icons/weather-snowy.svg',
+        'showers': '/icons/weather-showers.svg',
+        'stormy': '/icons/weather-stormy.svg',
+      };
+      const SYS_PREVIEW_WEATHER_ICON_FALLBACK = '/icons/weather.svg';
+      const SYS_PREVIEW_SEARCH_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
+
+      const handleSystemPreviewSearchSubmit = (form) => {
+        const input = form.querySelector('.system-search-input');
+        if (!input) return;
+        const query = String(input.value || '').trim();
+        if (!query) return;
+        const provider = String(form.dataset.searchProvider || 'duckduckgo').trim().toLowerCase();
+        const target = form.dataset.searchTarget === '_self' ? '_self' : '_blank';
+        let url = '';
+        if (provider === 'searxng') {
+          const baseUrl = String(form.dataset.searchBaseUrl || '').trim().replace(/\/$/, '');
+          if (!baseUrl) return;
+          url = `${baseUrl}/search?q=${encodeURIComponent(query)}`;
+        } else {
+          const template = SYS_PREVIEW_SEARCH_PROVIDER_URLS[provider] || SYS_PREVIEW_SEARCH_PROVIDER_URLS.duckduckgo;
+          url = template.replace('{query}', encodeURIComponent(query));
+        }
+        if (target === '_self') window.location.href = url;
+        else window.open(url, '_blank', 'noopener,noreferrer');
+        input.value = '';
+      };
+
+      const bindSystemPreviewSearchForms = (rootEl) => {
+        if (!rootEl || !(rootEl instanceof Element)) return;
+        rootEl.querySelectorAll('.dashboard-system-search').forEach((form) => {
+          if (form._searchBound) return;
+          form._searchBound = true;
+          form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            handleSystemPreviewSearchSubmit(form);
+          });
+        });
+      };
+
+      const formatSystemPreviewBytes = (bytes) => {
+        if (!Number.isFinite(bytes) || bytes < 0) return '—';
+        const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+        let idx = 0;
+        let value = bytes;
+        while (value >= 1024 && idx < units.length - 1) {
+          value /= 1024;
+          idx += 1;
+        }
+        return `${idx === 0 ? value.toFixed(0) : value.toFixed(2).replace(/\.?0+$/, '')} ${units[idx]}`;
+      };
+      const normalizeSystemPreviewPath = (value) => {
+        let pathValue = String(value || '').trim() || '/';
+        if (!pathValue.startsWith('/')) pathValue = `/${pathValue}`;
+        pathValue = pathValue.replace(/\/{2,}/g, '/');
+        if (pathValue.length > 1) pathValue = pathValue.replace(/\/+$/, '');
+        return pathValue || '/';
+      };
+      const decodeHtmlEntities = (value) => {
+        const source = String(value || '');
+        if (!source || source.indexOf('&') === -1) return source;
+        const textarea = document.createElement('textarea');
+        textarea.innerHTML = source;
+        return textarea.value;
+      };
+      const parseSystemConfigValue = (value) => {
+        const source = String(value || '').trim() || '{}';
+        try { return JSON.parse(source); } catch (_err) { /* try decoded */ }
+        const decoded = decodeHtmlEntities(source);
+        if (decoded !== source) {
+          try { return JSON.parse(decoded); } catch (_err2) { /* ignore */ }
+        }
+        return {};
+      };
+
+      const updateSystemPreviewBarFill = (barFillEl, pct) => {
+        if (!barFillEl) return;
+        barFillEl.style.width = `${pct}%`;
+        barFillEl.classList.toggle('bar-warning', pct >= 70 && pct < 90);
+        barFillEl.classList.toggle('bar-danger', pct >= 90);
+      };
+
+      const buildSystemPreviewBar = (previewEl) => {
+        const raw = previewEl.getAttribute('data-system-config') || '{}';
+        const cfg = parseSystemConfigValue(raw);
+        const showTotalSpace = cfg.showTotalSpace === true;
+        previewEl.dataset.systemShowTotalSpace = showTotalSpace ? '1' : '0';
+        let html = '';
+
+        if (cfg.cpu !== false) {
+          html += '<div class="dashboard-system-chip is-loading" data-chip-type="cpu">' +
+            '<div class="system-chip-row"><img class="system-chip-icon" src="/icons/cpu.svg" alt="" onerror="this.src=\'/icons/app.svg\'" />' +
+            '<div class="system-chip-body"><span class="system-chip-value">–</span><span class="system-chip-label">CPU</span></div></div>' +
+            '<div class="system-chip-bar"><div class="system-chip-bar-fill"></div></div></div>';
+        }
+        if (cfg.memory !== false) {
+          html += '<div class="dashboard-system-chip is-loading" data-chip-type="memory">' +
+            '<div class="system-chip-row"><img class="system-chip-icon" src="/icons/memory.svg" alt="" onerror="this.src=\'/icons/app.svg\'" />' +
+            '<div class="system-chip-body"><span class="system-chip-value">–</span><span class="system-chip-label">' + (showTotalSpace ? 'Total' : 'Free') + '</span></div></div>' +
+            '<div class="system-chip-bar"><div class="system-chip-bar-fill"></div></div></div>';
+        }
+        const disks = Array.isArray(cfg.disks) ? cfg.disks : [];
+        disks.forEach((disk) => {
+          const path = normalizeSystemPreviewPath((disk && disk.path) || '/');
+          const label = String((disk && disk.label) || '').trim() || path;
+          html += '<div class="dashboard-system-chip is-loading" data-chip-type="disk" data-chip-path="' + escHtml(path) + '" title="' + escHtml(label + ' (' + path + ')') + '">' +
+            '<div class="system-chip-row"><img class="system-chip-icon" src="/icons/disk.svg" alt="" onerror="this.src=\'/icons/app.svg\'" />' +
+            '<div class="system-chip-body"><span class="system-chip-value">–</span><span class="system-chip-label">' + escHtml(label) + '</span></div></div>' +
+            '<div class="system-chip-bar"><div class="system-chip-bar-fill"></div></div></div>';
+        });
+        const search = (cfg.search && typeof cfg.search === 'object') ? cfg.search : {};
+        if (search.enabled) {
+          const baseUrl = String(search.baseUrl || '').trim().replace(/\/$/, '');
+          html += '<form class="dashboard-system-search" data-search-provider="' + escHtml(search.provider || 'duckduckgo') + '"' +
+            ' data-search-target="' + (search.target === '_self' ? '_self' : '_blank') + '"' +
+            (search.provider === 'searxng' && baseUrl ? ' data-search-base-url="' + escHtml(baseUrl) + '"' : '') +
+            ' action="" method="get" autocomplete="off" novalidate>' +
+            '<input class="system-search-input" type="search" name="q" placeholder="Search..." aria-label="Search" />' +
+            '<button class="system-search-btn" type="submit" aria-label="Search">' + SYS_PREVIEW_SEARCH_SVG + '</button></form>';
+        }
+        const weather = (cfg.weather && typeof cfg.weather === 'object') ? cfg.weather : {};
+        if (weather.enabled) {
+          const weatherLabel = String(weather.label || '').trim();
+          html += '<div class="dashboard-system-chip dashboard-system-weather is-loading" data-chip-type="weather"' +
+            ' data-weather-label="' + escHtml(weatherLabel) + '"' +
+            ' data-weather-lat="' + Number(weather.latitude || 0) + '"' +
+            ' data-weather-lon="' + Number(weather.longitude || 0) + '"' +
+            ' data-weather-timezone="' + escHtml(String(weather.timezone || 'UTC')) + '"' +
+            ' data-weather-units="' + (weather.units === 'imperial' ? 'imperial' : 'metric') + '"' +
+            ' data-weather-cache="' + Math.max(1, Math.min(60, Number(weather.cache || 5))) + '">' +
+            '<div class="system-chip-row"><img class="system-chip-icon system-weather-icon" src="' + SYS_PREVIEW_WEATHER_ICON_FALLBACK + '" alt="" />' +
+            '<div class="system-chip-body"><span class="system-chip-value system-weather-value">–</span>' +
+            '<span class="system-chip-label system-weather-condition">Loading…</span></div></div></div>';
+        }
+
+        previewEl.innerHTML = html;
+        bindSystemPreviewSearchForms(previewEl);
+      };
+
+      const renderSystemPreviewWithData = (previewEl, sysData, wxData) => {
+        const showTotalSpace = previewEl.dataset.systemShowTotalSpace === '1';
+        const cpuChip = previewEl.querySelector('[data-chip-type="cpu"]');
+        if (cpuChip && sysData) {
+          const pct = Math.max(0, Math.min(100, Number(sysData.cpu && sysData.cpu.percent) || 0));
+          const valEl = cpuChip.querySelector('.system-chip-value');
+          if (valEl) valEl.textContent = `${pct.toFixed(0)}%`;
+          updateSystemPreviewBarFill(cpuChip.querySelector('.system-chip-bar-fill'), pct);
+          cpuChip.classList.remove('is-loading');
+        }
+
+        const memChip = previewEl.querySelector('[data-chip-type="memory"]');
+        if (memChip && sysData) {
+          const memFree = Number(sysData.memory && sysData.memory.free) || 0;
+          const memTotal = Number(sysData.memory && sysData.memory.total) || 0;
+          const memPct = memTotal > 0 ? Math.round((100 * (memTotal - memFree)) / memTotal) : 0;
+          const valEl = memChip.querySelector('.system-chip-value');
+          if (valEl) valEl.textContent = formatSystemPreviewBytes(showTotalSpace ? memTotal : memFree);
+          updateSystemPreviewBarFill(memChip.querySelector('.system-chip-bar-fill'), memPct);
+          memChip.classList.remove('is-loading');
+        }
+
+        previewEl.querySelectorAll('[data-chip-type="disk"]').forEach((diskChip) => {
+          if (!sysData) return;
+          const diskPath = normalizeSystemPreviewPath(diskChip.dataset.chipPath || '/');
+          const entry = Array.isArray(sysData.disks)
+            ? (sysData.disks.find((disk) => normalizeSystemPreviewPath(disk.path) === diskPath)
+              || sysData.disks.find((disk) => normalizeSystemPreviewPath(disk.resolvedPath) === diskPath))
+            : null;
+          const valEl = diskChip.querySelector('.system-chip-value');
+          if (entry && entry.ok) {
+            const free = Number(entry.free) || 0;
+            const total = Number(entry.total) || 0;
+            const pct = total > 0 ? Math.round((100 * (total - free)) / total) : 0;
+            if (valEl) valEl.textContent = formatSystemPreviewBytes(showTotalSpace ? total : free);
+            updateSystemPreviewBarFill(diskChip.querySelector('.system-chip-bar-fill'), pct);
+          } else if (valEl) {
+            valEl.textContent = '—';
+          }
+          diskChip.classList.remove('is-loading');
+        });
+
+        const weatherChip = previewEl.querySelector('[data-chip-type="weather"]');
+        if (weatherChip) {
+          const weatherLabel = String(weatherChip.dataset.weatherLabel || '').trim();
+          const weatherUnits = weatherChip.dataset.weatherUnits === 'imperial' ? '°F' : '°C';
+          const valEl = weatherChip.querySelector('.system-weather-value');
+          const condEl = weatherChip.querySelector('.system-weather-condition');
+          const iconEl = weatherChip.querySelector('.system-weather-icon');
+          if (wxData && wxData.ok) {
+            const temp = Number(wxData.temperature).toFixed(1);
+            if (valEl) valEl.textContent = `${weatherLabel ? `${weatherLabel}, ` : ''}${temp}${weatherUnits}`;
+            if (condEl) condEl.textContent = wxData.condition || '';
+            if (iconEl) {
+              iconEl.src = SYS_PREVIEW_WEATHER_ICONS[wxData.icon] || SYS_PREVIEW_WEATHER_ICON_FALLBACK;
+              iconEl.onerror = function () { this.src = SYS_PREVIEW_WEATHER_ICON_FALLBACK; };
+            }
+          } else {
+            if (valEl) valEl.textContent = weatherLabel || '—';
+            if (condEl) condEl.textContent = 'Unavailable';
+          }
+          weatherChip.classList.remove('is-loading');
+        }
+      };
+
+      const fetchSystemPreviewInfo = async (diskPaths) => {
+        const pathsParam = (diskPaths && diskPaths.length) ? diskPaths.join(',') : '/';
+        const resp = await fetch(`/api/system-info?paths=${encodeURIComponent(pathsParam)}`, { credentials: 'same-origin' });
+        if (!resp.ok) throw new Error('System info request failed');
+        return resp.json();
+      };
+
+      const fetchSystemPreviewWeather = async (wxChip) => {
+        const lat = Number(wxChip.dataset.weatherLat || 0);
+        const lon = Number(wxChip.dataset.weatherLon || 0);
+        const timezone = encodeURIComponent(String(wxChip.dataset.weatherTimezone || 'UTC'));
+        const units = wxChip.dataset.weatherUnits === 'imperial' ? 'imperial' : 'metric';
+        const cache = Math.max(1, Math.min(60, Number(wxChip.dataset.weatherCache || 5)));
+        const url = `/api/openmeteo?lat=${lat}&lon=${lon}&timezone=${timezone}&units=${units}&cache=${cache}`;
+        const resp = await fetch(url, { credentials: 'same-origin' });
+        if (!resp.ok) throw new Error('Weather request failed');
+        return resp.json();
+      };
+
+      const refreshSystemPreviewCard = async (previewEl) => {
+        if (!previewEl || !document.body.contains(previewEl)) return;
+        const rawConfig = String(previewEl.getAttribute('data-system-config') || '{}');
+        if (previewEl.dataset.renderedConfig !== rawConfig) {
+          buildSystemPreviewBar(previewEl);
+          previewEl.dataset.renderedConfig = rawConfig;
+        }
+        const diskPaths = Array.from(previewEl.querySelectorAll('[data-chip-type="disk"][data-chip-path]'))
+          .map((chipEl) => chipEl.dataset.chipPath)
+          .filter(Boolean);
+        const needsResources = Boolean(
+          previewEl.querySelector('[data-chip-type="cpu"]')
+          || previewEl.querySelector('[data-chip-type="memory"]')
+          || diskPaths.length
+        );
+        const weatherChip = previewEl.querySelector('[data-chip-type="weather"]');
+        const resourcePromise = needsResources ? fetchSystemPreviewInfo(diskPaths) : Promise.resolve(null);
+        const weatherPromise = weatherChip ? fetchSystemPreviewWeather(weatherChip) : Promise.resolve(null);
+        try {
+          const [resourceData, weatherData] = await Promise.all([resourcePromise, weatherPromise]);
+          renderSystemPreviewWithData(previewEl, resourceData, weatherData);
+        } catch (_err) {
+          renderSystemPreviewWithData(previewEl, null, null);
+        }
+      };
+
+      const refreshAllCanvasSystemPreviews = () => {
+        if (!canvas) return;
+        canvas.querySelectorAll('[data-system-preview]').forEach((previewEl) => {
+          refreshSystemPreviewCard(previewEl);
+        });
+      };
+
+      const fetchAndRenderCard = async (cardEl) => {
+        const appId = String(cardEl.dataset.appId || '').trim();
+        if (!appId) return;
+        try {
+          const resp = await fetch('/api/widget-stats/' + encodeURIComponent(appId), { credentials: 'same-origin' });
+          if (!resp.ok) { renderCanvasCardError(cardEl); return; }
+          const data = await resp.json().catch(() => null);
+          renderCanvasCard(cardEl, data);
+        } catch (_err) {
+          renderCanvasCardError(cardEl);
+        }
+      };
+
+      const refreshAllCanvasCards = () => {
+        if (!canvas) return;
+        canvas.querySelectorAll('.widget-canvas-card[data-app-id]').forEach(fetchAndRenderCard);
+      };
+
+      // Initial load then poll every 60 seconds
+      initAllWidgetBarIconPickers();
+      refreshAllBarAddMenus();
+      refreshAllWidgetBarRoleFilterSummaries();
+      refreshAllBarScrollButtons();
+      applyStoredBarCollapseStates();
+      refreshAllCanvasCards();
+      refreshAllCanvasSystemPreviews();
+      setInterval(() => {
+        refreshAllCanvasCards();
+        refreshAllCanvasSystemPreviews();
+      }, 60000);
+    };
+
     initVisibilityToggles();
     attachPlexSettingsActions();
     attachRommSettingsPanelSessionTests();
+    attachWidgetBarManager();
     function handleSidebarToggle() {
       if (!dashFrame) return;
       if (isMobile()) {
@@ -3684,6 +5849,9 @@
       const settingsLogRefresh = document.getElementById('settingsLogRefresh');
       const settingsLogApp = document.getElementById('settingsLogApp');
       const settingsLogLevel = document.getElementById('settingsLogLevel');
+      const settingsWidgetStatusDebug = document.getElementById('settingsWidgetStatusDebug');
+      const settingsLogPanel = document.querySelector('.settings-tab-panel[data-tab="log"]');
+      const settingsLogTabBtn = document.querySelector('.settings-tab-btn[data-tab="log"]');
       const logAppNames = <%- safeJson((apps || []).reduce((acc, app) => {
         acc[String(app.id || '').toLowerCase()] = app.name || app.id;
         return acc;
@@ -3754,10 +5922,69 @@
       }
     };
 
-    settingsLogRefresh?.addEventListener('click', loadSettingsLogs);
+    const renderWidgetStatusDebug = (snapshot) => {
+      if (!settingsWidgetStatusDebug) return;
+      const payload = (snapshot && typeof snapshot === 'object') ? snapshot : {};
+      const delaySeconds = Number(payload.delaySeconds);
+      const effectiveDelaySeconds = Number.isFinite(delaySeconds) ? Math.max(5, Math.round(delaySeconds)) : 60;
+      const trackedItems = Array.isArray(payload.items) ? payload.items : [];
+      const pendingItems = trackedItems.filter((item) => String(item?.pendingState || '').trim());
+      if (!payload.enabled) {
+        const reason = !payload.appriseEnabled
+          ? 'Apprise notifications are disabled'
+          : (!payload.widgetStatusEnabled ? 'Widget status alerts are disabled' : 'Disabled');
+        settingsWidgetStatusDebug.textContent = `Widget monitor: ${reason}.`;
+        return;
+      }
+      if (!trackedItems.length) {
+        settingsWidgetStatusDebug.textContent = 'Widget monitor: no widget apps are currently tracked.';
+        return;
+      }
+      if (!pendingItems.length) {
+        settingsWidgetStatusDebug.textContent = `Widget monitor: no pending transitions (${trackedItems.length} apps tracked).`;
+        return;
+      }
+      const preview = pendingItems
+        .slice(0, 4)
+        .map((item) => {
+          const appName = String(item?.appName || item?.appId || 'App').trim();
+          const currentState = String(item?.currentState || 'unknown').trim().toLowerCase() || 'unknown';
+          const pendingState = String(item?.pendingState || 'unknown').trim().toLowerCase() || 'unknown';
+          const elapsedRaw = Number(item?.pendingElapsedSeconds);
+          const elapsedSeconds = Number.isFinite(elapsedRaw) ? Math.max(0, Math.round(elapsedRaw)) : 0;
+          const shownElapsed = Math.min(effectiveDelaySeconds, elapsedSeconds);
+          return `${appName} ${currentState}->${pendingState} ${shownElapsed}/${effectiveDelaySeconds}s`;
+        })
+        .join(' | ');
+      const extraCount = pendingItems.length > 4 ? ` (+${pendingItems.length - 4} more)` : '';
+      settingsWidgetStatusDebug.textContent = `Widget monitor pending (${pendingItems.length}): ${preview}${extraCount}`;
+    };
+
+    const loadWidgetStatusDebug = async () => {
+      if (!settingsWidgetStatusDebug) return;
+      if (settingsLogPanel && !settingsLogPanel.classList.contains('is-active')) return;
+      try {
+        const response = await fetch('/api/widget-status-monitor');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        renderWidgetStatusDebug(payload);
+      } catch (_err) {
+        settingsWidgetStatusDebug.textContent = 'Widget monitor: failed to load debug state.';
+      }
+    };
+
+    settingsLogRefresh?.addEventListener('click', () => {
+      loadSettingsLogs();
+      loadWidgetStatusDebug();
+    });
     settingsLogApp?.addEventListener('change', renderSettingsLogs);
     settingsLogLevel?.addEventListener('change', renderSettingsLogs);
+    settingsLogTabBtn?.addEventListener('click', () => {
+      setTimeout(loadWidgetStatusDebug, 0);
+    });
     loadSettingsLogs();
+    loadWidgetStatusDebug();
+    setInterval(loadWidgetStatusDebug, 5000);
     } catch (err) {
       console.error('[Launcharr] Settings logs init failed', err);
     }

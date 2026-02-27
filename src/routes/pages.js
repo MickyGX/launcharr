@@ -19,8 +19,6 @@ export function registerPages(app, ctx) {
     resolveMediaDashboardCombineSettings,
     resolveCombinedQueueDisplaySettings,
     resolveDownloaderDashboardCombineSettings,
-    resolveDashboardWidgets,
-    resolveDashboardWidgetSourceOptions,
     getNavApps,
     buildNavCategories,
     buildCategoryRank,
@@ -69,7 +67,6 @@ export function registerPages(app, ctx) {
     // constants
     DASHBOARD_MAIN_ID,
     DEFAULT_DASHBOARD_ICON,
-    ENABLE_DASHBOARD_WIDGETS,
     ARR_APP_IDS,
     DOWNLOADER_APP_IDS,
     MEDIA_APP_IDS,
@@ -79,6 +76,7 @@ export function registerPages(app, ctx) {
     ARR_COMBINED_SECTION_PREFIX,
     DOWNLOADER_COMBINED_SECTION_PREFIX,
     MEDIA_COMBINED_SECTION_PREFIX,
+    resolveWidgetBars,
   } = ctx;
 
   app.get('/dashboard', requireUser, (req, res) => {
@@ -109,18 +107,6 @@ export function registerPages(app, ctx) {
     const dashboardCombinedOrder = (config && typeof config.dashboardCombinedOrder === 'object' && config.dashboardCombinedOrder)
       ? config.dashboardCombinedOrder
       : {};
-    const canManageWidgets = false;
-    const dashboardWidgets = ENABLE_DASHBOARD_WIDGETS
-      ? resolveDashboardWidgets(config, apps, role, {
-        includeHidden: canManageWidgets,
-        includeUnavailable: canManageWidgets,
-      })
-      : [];
-    const dashboardWidgetSources = ENABLE_DASHBOARD_WIDGETS
-      ? resolveDashboardWidgetSourceOptions(config, apps, role, {
-        includeUnavailable: canManageWidgets,
-      })
-      : [];
     const navApps = getNavApps(apps, role, req, categoryOrder);
     const navCategories = buildNavCategories(navApps, categoryEntries, role);
     const rankCategory = buildCategoryRank(categoryOrder);
@@ -407,7 +393,23 @@ export function registerPages(app, ctx) {
       });
     });
   
+    // ── Widget bars ──────────────────────────────────────────────────────────
+    const visibleWidgetBars = resolveWidgetBars(config, apps, role)
+      .filter((bar) => !dashboardRemovedElements[`widget-bar:${bar.id}`]);
+    visibleWidgetBars.forEach((bar) => {
+      dashboardModules.push({
+        app: { id: `widget-bar-${bar.id}`, name: bar.name || 'Widget Bar', order: bar.order || 999 },
+        element: { id: 'widget-bar', name: bar.name || 'Widget Bar', order: bar.order || 999 },
+        category: 'Widgets',
+        arrCombined: null,
+        downloaderCombined: null,
+        mediaCombined: null,
+        widgetBar: bar,
+      });
+    });
+
     const getCombinedOrderKey = (item) => {
+      if (item?.widgetBar) return `combined:widgetbar:${item.widgetBar.id}`;
       if (item?.arrCombined) {
         if (item.arrCombined.custom) return `combined:arrcustom:${item.arrCombined.cardId}`;
         return `combined:arr:${item.arrCombined.sectionKey}`;
@@ -456,11 +458,9 @@ export function registerPages(app, ctx) {
       downloaderCombinedQueueDisplay,
       downloaderDashboardCombine,
       tautulliCards: mergeTautulliCardSettings(apps.find((appItem) => appItem.id === 'tautulli')),
-      dashboardWidgets,
-      dashboardWidgetSources,
-      canManageWidgets,
       role,
       actualRole,
+      visibleWidgetBars,
     });
   });
   

@@ -25,6 +25,7 @@ const app = express();
 
 const PORT = process.env.PORT || 3333;
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
+const WIDGET_STATUS_INTERNAL_TOKEN = crypto.randomBytes(24).toString('hex');
 const CLIENT_ID = process.env.PLEX_CLIENT_ID || getOrCreatePlexClientId();
 const PRODUCT = process.env.PLEX_PRODUCT || 'Launcharr';
 const PLATFORM = process.env.PLEX_PLATFORM || 'Web';
@@ -103,93 +104,101 @@ const MEDIA_COMBINED_SECTION_PREFIX = {
 };
 const ENABLE_ARR_UNIFIED_CARDS = true;
 const ENABLE_DOWNLOADER_UNIFIED_CARDS = true;
-const ENABLE_DASHBOARD_WIDGETS = false;
-const DASHBOARD_WIDGET_SOURCES = [
-  {
-    id: 'romm-recently-added',
-    appId: 'romm',
-    name: 'Romm Recently Added',
-    icon: '/icons/romm.svg',
-    endpoint: '/api/romm/recently-added?limit=all',
-    supports: {
-      media: false,
-      letter: false,
-      status: false,
-      execute: false,
-    },
-  },
-  {
-    id: 'maintainerr-library-media',
-    appId: 'maintainerr',
-    name: 'Maintainerr Library Media',
-    icon: '/icons/maintainerr.svg',
-    endpoint: '/api/maintainerr/library-media?limit=all',
-    supports: {
-      media: true,
-      letter: true,
-      status: false,
-      execute: false,
-    },
-  },
-  {
-    id: 'maintainerr-rules',
-    appId: 'maintainerr',
-    name: 'Maintainerr Rules',
-    icon: '/icons/maintainerr.svg',
-    endpoint: '/api/maintainerr/rules',
-    supports: {
-      media: true,
-      letter: false,
-      status: true,
-      execute: true,
-    },
-  },
-  {
-    id: 'cleanuparr-recent-strikes',
-    appId: 'cleanuparr',
-    name: 'Cleanuparr Recent Strikes',
-    icon: '/icons/cleanuparr.svg',
-    endpoint: '/api/cleanuparr/recent-strikes?limit=all',
-    supports: {
-      media: true,
-      letter: true,
-      status: true,
-      execute: false,
-    },
-  },
-  {
-    id: 'cleanuparr-events',
-    appId: 'cleanuparr',
-    name: 'Cleanuparr Events',
-    icon: '/icons/cleanuparr.svg',
-    endpoint: '/api/cleanuparr/events?limit=all',
-    supports: {
-      media: true,
-      letter: false,
-      status: true,
-      execute: false,
-    },
-  },
+
+// Widget bar stat card types — one entry per integrated app family.
+// typeId matches getAppBaseId(appId). metricFields define which stats are shown.
+const WIDGET_STAT_TYPES = [
+  { typeId: 'plex',         name: 'Plex',         icon: '/icons/plex.svg',         metricFields: [{ key: 'movies', label: 'Movies' }, { key: 'shows', label: 'TV Shows' }, { key: 'artists', label: 'Artists' }, { key: 'albums', label: 'Albums' }] },
+  { typeId: 'tautulli',     name: 'Tautulli',     icon: '/icons/tautulli.svg',     metricFields: [{ key: 'streams', label: 'Active Streams' }, { key: 'plays', label: 'Plays Today' }] },
+  { typeId: 'jellyfin',     name: 'Jellyfin',     icon: '/icons/jellyfin.png',     metricFields: [{ key: 'movies', label: 'Movies' }, { key: 'shows', label: 'Series' }, { key: 'episodes', label: 'Episodes' }] },
+  { typeId: 'emby',         name: 'Emby',         icon: '/icons/emby.png',         metricFields: [{ key: 'movies', label: 'Movies' }, { key: 'shows', label: 'Series' }, { key: 'episodes', label: 'Episodes' }] },
+  { typeId: 'radarr',       name: 'Radarr',       icon: '/icons/radarr.svg',       metricFields: [{ key: 'movies', label: 'Movies' }, { key: 'movie_files', label: 'Movie Files' }, { key: 'monitored', label: 'Monitored' }, { key: 'unmonitored', label: 'Unmonitored' }] },
+  { typeId: 'sonarr',       name: 'Sonarr',       icon: '/icons/sonarr.svg',       metricFields: [{ key: 'series', label: 'Series' }, { key: 'ended', label: 'Ended' }, { key: 'continuing', label: 'Continuing' }, { key: 'monitored', label: 'Monitored' }, { key: 'unmonitored', label: 'Unmonitored' }, { key: 'episodes', label: 'Episodes' }] },
+  { typeId: 'lidarr',       name: 'Lidarr',       icon: '/icons/lidarr.svg',       metricFields: [{ key: 'artists', label: 'Artists' }, { key: 'albums', label: 'Albums' }] },
+  { typeId: 'readarr',      name: 'Readarr',      icon: '/icons/readarr.svg',      metricFields: [{ key: 'books', label: 'Books' }, { key: 'authors', label: 'Authors' }] },
+  { typeId: 'prowlarr',     name: 'Prowlarr',     icon: '/icons/prowlarr.svg',     metricFields: [{ key: 'active_indexers', label: 'Active Indexers' }, { key: 'total_queries', label: 'Total Queries' }, { key: 'total_grabs', label: 'Total Grabs' }, { key: 'active_apps', label: 'Active Apps' }] },
+  { typeId: 'jackett',      name: 'Jackett',      icon: '/icons/jackett.png',      metricFields: [{ key: 'indexers', label: 'Indexers' }] },
+  { typeId: 'bazarr',       name: 'Bazarr',       icon: '/icons/bazarr.png',       metricFields: [{ key: 'episodes', label: 'Episode Subs' }, { key: 'movies', label: 'Movie Subs' }] },
+  { typeId: 'autobrr',      name: 'Autobrr',      icon: '/icons/autobrr.png',      metricFields: [{ key: 'filtered', label: 'Filtered Releases' }, { key: 'push_approved', label: 'Approved Pushes' }, { key: 'push_rejected', label: 'Rejected Pushes' }, { key: 'push_error', label: 'Errored Pushes' }] },
+  { typeId: 'qbittorrent',  name: 'qBittorrent',  icon: '/icons/qbittorrent.png',  metricFields: [{ key: 'downloading', label: 'Downloading' }, { key: 'seeding', label: 'Seeding' }] },
+  { typeId: 'sabnzbd',      name: 'SABnzbd',      icon: '/icons/sabnzbd.png',      metricFields: [{ key: 'speed', label: 'Speed' }, { key: 'queue', label: 'Queue' }] },
+  { typeId: 'nzbget',       name: 'NZBGet',       icon: '/icons/nzbget.svg',       metricFields: [{ key: 'downloading', label: 'Downloading' }, { key: 'queue', label: 'Queued' }, { key: 'speed', label: 'Download Speed' }, { key: 'remaining', label: 'Remaining' }] },
+  { typeId: 'transmission', name: 'Transmission', icon: '/icons/transmission.svg', metricFields: [{ key: 'active', label: 'Active' }, { key: 'paused', label: 'Paused' }, { key: 'total', label: 'Total' }, { key: 'downloading', label: 'Downloading' }, { key: 'seeding', label: 'Seeding' }, { key: 'dlspeed', label: 'Download Speed' }, { key: 'upspeed', label: 'Upload Speed' }] },
+  { typeId: 'maintainerr',  name: 'Maintainerr',  icon: '/icons/maintainerr.svg',  metricFields: [{ key: 'rules', label: 'Rules' }, { key: 'active', label: 'Active' }] },
+  { typeId: 'cleanuparr',   name: 'Cleanuparr',   icon: '/icons/cleanuparr.svg',   metricFields: [{ key: 'tracked', label: 'Tracked' }, { key: 'removed', label: 'Removed' }] },
+  { typeId: 'romm',         name: 'Romm',         icon: '/icons/romm.svg',         metricFields: [{ key: 'games', label: 'Games' }, { key: 'consoles', label: 'Consoles' }, { key: 'collections', label: 'Collections' }, { key: 'virtual_collections', label: 'Virtual Collections' }, { key: 'smart_collections', label: 'Smart Collections' }, { key: 'bios', label: 'BIOS' }, { key: 'saves', label: 'Saves' }] },
+  { typeId: 'seerr',        name: 'Overseerr',    icon: '/icons/seerr.png',        metricFields: [{ key: 'pending', label: 'Pending' }, { key: 'approved', label: 'Approved' }, { key: 'processing', label: 'Processing' }, { key: 'available', label: 'Available' }] },
+  { typeId: 'pulsarr',      name: 'Pulsarr',      icon: '/icons/pulsarr.svg',      metricFields: [{ key: 'auto_approved', label: 'Auto Approved' }, { key: 'approved', label: 'Approved' }, { key: 'movies', label: 'Movies' }, { key: 'shows', label: 'TV Shows' }] },
 ];
-const DASHBOARD_WIDGET_SOURCE_BY_ID = new Map(
-  DASHBOARD_WIDGET_SOURCES.map((entry) => [String(entry.id || '').trim().toLowerCase(), entry])
-);
-const DASHBOARD_WIDGET_DEFAULTS = {
-  title: 'Widget',
-  source: 'romm-recently-added',
-  rows: 2,
-  columns: 4,
-  limit: 12,
-  refreshSeconds: 120,
-  autoScroll: true,
-  order: 0,
-  visibilityRole: 'user',
-  filters: {
-    media: 'all',
-    letter: 'all',
-    status: 'all',
-  },
-};
+const WIDGET_STAT_TYPE_BY_ID = new Map(WIDGET_STAT_TYPES.map((t) => [t.typeId, t]));
+
+const SYSTEM_WIDGET_TYPES = [
+  { typeId: 'sys-resources', label: 'System Info', icon: '/icons/dashboard.svg', hasConfig: true, configFields: [] },
+];
+const SYSTEM_WIDGET_TYPE_BY_ID = new Map(SYSTEM_WIDGET_TYPES.map((t) => [t.typeId, t]));
+const SYSTEM_WIDGET_SEARCH_PROVIDERS = [
+  { id: 'duckduckgo', label: 'DuckDuckGo', url: 'https://duckduckgo.com/?q={query}' },
+  { id: 'google',     label: 'Google',     url: 'https://www.google.com/search?q={query}' },
+  { id: 'bing',       label: 'Bing',       url: 'https://www.bing.com/search?q={query}' },
+  { id: 'brave',      label: 'Brave',      url: 'https://search.brave.com/search?q={query}' },
+  { id: 'searxng',    label: 'SearXNG',    url: '{baseUrl}?q={query}' },
+];
+const SYSTEM_WIDGET_TIMEZONES = [
+  'UTC', 'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Europe/Rome', 'Europe/Madrid',
+  'Europe/Amsterdam', 'Europe/Stockholm', 'Europe/Oslo', 'Europe/Helsinki', 'Europe/Athens',
+  'Europe/Warsaw', 'Europe/Prague', 'Europe/Budapest', 'Europe/Bucharest', 'Europe/Lisbon',
+  'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+  'America/Toronto', 'America/Vancouver', 'America/Phoenix', 'America/Anchorage',
+  'America/Honolulu', 'America/Mexico_City', 'America/Sao_Paulo', 'America/Buenos_Aires',
+  'America/Bogota', 'America/Lima',
+  'Asia/Tokyo', 'Asia/Singapore', 'Asia/Shanghai', 'Asia/Hong_Kong', 'Asia/Seoul',
+  'Asia/Taipei', 'Asia/Bangkok', 'Asia/Jakarta', 'Asia/Kolkata', 'Asia/Dubai',
+  'Asia/Riyadh', 'Asia/Jerusalem', 'Asia/Karachi', 'Asia/Dhaka',
+  'Australia/Sydney', 'Australia/Melbourne', 'Australia/Brisbane', 'Australia/Perth',
+  'Pacific/Auckland', 'Pacific/Fiji',
+  'Africa/Johannesburg', 'Africa/Cairo', 'Africa/Lagos', 'Africa/Nairobi',
+];
+
+function normalizeSystemWidget(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  const systemType = String(entry.systemType || entry.system_type || '').trim().toLowerCase();
+  if (!SYSTEM_WIDGET_TYPE_BY_ID.has(systemType)) return null;
+  const typeDef = SYSTEM_WIDGET_TYPE_BY_ID.get(systemType);
+  const id = normalizeWidgetId(entry.id || '') || normalizeWidgetId(`wg-${systemType}-${Math.random().toString(36).slice(2, 6)}`);
+  if (!id) return null;
+  const rawConfig = (entry.systemConfig && typeof entry.systemConfig === 'object') ? entry.systemConfig : {};
+  const validProviders = SYSTEM_WIDGET_SEARCH_PROVIDERS.map((p) => p.id);
+  const rawDisks = Array.isArray(rawConfig.disks) ? rawConfig.disks : [];
+  const rawSearch = (rawConfig.search && typeof rawConfig.search === 'object') ? rawConfig.search : {};
+  const rawWeather = (rawConfig.weather && typeof rawConfig.weather === 'object') ? rawConfig.weather : {};
+  const lat = Number(rawWeather.latitude);
+  const lon = Number(rawWeather.longitude);
+  const cache = Number(rawWeather.cache);
+  const systemConfig = {
+    cpu: rawConfig.cpu !== false,
+    memory: rawConfig.memory !== false,
+    showTotalSpace: rawConfig.showTotalSpace === true,
+    disks: rawDisks
+      .map((d) => ({ path: String((d && d.path) || '/').trim() || '/', label: String((d && d.label) || '').trim() }))
+      .filter((d) => d.path),
+    search: {
+      enabled: rawSearch.enabled === true,
+      provider: validProviders.includes(rawSearch.provider) ? rawSearch.provider : 'duckduckgo',
+      target: rawSearch.target === '_self' ? '_self' : '_blank',
+      baseUrl: String(rawSearch.baseUrl || '').trim(),
+    },
+    weather: {
+      enabled: rawWeather.enabled === true,
+      label: String(rawWeather.label || '').trim(),
+      latitude: Number.isFinite(lat) ? Math.max(-90, Math.min(90, lat)) : 0,
+      longitude: Number.isFinite(lon) ? Math.max(-180, Math.min(180, lon)) : 0,
+      timezone: String(rawWeather.timezone || 'UTC').trim() || 'UTC',
+      units: rawWeather.units === 'imperial' ? 'imperial' : 'metric',
+      cache: Number.isFinite(cache) ? Math.max(1, Math.min(60, Math.round(cache))) : 5,
+    },
+  };
+  return { id, systemType, systemConfig, icon: typeDef.icon, typeName: typeDef.label };
+}
 
 setupConsoleLogRedaction();
 setupConsoleStderrMirrorToStdout();
@@ -252,7 +261,7 @@ const APP_OVERVIEW_ELEMENTS = {
     { id: 'subtitle-queue', name: 'Subtitle Queue' },
   ],
   autobrr: [
-    { id: 'recent-matches', name: 'Recent Matches' },
+    { id: 'recent-matches', name: 'Releases' },
     { id: 'delivery-queue', name: 'Delivery Queue' },
   ],
   romm: [
@@ -347,6 +356,8 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
   appriseConfigKey: '',
   appriseTargets: '',
   appriseTag: '',
+  widgetStatusEnabled: false,
+  widgetStatusDelaySeconds: 60,
 };
 const ALLOWED_BRAND_THEMES = new Set(['custom', 'launcharr', 'rocketship', 'pulsarr', 'plex', 'radarr', 'sonarr', 'lidarr', 'readarr']);
 const DEFAULT_THEME_SETTINGS = {
@@ -465,6 +476,10 @@ function resolveGeneralSettings(config) {
 function resolveNotificationSettings(config) {
   const raw = config && typeof config.notifications === 'object' ? config.notifications : {};
   const rawMode = String(raw.appriseMode || DEFAULT_NOTIFICATION_SETTINGS.appriseMode || '').trim().toLowerCase();
+  const rawDelaySeconds = Number(raw.widgetStatusDelaySeconds);
+  const widgetStatusDelaySeconds = Number.isFinite(rawDelaySeconds)
+    ? Math.max(5, Math.min(3600, Math.round(rawDelaySeconds)))
+    : DEFAULT_NOTIFICATION_SETTINGS.widgetStatusDelaySeconds;
   return {
     appriseEnabled: raw.appriseEnabled === undefined
       ? DEFAULT_NOTIFICATION_SETTINGS.appriseEnabled
@@ -474,6 +489,10 @@ function resolveNotificationSettings(config) {
     appriseConfigKey: String(raw.appriseConfigKey || DEFAULT_NOTIFICATION_SETTINGS.appriseConfigKey || '').trim(),
     appriseTargets: String(raw.appriseTargets || DEFAULT_NOTIFICATION_SETTINGS.appriseTargets || '').trim(),
     appriseTag: String(raw.appriseTag || DEFAULT_NOTIFICATION_SETTINGS.appriseTag || '').trim(),
+    widgetStatusEnabled: raw.widgetStatusEnabled === undefined
+      ? DEFAULT_NOTIFICATION_SETTINGS.widgetStatusEnabled
+      : Boolean(raw.widgetStatusEnabled),
+    widgetStatusDelaySeconds,
   };
 }
 
@@ -1903,7 +1922,7 @@ function mapAutobrrStatusKey(value) {
   const status = String(value || '').trim().toLowerCase();
   if (!status) return 'queued';
   if (status.includes('error') || status.includes('fail') || status.includes('reject')) return 'error';
-  if (status.includes('push') || status.includes('deliver') || status.includes('accept') || status.includes('complete')) return 'completed';
+  if (status.includes('push') || status.includes('deliver') || status.includes('approve') || status.includes('accept') || status.includes('complete')) return 'completed';
   if (status.includes('active') || status.includes('match') || status.includes('run')) return 'active';
   if (status.includes('pause')) return 'paused';
   return 'queued';
@@ -1962,38 +1981,121 @@ function mapBazarrQueueItem(entry) {
 }
 
 function mapAutobrrQueueItem(entry, mode = 'recent-matches') {
-  const statusText = pickFirstNonEmpty([entry?.status, entry?.state, entry?.result, entry?.action, entry?.type]);
+  const maybeHttpUrl = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    if (/^https?:\/\//i.test(raw)) return raw;
+    return '';
+  };
+  const collectAutobrrLinks = (source) => {
+    const add = (list, kind, label, href) => {
+      const url = maybeHttpUrl(href);
+      if (!url) return;
+      if (list.some((entry) => entry.href === url)) return;
+      list.push({ kind, label, href: url });
+    };
+    const links = [];
+    add(links, 'info', 'Info', source?.indexer_url);
+    add(links, 'info', 'Info', source?.indexerUrl);
+    add(links, 'info', 'Info', source?.details_url);
+    add(links, 'info', 'Info', source?.detailsUrl);
+    add(links, 'info', 'Info', source?.info_url);
+    add(links, 'info', 'Info', source?.infoUrl);
+    add(links, 'info', 'Info', source?.url);
+    add(links, 'info', 'Info', source?.link);
+    add(links, 'download', 'Download', source?.download_url);
+    add(links, 'download', 'Download', source?.downloadUrl);
+    add(links, 'download', 'Download', source?.nzb_url);
+    add(links, 'download', 'Download', source?.nzbUrl);
+    add(links, 'download', 'Download', source?.torrent_url);
+    add(links, 'download', 'Download', source?.torrentUrl);
+    add(links, 'open', 'Open', source?.web_url);
+    add(links, 'open', 'Open', source?.webUrl);
+    if (source?.links && typeof source.links === 'object') {
+      add(links, 'info', 'Info', source.links.info);
+      add(links, 'download', 'Download', source.links.download);
+      add(links, 'open', 'Open', source.links.web || source.links.open);
+    }
+    return links;
+  };
+  // filter_status is the primary field from the autobrr releases API
+  const statusText = pickFirstNonEmpty([entry?.filter_status, entry?.status, entry?.state, entry?.result, entry?.action]);
   const statusKey = mapAutobrrStatusKey(statusText);
-  const protocolRaw = pickFirstNonEmpty([entry?.protocol, entry?.source, entry?.kind, entry?.type]);
+  const protocolRaw = pickFirstNonEmpty([entry?.protocol, entry?.kind, entry?.type]);
   const protocol = protocolRaw.toLowerCase().includes('usenet') ? 'usenet' : 'torrent';
   const sizeBytes = parseFiniteNumber(entry?.size || entry?.bytes || entry?.totalSize || 0);
-  const quality = sizeBytes > 0 ? formatBytesLabel(sizeBytes) : '-';
-  const sourceName = pickFirstNonEmpty([
-    entry?.indexer,
+  // Indexer name: handle nested indexer object from autobrr API
+  const indexerName = pickFirstNonEmpty([
+    entry?.indexer?.name,
+    entry?.indexer?.identifier_external,
+    typeof entry?.indexer === 'string' ? entry.indexer : '',
     entry?.indexerName,
     entry?.tracker,
     entry?.filter,
     entry?.filterName,
     mode === 'delivery-queue' ? 'Delivery' : 'Match',
   ]);
-  const subDetail = pickFirstNonEmpty([
-    entry?.title,
-    entry?.releaseTitle,
-    entry?.releaseName,
-    entry?.name,
-    '-',
+  // Build the releases sub-detail line: Category: X Size: Y Misc: Z
+  const category = String(entry?.category || '').trim();
+  const resolution = String(entry?.resolution || '').trim();
+  const source = String(entry?.source || '').trim();
+  const codec = Array.isArray(entry?.codec) ? entry.codec.join(' ') : String(entry?.codec || '').trim();
+  const container = String(entry?.container || '').trim();
+  const miscParts = [resolution, source, codec, container].filter(Boolean);
+  const sizeLabel = sizeBytes > 0 ? formatBytesLabel(sizeBytes) : '0 byte';
+  const subDetailLine = `Category: ${category} Size: ${sizeLabel} Misc: ${miscParts.join(' ')}`;
+  const links = collectAutobrrLinks(entry);
+  const actionType = pickFirstNonEmpty([
+    entry?.action_type,
+    entry?.actionType,
+    entry?.action?.type,
+    entry?.action,
+  ]);
+  const actionApp = pickFirstNonEmpty([
+    entry?.action?.name,
+    entry?.action_name,
+    entry?.actionName,
+    actionType,
+  ]);
+  const filterName = pickFirstNonEmpty([
+    entry?.filter?.name,
+    entry?.filter_name,
+    entry?.filterName,
+    entry?.filter,
+  ]);
+  const actionReason = pickFirstNonEmpty([
+    entry?.reason,
+    entry?.reject_reason,
+    entry?.rejectReason,
+    entry?.error,
+    entry?.error_message,
+    entry?.errorMessage,
+    entry?.message,
   ]);
   return {
     kind: protocol,
     title: pickFirstNonEmpty([entry?.name, entry?.releaseName, entry?.releaseTitle, entry?.title, 'Unknown']),
-    episode: sourceName,
-    episodeTitle: subDetail,
-    quality,
+    episode: indexerName,
+    episodeTitle: indexerName,
+    quality: sizeBytes > 0 ? formatBytesLabel(sizeBytes) : '-',
     protocol,
     timeLeft: '-',
     progress: statusKey === 'completed' ? 100 : (statusKey === 'active' ? 50 : 0),
     statusKey,
     statusKeys: [statusKey],
+    timestamp: String(entry?.timestamp || '').trim(),
+    subDetailLine,
+    indexer: indexerName,
+    links,
+    actionMeta: {
+      status: statusText,
+      app: actionApp,
+      type: actionType,
+      filter: filterName,
+      time: String(entry?.timestamp || '').trim(),
+      reason: actionReason,
+    },
+    actions: [{ kind: statusKey === 'error' ? 'block' : 'status', label: statusText || statusKey || 'Status', disabled: true }],
   };
 }
 
@@ -5832,7 +5934,6 @@ function extractDashboardStateSnapshot(config) {
     arrDashboardCombinedCards: cloneJsonValue(config?.arrDashboardCombinedCards, []),
     downloaderDashboardCards: cloneJsonValue(config?.downloaderDashboardCards, []),
     mediaDashboardCards: cloneJsonValue(config?.mediaDashboardCards, []),
-    dashboardWidgets: cloneJsonValue(config?.dashboardWidgets, []),
     apps: appStates,
   };
 }
@@ -5903,7 +6004,6 @@ function buildEmptyDashboardStateSnapshot(config) {
     arrDashboardCombinedCards: [],
     downloaderDashboardCards: [],
     mediaDashboardCards: [],
-    dashboardWidgets: [],
     apps: appStates,
   };
 }
@@ -5946,10 +6046,6 @@ function applyDashboardStateSnapshot(config, dashboardEntry) {
   if (Array.isArray(snapshot.mediaDashboardCards)) {
     nextConfig.mediaDashboardCards = cloneJsonValue(snapshot.mediaDashboardCards, []);
   }
-  if (Array.isArray(snapshot.dashboardWidgets)) {
-    nextConfig.dashboardWidgets = cloneJsonValue(snapshot.dashboardWidgets, []);
-  }
-
   const snapshotApps = snapshot.apps && typeof snapshot.apps === 'object' ? snapshot.apps : {};
   if (Array.isArray(config?.apps)) {
     nextConfig.apps = config.apps.map((appItem) => {
@@ -6351,53 +6447,6 @@ function buildDashboardElementsFromRequest(appItem, body) {
   });
 }
 
-function buildDashboardWidgetsFromDashboardRequest(config, apps, body) {
-  const payload = body && typeof body === 'object' ? body : {};
-  const existingCards = resolveDashboardWidgets(config, apps, 'admin', {
-    includeHidden: true,
-    includeUnavailable: true,
-  });
-  const nextCards = existingCards.map((card) => {
-    const widgetId = normalizeDashboardWidgetToken(card?.id || '');
-    if (!widgetId) return null;
-    const prefix = `dashboard_widget_${widgetId}_`;
-    if (!payload[`${prefix}present`]) {
-      return card;
-    }
-    const sourceKey = String(payload[`${prefix}source`] || card.source || '').trim().toLowerCase();
-    const sourceDef = getDashboardWidgetSourceDefinition(sourceKey)
-      || getDashboardWidgetSourceDefinition(card.source)
-      || getDashboardWidgetSourceDefinition(DASHBOARD_WIDGET_DEFAULTS.source);
-    const supports = sourceDef?.supports || {};
-    const parsedOrder = Number(payload[`${prefix}order`]);
-    const normalized = normalizeDashboardWidgetCard({
-      ...card,
-      id: widgetId,
-      title: String(payload[`${prefix}title`] || card.title || '').trim() || card.title,
-      source: String(sourceDef?.id || card.source || DASHBOARD_WIDGET_DEFAULTS.source).trim().toLowerCase(),
-      rows: payload[`${prefix}rows`],
-      columns: payload[`${prefix}columns`],
-      limit: payload[`${prefix}limit`],
-      refreshSeconds: payload[`${prefix}refresh_seconds`],
-      autoScroll: Boolean(payload[`${prefix}auto_scroll`]),
-      order: Number.isFinite(parsedOrder) ? parsedOrder : Number(card?.order || 0),
-      visibilityRole: normalizeVisibilityRole(payload[`${prefix}visibility_role`], card?.visibilityRole || 'user'),
-      filters: {
-        media: supports.media
-          ? resolveDashboardWidgetFilterValue(payload[`${prefix}filter_media`], card?.filters?.media || 'all')
-          : 'all',
-        letter: supports.letter
-          ? resolveDashboardWidgetFilterValue(payload[`${prefix}filter_letter`], card?.filters?.letter || 'all')
-          : 'all',
-        status: supports.status
-          ? resolveDashboardWidgetFilterValue(payload[`${prefix}filter_status`], card?.filters?.status || 'all')
-          : 'all',
-      },
-    }, card, { generateId: false });
-    return normalized || card;
-  }).filter(Boolean);
-  return serializeDashboardWidgetCards(nextCards);
-}
 
 function getTautulliCards(appItem) {
   if (!appItem || appItem.id !== 'tautulli') return [];
@@ -7119,279 +7168,6 @@ function resolveDownloaderDashboardCards(config, apps) {
   return cards;
 }
 
-function getDashboardWidgetSourceDefinition(sourceId) {
-  const key = String(sourceId || '').trim().toLowerCase();
-  if (!key) return null;
-  return DASHBOARD_WIDGET_SOURCE_BY_ID.get(key) || null;
-}
-
-function normalizeDashboardWidgetToken(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^[-_]+|[-_]+$/g, '');
-}
-
-function buildDashboardWidgetId() {
-  return `widget-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function coerceDashboardWidgetInt(value, fallback, minValue, maxValue) {
-  const parsed = Number(value);
-  const base = Number.isFinite(parsed) ? Math.round(parsed) : Number(fallback);
-  const safe = Number.isFinite(base) ? base : minValue;
-  return Math.max(minValue, Math.min(maxValue, safe));
-}
-
-function resolveDashboardWidgetFilterValue(value, fallback = 'all') {
-  const raw = String(value || '').trim();
-  if (!raw) return String(fallback || 'all').trim().toLowerCase() || 'all';
-  if (/^[a-z0-9#._-]+$/i.test(raw)) return raw.toLowerCase();
-  return String(fallback || 'all').trim().toLowerCase() || 'all';
-}
-
-function normalizeDashboardWidgetCard(entry, fallback = {}, options = {}) {
-  const source = entry && typeof entry === 'object' ? entry : {};
-  const fallbackSource = fallback && typeof fallback === 'object' ? fallback : {};
-  const sourceId = String(
-    source.source
-    ?? source.sourceId
-    ?? fallbackSource.source
-    ?? fallbackSource.sourceId
-    ?? DASHBOARD_WIDGET_DEFAULTS.source
-  ).trim().toLowerCase();
-  const sourceDef = getDashboardWidgetSourceDefinition(sourceId) || getDashboardWidgetSourceDefinition(DASHBOARD_WIDGET_DEFAULTS.source);
-  if (!sourceDef) return null;
-
-  const preferredId = normalizeDashboardWidgetToken(source.id || source.widgetId || '');
-  const fallbackId = normalizeDashboardWidgetToken(fallbackSource.id || fallbackSource.widgetId || '');
-  const allowGenerateId = options && options.generateId !== false;
-  const id = preferredId || fallbackId || (allowGenerateId ? normalizeDashboardWidgetToken(buildDashboardWidgetId()) : '');
-  if (!id) return null;
-
-  const fallbackFilters = (fallbackSource.filters && typeof fallbackSource.filters === 'object')
-    ? fallbackSource.filters
-    : DASHBOARD_WIDGET_DEFAULTS.filters;
-  const sourceFilters = (source.filters && typeof source.filters === 'object')
-    ? source.filters
-    : {};
-  const filters = {
-    media: resolveDashboardWidgetFilterValue(
-      sourceFilters.media,
-      fallbackFilters.media || DASHBOARD_WIDGET_DEFAULTS.filters.media
-    ),
-    letter: resolveDashboardWidgetFilterValue(
-      sourceFilters.letter,
-      fallbackFilters.letter || DASHBOARD_WIDGET_DEFAULTS.filters.letter
-    ),
-    status: resolveDashboardWidgetFilterValue(
-      sourceFilters.status,
-      fallbackFilters.status || DASHBOARD_WIDGET_DEFAULTS.filters.status
-    ),
-  };
-
-  const resolvedTitle = String(source.title ?? fallbackSource.title ?? '').trim()
-    || String(sourceDef.name || DASHBOARD_WIDGET_DEFAULTS.title || 'Widget').trim()
-    || 'Widget';
-
-  return {
-    id,
-    title: resolvedTitle,
-    source: String(sourceDef.id || '').trim().toLowerCase(),
-    rows: coerceDashboardWidgetInt(
-      source.rows ?? source.rowCount,
-      fallbackSource.rows ?? DASHBOARD_WIDGET_DEFAULTS.rows,
-      1,
-      6
-    ),
-    columns: coerceDashboardWidgetInt(
-      source.columns ?? source.colCount,
-      fallbackSource.columns ?? DASHBOARD_WIDGET_DEFAULTS.columns,
-      1,
-      8
-    ),
-    limit: coerceDashboardWidgetInt(
-      source.limit ?? source.itemLimit,
-      fallbackSource.limit ?? DASHBOARD_WIDGET_DEFAULTS.limit,
-      1,
-      200
-    ),
-    refreshSeconds: coerceDashboardWidgetInt(
-      source.refreshSeconds ?? source.refreshInterval ?? source.refresh,
-      fallbackSource.refreshSeconds ?? DASHBOARD_WIDGET_DEFAULTS.refreshSeconds,
-      15,
-      3600
-    ),
-    autoScroll: source.autoScroll === undefined
-      ? (fallbackSource.autoScroll === undefined ? DASHBOARD_WIDGET_DEFAULTS.autoScroll : Boolean(fallbackSource.autoScroll))
-      : Boolean(source.autoScroll),
-    order: Number.isFinite(Number(source.order))
-      ? Number(source.order)
-      : (Number.isFinite(Number(fallbackSource.order)) ? Number(fallbackSource.order) : Number(DASHBOARD_WIDGET_DEFAULTS.order)),
-    visibilityRole: normalizeVisibilityRole(
-      source.visibilityRole,
-      normalizeVisibilityRole(fallbackSource.visibilityRole, DASHBOARD_WIDGET_DEFAULTS.visibilityRole)
-    ),
-    filters,
-  };
-}
-
-function resolveDashboardWidgets(config, apps, role, options = {}) {
-  const includeHidden = Boolean(options?.includeHidden);
-  const includeUnavailable = Boolean(options?.includeUnavailable);
-  const sourceCards = Array.isArray(config?.dashboardWidgets) ? config.dashboardWidgets : [];
-  const roleKey = parseVisibilityRole(role) || 'user';
-  const appList = Array.isArray(apps) ? apps : [];
-  const byId = new Map(
-    appList
-      .filter((appItem) => !appItem?.removed)
-      .map((appItem) => [normalizeAppId(appItem?.id), appItem])
-      .filter(([id]) => Boolean(id))
-  );
-  const cards = [];
-  const seenIds = new Set();
-  sourceCards.forEach((entry, index) => {
-    const normalized = normalizeDashboardWidgetCard(entry, {
-      source: DASHBOARD_WIDGET_DEFAULTS.source,
-      rows: DASHBOARD_WIDGET_DEFAULTS.rows,
-      columns: DASHBOARD_WIDGET_DEFAULTS.columns,
-      limit: DASHBOARD_WIDGET_DEFAULTS.limit,
-      refreshSeconds: DASHBOARD_WIDGET_DEFAULTS.refreshSeconds,
-      autoScroll: DASHBOARD_WIDGET_DEFAULTS.autoScroll,
-      order: index + 1,
-      visibilityRole: DASHBOARD_WIDGET_DEFAULTS.visibilityRole,
-      filters: DASHBOARD_WIDGET_DEFAULTS.filters,
-    });
-    if (!normalized) return;
-    const sourceDef = getDashboardWidgetSourceDefinition(normalized.source);
-    if (!sourceDef) return;
-    const sourceAppId = normalizeAppId(sourceDef.appId || '');
-    const sourceApp = sourceAppId ? byId.get(sourceAppId) : null;
-    const sourceAvailable = Boolean(sourceApp);
-    const sourceAccessible = Boolean(
-      sourceApp
-      && canAccessDashboardApp(config, sourceApp, roleKey)
-    );
-    if (!includeHidden && !roleMeetsMinRole(roleKey, normalized.visibilityRole)) return;
-    if (!includeHidden && !sourceAccessible) return;
-    if (!sourceAvailable && !includeUnavailable) return;
-    let resolvedId = normalizeDashboardWidgetToken(normalized.id || '') || `widget-${index + 1}`;
-    if (seenIds.has(resolvedId)) {
-      let suffix = 2;
-      while (seenIds.has(`${resolvedId}-${suffix}`)) suffix += 1;
-      resolvedId = `${resolvedId}-${suffix}`;
-    }
-    seenIds.add(resolvedId);
-    cards.push({
-      ...normalized,
-      id: resolvedId,
-      sourceName: String(sourceDef.name || '').trim() || normalized.source,
-      sourceIcon: String(sourceDef.icon || '/icons/app.svg').trim() || '/icons/app.svg',
-      sourceEndpoint: String(sourceDef.endpoint || '').trim(),
-      sourceAppId,
-      sourceAppName: String(sourceApp?.name || sourceDef.appId || '').trim(),
-      sourceAvailable,
-      sourceAccessible,
-      supports: {
-        media: Boolean(sourceDef?.supports?.media),
-        letter: Boolean(sourceDef?.supports?.letter),
-        status: Boolean(sourceDef?.supports?.status),
-        execute: Boolean(sourceDef?.supports?.execute),
-      },
-    });
-  });
-  return cards.sort((left, right) => {
-    const orderDelta = Number(left?.order || 0) - Number(right?.order || 0);
-    if (orderDelta !== 0) return orderDelta;
-    return String(left?.title || '').localeCompare(String(right?.title || ''));
-  });
-}
-
-function resolveDashboardWidgetSourceOptions(config, apps, role, options = {}) {
-  const includeUnavailable = Boolean(options?.includeUnavailable);
-  const roleKey = parseVisibilityRole(role) || 'user';
-  const appList = Array.isArray(apps) ? apps : [];
-  const appById = new Map(
-    appList
-      .filter((appItem) => !appItem?.removed)
-      .map((appItem) => [normalizeAppId(appItem?.id), appItem])
-      .filter(([id]) => Boolean(id))
-  );
-  return DASHBOARD_WIDGET_SOURCES
-    .map((entry) => {
-      const sourceId = String(entry?.id || '').trim().toLowerCase();
-      if (!sourceId) return null;
-      const appId = normalizeAppId(entry?.appId || '');
-      const appItem = appId ? appById.get(appId) : null;
-      const appAvailable = Boolean(appItem);
-      const appAccessible = Boolean(appItem && canAccessDashboardApp(config, appItem, roleKey));
-      if (!includeUnavailable && !appAccessible) return null;
-      return {
-        id: sourceId,
-        name: String(entry?.name || sourceId).trim() || sourceId,
-        icon: String(entry?.icon || '/icons/app.svg').trim() || '/icons/app.svg',
-        endpoint: String(entry?.endpoint || '').trim(),
-        appId,
-        appName: String(appItem?.name || entry?.appId || '').trim(),
-        available: appAvailable && appAccessible,
-        supports: {
-          media: Boolean(entry?.supports?.media),
-          letter: Boolean(entry?.supports?.letter),
-          status: Boolean(entry?.supports?.status),
-          execute: Boolean(entry?.supports?.execute),
-        },
-      };
-    })
-    .filter(Boolean);
-}
-
-function resolveNextDashboardWidgetOrder(config, apps) {
-  const cards = resolveDashboardWidgets(config, apps, 'admin', {
-    includeHidden: true,
-    includeUnavailable: true,
-  });
-  const maxOrder = cards.reduce((maxValue, entry) => {
-    const value = Number(entry?.order);
-    if (!Number.isFinite(value)) return maxValue;
-    return value > maxValue ? value : maxValue;
-  }, 0);
-  return maxOrder + 1;
-}
-
-function serializeDashboardWidgetCards(cards = []) {
-  return (Array.isArray(cards) ? cards : [])
-    .map((entry, index) => normalizeDashboardWidgetCard(entry, {
-      source: DASHBOARD_WIDGET_DEFAULTS.source,
-      rows: DASHBOARD_WIDGET_DEFAULTS.rows,
-      columns: DASHBOARD_WIDGET_DEFAULTS.columns,
-      limit: DASHBOARD_WIDGET_DEFAULTS.limit,
-      refreshSeconds: DASHBOARD_WIDGET_DEFAULTS.refreshSeconds,
-      autoScroll: DASHBOARD_WIDGET_DEFAULTS.autoScroll,
-      order: index + 1,
-      visibilityRole: DASHBOARD_WIDGET_DEFAULTS.visibilityRole,
-      filters: DASHBOARD_WIDGET_DEFAULTS.filters,
-    }))
-    .filter(Boolean)
-    .map((entry) => ({
-      id: entry.id,
-      title: entry.title,
-      source: entry.source,
-      rows: entry.rows,
-      columns: entry.columns,
-      limit: entry.limit,
-      refreshSeconds: entry.refreshSeconds,
-      autoScroll: entry.autoScroll,
-      order: entry.order,
-      visibilityRole: entry.visibilityRole,
-      filters: {
-        media: entry.filters?.media || 'all',
-        letter: entry.filters?.letter || 'all',
-        status: entry.filters?.status || 'all',
-      },
-    }));
-}
 
 function migrateDeprecatedDashboardCards(config) {
   const source = config && typeof config === 'object' ? config : {};
@@ -8807,12 +8583,22 @@ function requireActualAdmin(req, res, next) {
 function requireSettingsAdmin(req, res, next) {
   const role = getActualRole(req);
   if (role === 'admin') return next();
+  const requestPath = String(req.originalUrl || req.url || '').trim() || '/settings';
+  const method = String(req.method || 'GET').toUpperCase();
+  if (!role && (method === 'GET' || method === 'HEAD') && requestPath.startsWith('/settings')) {
+    try {
+      if (req.session) req.session.postLoginRedirect = requestPath;
+    } catch (err) {
+      /* ignore session write errors and fall back to plain login redirect */
+    }
+    return res.redirect('/login');
+  }
   pushLog({
     level: 'error',
     app: 'system',
     action: 'access.denied',
     message: 'Settings access denied.',
-    meta: { path: req.originalUrl || req.url || '' },
+    meta: { path: requestPath },
   });
   res.status(403).send('Admin access required.');
 }
@@ -9417,6 +9203,290 @@ function safeMessage(err) {
   return parts.join(', ') || 'Unknown error';
 }
 
+// ─── Widget Bar helpers ──────────────────────────────────────────────────────
+
+function getWidgetStatType(typeId) {
+  return WIDGET_STAT_TYPE_BY_ID.get(String(typeId || '').trim().toLowerCase()) || null;
+}
+
+function buildWidgetBarId() {
+  return `wbar-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeWidgetBarId(raw) {
+  return String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[-_]+|[-_]+$/g, '');
+}
+
+function normalizeWidgetId(raw) {
+  return String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[-_]+|[-_]+$/g, '');
+}
+
+function buildWidgetRowId() {
+  return `wrow-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeWidgetRowSettings(raw) {
+  const s = (raw && typeof raw === 'object') ? raw : {};
+  const maxCols = Number.isFinite(Number(s.maxCols)) ? Math.max(0, Math.min(20, Math.round(Number(s.maxCols)))) : 0;
+  return { maxCols, fixedWidth: Boolean(s.fixedWidth), scroll: Boolean(s.scroll), fill: Boolean(s.fill) };
+}
+
+function normalizeWidgetRow(raw, defaults = {}) {
+  if (!raw || typeof raw !== 'object') return null;
+  const id = normalizeWidgetBarId(raw.id || defaults.id || '');
+  if (!id) return null;
+  const orderRaw = Number(raw.order ?? defaults.order);
+  const order = Number.isFinite(orderRaw) ? orderRaw : 0;
+  const settings = normalizeWidgetRowSettings(raw.settings);
+  const seenWidgetIds = new Set();
+  const widgets = (Array.isArray(raw.widgets) ? raw.widgets : []).map((w) => {
+    const n = normalizeWidgetInBar(w);
+    if (!n || seenWidgetIds.has(n.id)) return null;
+    seenWidgetIds.add(n.id);
+    return n;
+  }).filter(Boolean);
+  return { id, order, settings, widgets };
+}
+
+function normalizeWidgetInBar(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  // System widget path (no appId required)
+  const systemType = String(entry.systemType || entry.system_type || '').trim().toLowerCase();
+  if (systemType) {
+    return normalizeSystemWidget(entry);
+  }
+  const appId = String(entry.appId || entry.app_id || '').trim();
+  if (!appId) return null;
+  const id = normalizeWidgetId(entry.id || '') || normalizeWidgetId(`wg-${appId}-${Math.random().toString(36).slice(2, 6)}`);
+  if (!id) return null;
+  const hasSelectedMetricKeys =
+    Object.prototype.hasOwnProperty.call(entry, 'selectedMetricKeys') ||
+    Object.prototype.hasOwnProperty.call(entry, 'selected_metric_keys') ||
+    Object.prototype.hasOwnProperty.call(entry, 'metricKeys') ||
+    Object.prototype.hasOwnProperty.call(entry, 'metric_keys');
+  const hasMetricColumns =
+    Object.prototype.hasOwnProperty.call(entry, 'metricColumns') ||
+    Object.prototype.hasOwnProperty.call(entry, 'metric_columns') ||
+    Object.prototype.hasOwnProperty.call(entry, 'metricCols') ||
+    Object.prototype.hasOwnProperty.call(entry, 'metric_cols');
+  let selectedMetricKeys;
+  let metricColumns;
+  if (hasSelectedMetricKeys) {
+    const rawMetricKeys = entry.selectedMetricKeys ?? entry.selected_metric_keys ?? entry.metricKeys ?? entry.metric_keys;
+    selectedMetricKeys = Array.from(new Set(
+      (Array.isArray(rawMetricKeys) ? rawMetricKeys : [])
+        .map((k) => String(k || '').trim().toLowerCase())
+        .filter(Boolean)
+    ));
+  }
+  if (hasMetricColumns) {
+    const rawMetricCols = Number(entry.metricColumns ?? entry.metric_columns ?? entry.metricCols ?? entry.metric_cols);
+    metricColumns = Number.isFinite(rawMetricCols) ? Math.max(1, Math.min(4, Math.round(rawMetricCols))) : 2;
+  }
+  const hasSelectedLibraryKeys = Object.prototype.hasOwnProperty.call(entry, 'selectedLibraryKeys');
+  let selectedLibraryKeys;
+  if (hasSelectedLibraryKeys) {
+    const rawLibKeys = entry.selectedLibraryKeys;
+    if (rawLibKeys && typeof rawLibKeys === 'object' && !Array.isArray(rawLibKeys)) {
+      const norm = {};
+      for (const [mk, libKeys] of Object.entries(rawLibKeys)) {
+        const key = String(mk || '').trim().toLowerCase();
+        if (!key) continue;
+        const libs = Array.isArray(libKeys) ? libKeys.map((k) => String(k || '').trim()).filter(Boolean) : [];
+        if (libs.length) norm[key] = libs;
+      }
+      if (Object.keys(norm).length) selectedLibraryKeys = norm;
+    }
+  }
+  const normalized = { id, appId };
+  if (selectedMetricKeys !== undefined) normalized.selectedMetricKeys = selectedMetricKeys;
+  if (metricColumns !== undefined) normalized.metricColumns = metricColumns;
+  if (selectedLibraryKeys !== undefined) normalized.selectedLibraryKeys = selectedLibraryKeys;
+  return normalized;
+}
+
+function normalizeWidgetBar(raw, defaults = {}) {
+  if (!raw || typeof raw !== 'object') return null;
+  const id = normalizeWidgetBarId(raw.id || defaults.id || '');
+  if (!id) return null;
+  const name = String(raw.name ?? defaults.name ?? '').trim() || 'Widget Bar';
+  const icon = normalizeDashboardIcon(raw.icon ?? defaults.icon, '/icons/dashboard.svg');
+  const rawHasVisibilityRoles = Object.prototype.hasOwnProperty.call(raw, 'visibilityRoles');
+  const defaultsHasVisibilityRoles = defaults && Object.prototype.hasOwnProperty.call(defaults, 'visibilityRoles');
+  const visibilityRoles = rawHasVisibilityRoles
+    ? normalizeDashboardVisibilityRoles(raw.visibilityRoles)
+    : defaultsHasVisibilityRoles
+      ? normalizeDashboardVisibilityRoles(defaults.visibilityRoles)
+      : normalizeDashboardVisibilityRoles(raw.visibilityRoles, raw.visibilityRole ?? defaults.visibilityRole ?? 'user');
+  const visibilityRole = deriveDashboardLegacyVisibilityRole(
+    visibilityRoles,
+    normalizeVisibilityRole(raw.visibilityRole ?? defaults.visibilityRole ?? 'user', 'user')
+  );
+  const refreshRaw = Number(raw.refreshSeconds ?? defaults.refreshSeconds);
+  const refreshSeconds = Number.isFinite(refreshRaw)
+    ? (Math.round(refreshRaw) <= 0 ? 0 : Math.max(15, Math.min(3600, Math.round(refreshRaw))))
+    : 60;
+  const orderRaw = Number(raw.order ?? defaults.order);
+  const order = Number.isFinite(orderRaw) ? orderRaw : 0;
+  // Multi-row: use rows array if present; otherwise migrate legacy flat widgets array
+  let rawRows;
+  if (Array.isArray(raw.rows) && raw.rows.length > 0) {
+    rawRows = raw.rows;
+  } else if (Array.isArray(raw.widgets) && raw.widgets.length > 0) {
+    // Legacy migration: wrap flat widgets in a single row with default settings
+    rawRows = [{ id: buildWidgetRowId(), order: 10, settings: {}, widgets: raw.widgets }];
+  } else {
+    rawRows = [];
+  }
+  const seenRowIds = new Set();
+  const rows = rawRows.map((r, i) => {
+    const normalized = normalizeWidgetRow(r, { order: (i + 1) * 10 });
+    if (!normalized || seenRowIds.has(normalized.id)) return null;
+    seenRowIds.add(normalized.id);
+    return normalized;
+  }).filter(Boolean);
+  // Ensure at least one row
+  const finalRows = rows.length > 0 ? rows : [{ id: buildWidgetRowId(), order: 10, settings: normalizeWidgetRowSettings({}), widgets: [] }];
+  return { id, name, icon, visibilityRole, visibilityRoles, refreshSeconds, order, rows: finalRows };
+}
+
+function resolveWidgetBars(config, apps, role, opts = {}) {
+  const { includeHidden = false } = opts;
+  const roleKey = parseVisibilityRole(role) || 'user';
+  const rawBars = Array.isArray(config?.widgetBars) ? config.widgetBars : [];
+  const appList = Array.isArray(apps) ? apps : [];
+  const appByNormalizedId = new Map(
+    appList
+      .filter((a) => !a?.removed)
+      .map((a) => [normalizeAppId(a?.id), a])
+      .filter(([id]) => Boolean(id))
+  );
+  const seenBarIds = new Set();
+  return rawBars
+    .map((raw, index) => {
+      const normalized = normalizeWidgetBar(raw, { order: (index + 1) * 10 });
+      if (!normalized) return null;
+      if (seenBarIds.has(normalized.id)) return null;
+      seenBarIds.add(normalized.id);
+      if (!includeHidden) {
+        const allowedRoles = Array.isArray(normalized.visibilityRoles) ? normalized.visibilityRoles : [];
+        if (!allowedRoles.includes(roleKey)) return null;
+      }
+      const resolvedRows = normalized.rows.map((row) => {
+        const resolvedWidgets = row.widgets.map((widget) => {
+          // System widget — resolved directly (no app lookup needed)
+          if (widget.systemType) {
+            const sysTypeDef = SYSTEM_WIDGET_TYPE_BY_ID.get(widget.systemType);
+            return {
+              ...widget,
+              icon: sysTypeDef ? sysTypeDef.icon : '/icons/app.svg',
+              typeName: sysTypeDef ? sysTypeDef.label : widget.systemType,
+              metricFields: [],
+              available: true,
+            };
+          }
+          const app = appByNormalizedId.get(normalizeAppId(widget.appId));
+          const baseId = app ? getAppBaseId(app.id) : '';
+          const typeDef = baseId ? getWidgetStatType(baseId) : null;
+          const metricFields = Array.isArray(typeDef?.metricFields)
+            ? typeDef.metricFields
+                .map((f) => ({ key: String(f?.key || '').trim(), label: String(f?.label || f?.key || '').trim() }))
+                .filter((f) => f.key)
+            : [];
+          const metricFieldKeys = new Set(metricFields.map((f) => f.key));
+          const selectedMetricKeys = Array.isArray(widget.selectedMetricKeys)
+            ? widget.selectedMetricKeys
+                .map((k) => String(k || '').trim().toLowerCase())
+                .filter((k) => !metricFieldKeys.size || metricFieldKeys.has(k))
+            : undefined;
+          return {
+            ...widget,
+            typeId: baseId || '',
+            icon: resolvePersistedAppIconPath(app) || typeDef?.icon || '/icons/app.svg',
+            typeName: app ? (app.name || typeDef?.name || widget.appId) : (typeDef?.name || widget.appId),
+            metricFields,
+            ...(Number.isFinite(Number(widget.metricColumns)) ? { metricColumns: Math.max(1, Math.min(4, Math.round(Number(widget.metricColumns)))) } : {}),
+            ...(selectedMetricKeys !== undefined ? { selectedMetricKeys } : {}),
+            ...(widget.selectedLibraryKeys && typeof widget.selectedLibraryKeys === 'object' && !Array.isArray(widget.selectedLibraryKeys) ? { selectedLibraryKeys: widget.selectedLibraryKeys } : {}),
+            available: Boolean(app),
+          };
+        });
+        return { ...row, widgets: resolvedWidgets };
+      });
+      return { ...normalized, rows: resolvedRows };
+    })
+    .filter(Boolean)
+    .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+}
+
+function serializeWidgetBars(bars) {
+  return (Array.isArray(bars) ? bars : [])
+    .map((bar) => normalizeWidgetBar(bar))
+    .filter(Boolean)
+    .map((bar) => ({
+      id: bar.id,
+      name: bar.name,
+      icon: normalizeDashboardIcon(bar.icon, '/icons/dashboard.svg'),
+      visibilityRole: bar.visibilityRole,
+      visibilityRoles: Array.isArray(bar.visibilityRoles) ? bar.visibilityRoles : dashboardVisibilityRolesFromLegacyMinRole(bar.visibilityRole),
+      refreshSeconds: bar.refreshSeconds,
+      order: bar.order,
+      rows: bar.rows.map((r) => ({
+        id: r.id,
+        order: r.order,
+        settings: r.settings,
+        widgets: r.widgets.map((w) => {
+          if (w.systemType) {
+            return { id: w.id, systemType: w.systemType, systemConfig: w.systemConfig || {} };
+          }
+          return {
+            id: w.id,
+            appId: w.appId,
+            ...(Number.isFinite(Number(w.metricColumns)) ? { metricColumns: Math.max(1, Math.min(4, Math.round(Number(w.metricColumns)))) } : {}),
+            ...(Array.isArray(w.selectedMetricKeys) ? { selectedMetricKeys: w.selectedMetricKeys } : {}),
+            ...(w.selectedLibraryKeys && typeof w.selectedLibraryKeys === 'object' && !Array.isArray(w.selectedLibraryKeys) ? { selectedLibraryKeys: w.selectedLibraryKeys } : {}),
+          };
+        }),
+      })),
+    }));
+}
+
+function resolveNextWidgetBarOrder(config) {
+  const bars = Array.isArray(config?.widgetBars) ? config.widgetBars : [];
+  const maxOrder = bars.reduce((max, bar) => {
+    const v = Number(bar?.order);
+    return (Number.isFinite(v) && v > max) ? v : max;
+  }, 0);
+  return maxOrder + 10;
+}
+
+function resolveNextWidgetRowOrder(bar) {
+  const rows = Array.isArray(bar?.rows) ? bar.rows : [];
+  const maxOrder = rows.reduce((max, row) => {
+    const v = Number(row?.order);
+    return (Number.isFinite(v) && v > max) ? v : max;
+  }, 0);
+  return maxOrder + 10;
+}
+
+function resolveWidgetBarTypes(apps) {
+  const appList = Array.isArray(apps) ? apps : [];
+  const activeTypeIds = new Set(
+    appList.filter((a) => !a?.removed).map((a) => getAppBaseId(a?.id)).filter(Boolean)
+  );
+  return WIDGET_STAT_TYPES.filter((t) => activeTypeIds.has(t.typeId));
+}
+
 // ─── Route registration via context injection ───────────────────────────────
 // ctx is built here (after all const/let/function definitions) so every
 // entry is guaranteed to be initialised before it is referenced.
@@ -9508,8 +9578,6 @@ const _routeCtx = {
   resolveMediaDashboardCombineSettings,
   resolveCombinedQueueDisplaySettings,
   resolveDownloaderDashboardCombineSettings,
-  resolveDashboardWidgets,
-  resolveDashboardWidgetSourceOptions,
   getNavApps,
   buildNavCategories,
   buildCategoryRank,
@@ -9556,7 +9624,6 @@ const _routeCtx = {
   // pages — dashboard constants
   DASHBOARD_MAIN_ID,
   DEFAULT_DASHBOARD_ICON,
-  ENABLE_DASHBOARD_WIDGETS,
   ARR_APP_IDS,
   DOWNLOADER_APP_IDS,
   MEDIA_APP_IDS,
@@ -9601,14 +9668,28 @@ const _routeCtx = {
   extractRommList,
   mapRommConsoleItem,
   mapRommRecentlyAddedItem,
-  // api-specialty — widgets
-  normalizeDashboardWidgetCard,
-  resolveNextDashboardWidgetOrder,
-  getDashboardWidgetSourceDefinition,
-  normalizeDashboardWidgetToken,
-  buildDashboardWidgetId,
-  serializeDashboardWidgetCards,
-  DASHBOARD_WIDGET_DEFAULTS,
+  // api-specialty — widget bars
+  WIDGET_STAT_TYPES,
+  WIDGET_STAT_TYPE_BY_ID,
+  getWidgetStatType,
+  SYSTEM_WIDGET_TYPES,
+  SYSTEM_WIDGET_TYPE_BY_ID,
+  SYSTEM_WIDGET_SEARCH_PROVIDERS,
+  SYSTEM_WIDGET_TIMEZONES,
+  normalizeSystemWidget,
+  buildWidgetBarId,
+  buildWidgetRowId,
+  normalizeWidgetBarId,
+  normalizeWidgetId,
+  normalizeWidgetInBar,
+  normalizeWidgetRowSettings,
+  normalizeWidgetRow,
+  normalizeWidgetBar,
+  resolveWidgetBars,
+  serializeWidgetBars,
+  resolveNextWidgetBarOrder,
+  resolveNextWidgetRowOrder,
+  resolveWidgetBarTypes,
   // constants
   PRODUCT,
   PLATFORM,
@@ -9617,7 +9698,6 @@ const _routeCtx = {
   LOCAL_AUTH_MIN_PASSWORD,
   // settings — constants
   DASHBOARD_MAX_COUNT,
-  DASHBOARD_WIDGET_SOURCES,
   DATA_DIR,
   DEFAULT_GENERAL_SETTINGS,
   DEFAULT_LOG_SETTINGS,
@@ -9630,7 +9710,6 @@ const _routeCtx = {
   buildDashboardElementsFromRequest,
   buildDashboardInstanceId,
   buildDashboardSettingsRedirect,
-  buildDashboardWidgetsFromDashboardRequest,
   buildDisabledMenuAccess,
   buildDisabledOverviewElements,
   buildEmptyDashboardStateSnapshot,
@@ -9713,6 +9792,7 @@ const _routeCtx = {
   serializeUserThemePreferences,
   slugifyId,
   supportsAppInstances,
+  widgetStatsInternalToken: WIDGET_STATUS_INTERNAL_TOKEN,
   // mutable let — accessed via getter/setter so route files always see current value
   get versionCache() { return versionCache; },
   set versionCache(v) { versionCache = v; },

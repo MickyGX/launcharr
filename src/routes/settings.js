@@ -27,8 +27,6 @@ export function registerSettings(app, ctx) {
     resolveMediaDashboardCombineSettings,
     resolveCombinedQueueDisplaySettings,
     resolveDownloaderDashboardCombineSettings,
-    resolveDashboardWidgets,
-    resolveDashboardWidgetSourceOptions,
     getNavApps,
     buildNavCategories,
     buildCategoryRank,
@@ -62,7 +60,6 @@ export function registerSettings(app, ctx) {
     injectBasicAuthIntoUrl,
     DASHBOARD_MAIN_ID,
     DEFAULT_DASHBOARD_ICON,
-    ENABLE_DASHBOARD_WIDGETS,
     ARR_APP_IDS,
     DOWNLOADER_APP_IDS,
     MEDIA_APP_IDS,
@@ -72,17 +69,9 @@ export function registerSettings(app, ctx) {
     ARR_COMBINED_SECTION_PREFIX,
     DOWNLOADER_COMBINED_SECTION_PREFIX,
     MEDIA_COMBINED_SECTION_PREFIX,
-    DASHBOARD_WIDGET_DEFAULTS,
-    normalizeDashboardWidgetCard,
-    resolveNextDashboardWidgetOrder,
-    getDashboardWidgetSourceDefinition,
-    normalizeDashboardWidgetToken,
-    buildDashboardWidgetId,
-    serializeDashboardWidgetCards,
     buildReleaseNotesUrl,
     loadReleaseHighlights,
     DASHBOARD_MAX_COUNT,
-    DASHBOARD_WIDGET_SOURCES,
     DATA_DIR,
     DEFAULT_GENERAL_SETTINGS,
     DEFAULT_LOG_SETTINGS,
@@ -94,7 +83,6 @@ export function registerSettings(app, ctx) {
     buildDashboardElementsFromRequest,
     buildDashboardInstanceId,
     buildDashboardSettingsRedirect,
-    buildDashboardWidgetsFromDashboardRequest,
     buildDisabledMenuAccess,
     buildDisabledOverviewElements,
     buildEmptyDashboardStateSnapshot,
@@ -177,6 +165,18 @@ export function registerSettings(app, ctx) {
     serializeUserThemePreferences,
     slugifyId,
     supportsAppInstances,
+    uniqueList,
+    normalizeBaseUrl,
+    safeMessage,
+    // widget bars
+    resolveWidgetBars,
+    resolveWidgetBarTypes,
+    normalizeWidgetBarId,
+    serializeWidgetBars,
+    // system widgets
+    SYSTEM_WIDGET_TYPES,
+    SYSTEM_WIDGET_SEARCH_PROVIDERS,
+    SYSTEM_WIDGET_TIMEZONES,
   } = ctx;
 
   app.get('/settings', requireSettingsAdmin, (req, res) => {
@@ -284,17 +284,6 @@ export function registerSettings(app, ctx) {
       canRemoveDefaultApp: canManageWithDefaultAppManager(appItem),
     }))
     .filter((appItem) => !appItem?.removed);
-  const dashboardWidgets = ENABLE_DASHBOARD_WIDGETS
-    ? resolveDashboardWidgets(dashboardConfig, dashboardSettingsApps, 'admin', {
-      includeHidden: true,
-      includeUnavailable: true,
-    })
-    : [];
-  const dashboardWidgetSources = ENABLE_DASHBOARD_WIDGETS
-    ? resolveDashboardWidgetSourceOptions(dashboardConfig, dashboardSettingsApps, 'admin', {
-      includeUnavailable: true,
-    })
-    : [];
   const multiInstanceBaseIds = getMultiInstanceBaseIds();
   const multiInstanceTitleMap = getMultiInstanceTitleMap();
   const multiInstanceMaxMap = getMultiInstanceMaxMap(settingsAppsWithIcons);
@@ -763,6 +752,12 @@ export function registerSettings(app, ctx) {
       const hideInAddPicker = Boolean(
         isRemovedCustomCard
         || (
+          !item?.combined
+          && resolvedAppId
+          && hasAppBasePrefix(resolvedAppId, ['autobrr'])
+          && resolvedElementId === 'delivery-queue'
+        )
+        || (
           isUnifiedCustomCard
           && (
           (combinedType === 'arrcustom' && sourceSectionKey && sameIdSet(sourceAppIds, allArrAddSourceIds))
@@ -861,16 +856,36 @@ export function registerSettings(app, ctx) {
       });
     });
   }
-  if (ENABLE_DASHBOARD_WIDGETS) {
+  const allWidgetBars = resolveWidgetBars(config, apps, 'admin', { includeHidden: true });
+  allWidgetBars.forEach((bar) => {
+    const elementKey = `widget-bar:${bar.id}`;
+    const isOnDashboard = !dashboardRemovedElements[elementKey];
     pushDashboardCombinedAddOption({
-      key: 'new:widget',
-      group: 'Widgets',
-      name: 'New Widget Card',
+      key: `new:widget-bar:${bar.id}`,
+      group: 'Widget Bars',
+      name: String(bar.name || 'Widget Bar').trim(),
       icon: '/icons/dashboard.svg',
-      disabled: false,
+      disabled: isOnDashboard,
       deprecated: false,
     });
-  }
+  });
+  const widgetBars = allWidgetBars;
+  const widgetBarTypes = resolveWidgetBarTypes(apps);
+  const widgetBarTypeIds = new Set(widgetBarTypes.map((t) => t.typeId));
+  const widgetBarApps = settingsAppsWithIcons
+    .filter((appItem) => !appItem?.removed && widgetBarTypeIds.has(getAppBaseId(appItem?.id)))
+    .map((appItem) => ({
+      id: String(appItem?.id || '').trim(),
+      name: String(appItem?.name || '').trim() || String(appItem?.id || '').trim(),
+      icon: String(appItem?.icon || '/icons/app.svg').trim(),
+      typeId: getAppBaseId(appItem?.id),
+      metricFields: Array.isArray(widgetBarTypes.find((t) => t.typeId === getAppBaseId(appItem?.id))?.metricFields)
+        ? widgetBarTypes.find((t) => t.typeId === getAppBaseId(appItem?.id)).metricFields.map((f) => ({
+            key: String(f?.key || '').trim(),
+            label: String(f?.label || f?.key || '').trim(),
+          })).filter((f) => f.key)
+        : [],
+    }));
   const sortDashboardAddOptions = (a, b) => {
     const categoryDelta = rankCategory(a.group) - rankCategory(b.group);
     if (categoryDelta !== 0) return categoryDelta;
@@ -900,6 +915,40 @@ export function registerSettings(app, ctx) {
     const appNameDelta = String(a.appName || '').localeCompare(String(b.appName || ''));
     if (appNameDelta !== 0) return appNameDelta;
     return String(a.element.name || '').localeCompare(String(b.element.name || ''));
+  });
+  // Append visible widget bars to the main dashboard elements table
+  allWidgetBars
+    .filter((bar) => !dashboardRemovedElements[`widget-bar:${bar.id}`])
+    .forEach((bar) => {
+      const barId = String(bar.id || '').trim();
+      const combinedOrderKey = `combined:widgetbar:${barId}`;
+      const storedOrder = Number(dashboardCombinedOrder?.[combinedOrderKey]);
+      const elementOrder = Number.isFinite(storedOrder) ? storedOrder : 9999;
+      dashboardElements.push({
+        combined: true,
+        combinedType: 'widgetbar',
+        combinedSection: barId,
+        isWidgetBar: true,
+        widgetBar: bar,
+        appId: barId,
+        appName: String(bar.name || 'Widget Bar').trim(),
+        appOrder: 9999,
+        category: 'Widget Bars',
+        iconPath: '/icons/dashboard.svg',
+        element: { id: 'widget-bar', name: String(bar.name || 'Widget Bar').trim(), order: elementOrder },
+        dashboardElementKey: `widget-bar:${barId}`,
+        dashboardIsCurrent: true,
+        dashboardIsDeprecated: false,
+      });
+    });
+  dashboardElements.sort((a, b) => {
+    const orderDelta = getDashboardOrder(a) - getDashboardOrder(b);
+    if (orderDelta !== 0) return orderDelta;
+    const appOrderDelta = (Number(a.appOrder) || 0) - (Number(b.appOrder) || 0);
+    if (appOrderDelta !== 0) return appOrderDelta;
+    const appNameDelta = String(a.appName || '').localeCompare(String(b.appName || ''));
+    if (appNameDelta !== 0) return appNameDelta;
+    return String(a.element?.name || '').localeCompare(String(b.element?.name || ''));
   });
   const navApps = getNavApps(apps, role, req, categoryOrder);
   const navCategories = buildNavCategories(navApps, categoryEntries, role);
@@ -996,8 +1045,6 @@ export function registerSettings(app, ctx) {
     arrDashboardCombinedCards,
     downloaderDashboardCards,
     mediaDashboardCards,
-    dashboardWidgets,
-    dashboardWidgetSources,
     dashboardAddOptions: dashboardUnifiedAddOptions,
     dashboardDeprecatedAddOptions,
     dashboardCombinedAddOptions,
@@ -1023,6 +1070,12 @@ export function registerSettings(app, ctx) {
     multiInstancePlaceholderMap,
     role,
     actualRole,
+    widgetBars,
+    widgetBarTypes,
+    widgetBarApps,
+    systemWidgetTypes: SYSTEM_WIDGET_TYPES,
+    systemWidgetSearchProviders: SYSTEM_WIDGET_SEARCH_PROVIDERS,
+    systemWidgetTimezones: SYSTEM_WIDGET_TIMEZONES,
   });
   });
 
@@ -1417,8 +1470,6 @@ app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
   if (Number.isFinite(downloaderQueueRows)) {
     downloaderCombinedQueueDisplay.queueVisibleRows = Math.max(5, Math.min(50, downloaderQueueRows));
   }
-  const dashboardWidgets = buildDashboardWidgetsFromDashboardRequest(config, apps, req.body);
-
   saveDashboardScopedConfig(baseConfig, {
     ...config,
     apps,
@@ -1430,7 +1481,6 @@ app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
     arrDashboardCombinedCards,
     downloaderDashboardCards,
     mediaDashboardCards,
-    dashboardWidgets,
     dashboardCombinedOrder,
     dashboardCombinedSettings,
   }, selectedDashboardId, nextDashboardDefinitions);
@@ -1446,28 +1496,6 @@ app.post('/settings/dashboard-elements/remove', requireSettingsAdmin, (req, res)
   const key = String(req.body?.dashboard_element_key || req.body?.key || '').trim();
   if (!key) {
     return res.redirect(buildDashboardSettingsRedirect(req, { dashboardElementError: 'Missing dashboard item key.' }));
-  }
-
-  const widgetMatch = key.match(/^widget:(.+)$/);
-  if (widgetMatch) {
-    const widgetId = normalizeDashboardWidgetToken(widgetMatch[1] || '');
-    if (!widgetId) {
-      return res.redirect(buildDashboardSettingsRedirect(req, { dashboardElementError: 'Invalid widget id.' }));
-    }
-    const apps = Array.isArray(config?.apps) ? config.apps : [];
-    const existingCards = resolveDashboardWidgets(config, apps, 'admin', {
-      includeHidden: true,
-      includeUnavailable: true,
-    });
-    const nextCards = existingCards.filter((entry) => normalizeDashboardWidgetToken(entry?.id || '') !== widgetId);
-    if (nextCards.length === existingCards.length) {
-      return res.redirect(buildDashboardSettingsRedirect(req, { dashboardElementError: 'Widget not found.' }));
-    }
-    saveDashboardScopedConfig(baseConfig, {
-      ...config,
-      dashboardWidgets: serializeDashboardWidgetCards(nextCards),
-    }, selectedDashboardId);
-    return res.redirect(buildDashboardSettingsRedirect(req, { dashboardElementResult: 'removed' }));
   }
 
   const customCombinedMatch = key.match(/^combined:(arrcustom|downloadercustom|mediacustom):(.+)$/);
@@ -1718,42 +1746,6 @@ function handleDashboardAddRequest(req, res) {
     return redirectDashboardAddResult(req, res, 'added');
   }
 
-  const newWidgetMatch = key.match(/^new:widget(?::(.+))?$/);
-  if (newWidgetMatch) {
-    const sourceToken = String(newWidgetMatch[1] || '').trim().toLowerCase();
-    const sourceDef = getDashboardWidgetSourceDefinition(sourceToken)
-      || getDashboardWidgetSourceDefinition(DASHBOARD_WIDGET_DEFAULTS.source)
-      || DASHBOARD_WIDGET_SOURCES[0];
-    if (!sourceDef?.id) {
-      return redirectDashboardAddError(req, res, 'No widget sources are available.');
-    }
-    const existingCards = resolveDashboardWidgets(config, apps, 'admin', {
-      includeHidden: true,
-      includeUnavailable: true,
-    });
-    const nextCard = normalizeDashboardWidgetCard({
-      id: buildDashboardWidgetId(),
-      source: sourceDef.id,
-      title: sourceDef.name || 'Widget',
-      rows: DASHBOARD_WIDGET_DEFAULTS.rows,
-      columns: DASHBOARD_WIDGET_DEFAULTS.columns,
-      limit: DASHBOARD_WIDGET_DEFAULTS.limit,
-      refreshSeconds: DASHBOARD_WIDGET_DEFAULTS.refreshSeconds,
-      autoScroll: DASHBOARD_WIDGET_DEFAULTS.autoScroll,
-      order: resolveNextDashboardWidgetOrder(config, apps),
-      visibilityRole: DASHBOARD_WIDGET_DEFAULTS.visibilityRole,
-      filters: DASHBOARD_WIDGET_DEFAULTS.filters,
-    }, DASHBOARD_WIDGET_DEFAULTS);
-    if (!nextCard) {
-      return redirectDashboardAddError(req, res, 'Failed to create widget card.');
-    }
-    persistConfig({
-      ...config,
-      dashboardWidgets: serializeDashboardWidgetCards([...existingCards, nextCard]),
-    });
-    return redirectDashboardAddResult(req, res, 'added');
-  }
-
   const newArrMatch = key.match(/^new:arr:(.+)$/);
   if (newArrMatch) {
     if (!ENABLE_ARR_UNIFIED_CARDS) {
@@ -1902,6 +1894,25 @@ function handleDashboardAddRequest(req, res) {
       dashboardCombinedOrder: existingCombinedOrder,
       dashboardRemovedElements,
     });
+    return redirectDashboardAddResult(req, res, 'added');
+  }
+
+  const newWidgetBarMatch = key.match(/^new:widget-bar:(.+)$/);
+  if (newWidgetBarMatch) {
+    const barId = normalizeWidgetBarId(String(newWidgetBarMatch[1] || '').trim());
+    if (!barId) {
+      return redirectDashboardAddError(req, res, 'Invalid widget bar id.');
+    }
+    const allBars = Array.isArray(config?.widgetBars) ? config.widgetBars : [];
+    const barExists = allBars.some((b) => normalizeWidgetBarId(String(b?.id || '')) === barId);
+    if (!barExists) {
+      return redirectDashboardAddError(req, res, 'Widget bar not found.');
+    }
+    const dashboardRemovedElements = (config && typeof config.dashboardRemovedElements === 'object' && config.dashboardRemovedElements)
+      ? { ...config.dashboardRemovedElements }
+      : {};
+    delete dashboardRemovedElements[`widget-bar:${barId}`];
+    persistConfig({ ...config, dashboardRemovedElements });
     return redirectDashboardAddResult(req, res, 'added');
   }
 
@@ -3005,6 +3016,10 @@ app.post('/settings/general', requireSettingsAdmin, (req, res) => {
 function buildNotificationSettingsFromBody(body, currentSettings = DEFAULT_NOTIFICATION_SETTINGS) {
   const fallback = currentSettings || DEFAULT_NOTIFICATION_SETTINGS;
   const rawMode = String(body?.apprise_mode || fallback.appriseMode || '').trim().toLowerCase();
+  const rawDelaySeconds = Number(body?.widget_status_delay_seconds ?? fallback.widgetStatusDelaySeconds);
+  const widgetStatusDelaySeconds = Number.isFinite(rawDelaySeconds)
+    ? Math.max(5, Math.min(3600, Math.round(rawDelaySeconds)))
+    : (Number(fallback.widgetStatusDelaySeconds) || DEFAULT_NOTIFICATION_SETTINGS.widgetStatusDelaySeconds);
   return {
     appriseEnabled: Boolean(body?.apprise_enabled),
     appriseApiUrl: String(body?.apprise_api_url || fallback.appriseApiUrl || '').trim(),
@@ -3012,6 +3027,8 @@ function buildNotificationSettingsFromBody(body, currentSettings = DEFAULT_NOTIF
     appriseConfigKey: String(body?.apprise_config_key || fallback.appriseConfigKey || '').trim(),
     appriseTargets: String(body?.apprise_targets || fallback.appriseTargets || '').trim(),
     appriseTag: String(body?.apprise_tag || fallback.appriseTag || '').trim(),
+    widgetStatusEnabled: Boolean(body?.widget_status_enabled),
+    widgetStatusDelaySeconds,
   };
 }
 

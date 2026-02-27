@@ -49,6 +49,19 @@
 
   function enforceQueueLayout(table) {
     if (!table) return;
+    if (table.classList.contains('queue-mode-releases')) {
+      table.style.setProperty('--queue-grid-template', '100px minmax(620px, 2.2fr) 120px 120px minmax(200px, 280px)');
+      toggleColumn(table, '.queue-col-detail', true);
+      toggleColumn(table, '.queue-col-title', true);
+      toggleColumn(table, '.queue-col-links', true);
+      toggleColumn(table, '.queue-col-actions', true);
+      toggleColumn(table, '.queue-col-size', true);
+      toggleColumn(table, '.queue-col-subdetail', false);
+      toggleColumn(table, '.queue-col-protocol', false);
+      toggleColumn(table, '.queue-col-time', false);
+      toggleColumn(table, '.queue-col-progress', false);
+      return;
+    }
     const visibility = queueVisibility(table);
     table.style.setProperty('--queue-grid-template', buildTemplate(visibility));
     toggleColumn(table, '.queue-col-detail', visibility.detail);
