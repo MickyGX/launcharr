@@ -16,6 +16,7 @@
 - Fixed user-menu logout label typography inconsistencies.
 - [Security]
 - Added conditional/hop-limited trust proxy configuration, baseline headers, CSRF protections, stricter payload limits, and stronger local password rules.
+- Documented recommended reverse-proxy env defaults in the example compose (`TRUST_PROXY=true`, `TRUST_PROXY_HOPS=1`, optional `COOKIE_SECURE=true`).
 
 
 ## v0.2.42 (2026-02-27)

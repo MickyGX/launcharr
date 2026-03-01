@@ -112,6 +112,16 @@ Launcharr includes baseline hardening for reverse-proxy deployments and browser 
   - at least one number
   - at least one symbol
 
+Recommended Docker env (especially when running behind a reverse proxy):
+
+```yaml
+environment:
+  - TRUST_PROXY=true
+  - TRUST_PROXY_HOPS=1
+  # optional but recommended if you only use HTTPS on domain:
+  # - COOKIE_SECURE=true
+```
+
 2FA note: local-auth 2FA is not yet built in. For production access, enforce MFA at your identity provider/reverse proxy (or use Plex/OIDC SSO) until native 2FA is added.
 
 ## Example Override (`config/config.json`)

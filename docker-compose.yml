@@ -8,6 +8,10 @@ services:
       - CONFIG_PATH=/app/config/config.json
       - DATA_DIR=/app/data
       - BASE_URL=http://192.168.0.2:3333
+      - TRUST_PROXY=true
+      - TRUST_PROXY_HOPS=1
+      # optional but recommended if you only use HTTPS on domain:
+      # - COOKIE_SECURE=true
       # - PUID=${PUID}
       # - PGID=${PGID}
       # - TZ=${TZ}
