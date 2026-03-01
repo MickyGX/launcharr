@@ -7,6 +7,7 @@ services:
     environment:
       - CONFIG_PATH=/app/config/config.json
       - DATA_DIR=/app/data
+      - BASE_URL=http://192.168.0.2:3333
       # - PUID=${PUID}
       # - PGID=${PGID}
       # - TZ=${TZ}

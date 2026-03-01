@@ -1,3 +1,11 @@
+import fs from 'fs';
+import path from 'path';
+import crypto from 'crypto';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 export function registerSettings(app, ctx) {
   const {
     requireUser,
@@ -78,6 +86,8 @@ export function registerSettings(app, ctx) {
     ENABLE_ARR_UNIFIED_CARDS,
     ENABLE_DOWNLOADER_UNIFIED_CARDS,
     USER_AVATAR_BASE,
+    LOCAL_AUTH_MIN_PASSWORD,
+    validateLocalPasswordStrength,
     applyLogRetention,
     buildCombinedCardId,
     buildDashboardElementsFromRequest,
@@ -179,6 +189,78 @@ export function registerSettings(app, ctx) {
     SYSTEM_WIDGET_TIMEZONES,
   } = ctx;
 
+  const buildDefaultAppIdSet = () => new Set(
+    (Array.isArray(loadDefaultApps()) ? loadDefaultApps() : [])
+      .map((appItem) => normalizeAppId(appItem?.id))
+      .filter(Boolean)
+  );
+
+  const isCustomAppRecord = (appItem, defaultAppIdSet = null) => {
+    const appId = normalizeAppId(appItem?.id);
+    if (!appId) return false;
+    if (Boolean(appItem?.custom) || appId.startsWith('custom-')) return true;
+    if (!(defaultAppIdSet instanceof Set) || !defaultAppIdSet.size) return false;
+    if (defaultAppIdSet.has(appId)) return false;
+    const baseId = normalizeAppId(getAppBaseId(appId));
+    if (baseId && defaultAppIdSet.has(baseId)) return false;
+    return true;
+  };
+
+  const APP_VISIBILITY_ROLE_ORDER = ['guest', 'user', 'co-admin', 'admin'];
+  const APP_SETTINGS_AND_ACTIVITY_ALLOWED_ROLES = new Set(['co-admin', 'admin']);
+
+  const parseAppVisibilityRole = (value) => {
+    const raw = String(value || '').trim().toLowerCase();
+    if (!raw) return '';
+    if (raw === 'coadmin' || raw === 'co_admin') return 'co-admin';
+    return APP_VISIBILITY_ROLE_ORDER.includes(raw) ? raw : '';
+  };
+
+  const appVisibilityRolesFromLegacyMinRole = (minRole = 'disabled') => {
+    const normalized = normalizeVisibilityRole(minRole, 'disabled');
+    if (normalized === 'disabled') return [];
+    const minRank = APP_VISIBILITY_ROLE_ORDER.indexOf(normalized);
+    if (minRank === -1) return [];
+    return APP_VISIBILITY_ROLE_ORDER.filter((_role, index) => index >= minRank);
+  };
+
+  const normalizeAppVisibilityRoles = (value, fallback = undefined) => {
+    const hasExplicitArray = Array.isArray(value);
+    const inputList = hasExplicitArray
+      ? value
+      : (typeof value === 'string' && value.includes(','))
+        ? value.split(',')
+        : (value === undefined ? [] : [value]);
+    const parsed = uniqueList(
+      inputList
+        .map((entry) => parseAppVisibilityRole(entry))
+        .filter((role) => role && APP_VISIBILITY_ROLE_ORDER.includes(role))
+    );
+    if (parsed.length) return APP_VISIBILITY_ROLE_ORDER.filter((role) => parsed.includes(role));
+    if (hasExplicitArray) return [];
+    if (fallback === undefined) return [];
+    if (Array.isArray(fallback)) return normalizeAppVisibilityRoles(fallback);
+    return appVisibilityRolesFromLegacyMinRole(fallback);
+  };
+
+  const buildMenuRoleSection = (currentSection, visibilityRoles, { fallbackMinRole = 'disabled', includeLegacyFlags = false } = {}) => {
+    const source = currentSection && typeof currentSection === 'object' ? currentSection : {};
+    const normalizedRoles = normalizeAppVisibilityRoles(visibilityRoles);
+    const minRole = normalizedRoles.length
+      ? normalizedRoles[0]
+      : normalizeVisibilityRole('disabled', fallbackMinRole);
+    const next = {
+      ...source,
+      minRole,
+      visibilityRoles: normalizedRoles,
+    };
+    if (includeLegacyFlags) {
+      next.user = normalizedRoles.includes('user');
+      next.admin = normalizedRoles.includes('admin');
+    }
+    return next;
+  };
+
   app.get('/settings', requireSettingsAdmin, (req, res) => {
   const config = loadConfig();
   const dashboardSettingsSelection = resolveDashboardSelection(config, resolveRequestedDashboardId(req), 'admin', { includeHidden: true });
@@ -194,7 +276,7 @@ export function registerSettings(app, ctx) {
   const apps = config.apps || [];
   const categoryEntries = resolveCategoryEntries(config, apps);
   const categoryOrder = categoryEntries.map((entry) => entry.name);
-  const categoryIcons = getCategoryIconOptions();
+  const categoryIcons = getCategoryIconOptions(apps);
   const appIcons = getAppIconOptions(apps);
   const dashboardApps = dashboardConfig.apps || [];
   const arrDashboardCombine = resolveArrDashboardCombineSettings(dashboardConfig, dashboardApps);
@@ -215,6 +297,8 @@ export function registerSettings(app, ctx) {
   const notificationError = String(req.query?.notificationError || '').trim();
   const themeDefaultsResult = String(req.query?.themeDefaultsResult || '').trim();
   const themeDefaultsError = String(req.query?.themeDefaultsError || '').trim();
+  const appGeneralResult = String(req.query?.appGeneralResult || '').trim();
+  const appGeneralError = String(req.query?.appGeneralError || '').trim();
   const appInstanceResult = String(req.query?.appInstanceResult || '').trim();
   const appInstanceError = String(req.query?.appInstanceError || '').trim();
   const defaultAppResult = String(req.query?.defaultAppResult || '').trim();
@@ -262,10 +346,12 @@ export function registerSettings(app, ctx) {
     if (orderDelta !== 0) return orderDelta;
     return String(a.name || '').localeCompare(String(b.name || ''));
   });
+  const defaultAppIdSet = buildDefaultAppIdSet();
   const settingsAppsWithIcons = settingsApps.map((appItem) => ({
     ...appItem,
     icon: resolvePersistedAppIconPath(appItem),
     canRemoveDefaultApp: canManageWithDefaultAppManager(appItem),
+    isCustomApp: isCustomAppRecord(appItem, defaultAppIdSet),
   }));
   const dashboardSettingsApps = dashboardApps
     .slice()
@@ -857,6 +943,14 @@ export function registerSettings(app, ctx) {
     });
   }
   const allWidgetBars = resolveWidgetBars(config, apps, 'admin', { includeHidden: true });
+  const getWidgetBarDashboardOrder = (bar) => {
+    const barId = String(bar?.id || '').trim();
+    const combinedOrderKey = `combined:widgetbar:${barId}`;
+    const storedOrder = Number(dashboardCombinedOrder?.[combinedOrderKey]);
+    if (Number.isFinite(storedOrder)) return storedOrder;
+    const barOrder = Number(bar?.order);
+    return Number.isFinite(barOrder) ? barOrder : 9999;
+  };
   allWidgetBars.forEach((bar) => {
     const elementKey = `widget-bar:${bar.id}`;
     const isOnDashboard = !dashboardRemovedElements[elementKey];
@@ -869,7 +963,11 @@ export function registerSettings(app, ctx) {
       deprecated: false,
     });
   });
-  const widgetBars = allWidgetBars;
+  const widgetBars = [...allWidgetBars].sort((a, b) => {
+    const orderDelta = getWidgetBarDashboardOrder(a) - getWidgetBarDashboardOrder(b);
+    if (orderDelta !== 0) return orderDelta;
+    return String(a?.name || '').localeCompare(String(b?.name || ''));
+  });
   const widgetBarTypes = resolveWidgetBarTypes(apps);
   const widgetBarTypeIds = new Set(widgetBarTypes.map((t) => t.typeId));
   const widgetBarApps = settingsAppsWithIcons
@@ -998,7 +1096,7 @@ export function registerSettings(app, ctx) {
     .filter((entry, index, list) => (
       list.findIndex((candidate) => String(candidate?.name || '').toLowerCase() === String(entry?.name || '').toLowerCase()) === index
     ));
-  const systemIconDefaults = getDefaultSystemIconOptions();
+  const systemIconDefaults = getDefaultSystemIconOptions(apps);
   const systemIconCustom = getCustomSystemIconOptions();
   const appIconDefaults = getDefaultAppIconOptions(apps);
   const appIconCustom = getCustomAppIconOptions();
@@ -1038,6 +1136,8 @@ export function registerSettings(app, ctx) {
     notificationError,
     themeDefaultsResult,
     themeDefaultsError,
+    appGeneralResult,
+    appGeneralError,
     appInstanceResult,
     appInstanceError,
     arrCombinedCardResult: String(req.query?.arrCombinedCardResult || '').trim(),
@@ -2167,8 +2267,11 @@ app.post('/user-settings/profile', requireUser, (req, res) => {
   if (email && !isValidEmail(email)) {
     return res.redirect('/user-settings?profileError=A+valid+email+is+required.');
   }
-  if (newPassword && newPassword.length < LOCAL_AUTH_MIN_PASSWORD) {
-    return res.redirect(`/user-settings?profileError=Password+must+be+at+least+${LOCAL_AUTH_MIN_PASSWORD}+characters.`);
+  const profilePasswordError = newPassword
+    ? validateLocalPasswordStrength(newPassword)
+    : '';
+  if (profilePasswordError) {
+    return res.redirect(`/user-settings?profileError=${encodeURIComponent(profilePasswordError)}`);
   }
   if (newPassword && newPassword !== confirmPassword) {
     return res.redirect('/user-settings?profileError=Passwords+do+not+match.');
@@ -2284,8 +2387,9 @@ app.post('/settings/local-users', requireSettingsAdmin, (req, res) => {
 
   if (!username) return res.redirect('/settings?tab=user&localUsersError=Username+is+required.');
   if (email && !isValidEmail(email)) return res.redirect('/settings?tab=user&localUsersError=A+valid+email+is+required.');
-  if (!password || password.length < LOCAL_AUTH_MIN_PASSWORD) {
-    return res.redirect(`/settings?tab=user&localUsersError=Password+must+be+at+least+${LOCAL_AUTH_MIN_PASSWORD}+characters.`);
+  const localUserPasswordError = validateLocalPasswordStrength(password);
+  if (localUserPasswordError) {
+    return res.redirect(`/settings?tab=user&localUsersError=${encodeURIComponent(localUserPasswordError)}`);
   }
 
   const usernameKey = normalizeUserKey(username);
@@ -2447,6 +2551,7 @@ app.post('/settings/admins', requireSettingsAdmin, (req, res) => {
 
 app.post('/settings/apps', requireSettingsAdmin, (req, res) => {
   const config = loadConfig();
+  const defaultAppIdSet = buildDefaultAppIdSet();
   const categoryOrder = resolveCategoryOrder(config, config.apps || [], { includeAppCategories: false });
   const categoryKeys = new Set(categoryOrder.map((item) => item.toLowerCase()));
   const fallbackCategory = categoryOrder.find((item) => item.toLowerCase() === 'utilities')
@@ -2465,11 +2570,19 @@ app.post('/settings/apps', requireSettingsAdmin, (req, res) => {
       launchModeInput,
       currentLaunchMode === 'disabled' ? 'new-tab' : currentLaunchMode
     );
-    const isCustom = Boolean(appItem.custom);
-    const sidebarMinRole = normalizeVisibilityRole(
-      req.body[`display_sidebar_min_role_${id}`],
-      currentMenu.sidebar?.minRole || 'disabled'
-    );
+    const sidebarVisibilityRolesField = `display_sidebar_visibility_roles_${id}`;
+    const sidebarVisibilityRolesPresentField = `display_sidebar_visibility_roles_present_${id}`;
+    const hasSidebarVisibilityRolesField = Object.prototype.hasOwnProperty.call(req.body || {}, sidebarVisibilityRolesPresentField);
+    const isCustom = isCustomAppRecord(appItem, defaultAppIdSet);
+    const sidebarVisibilityRoles = hasSidebarVisibilityRolesField
+      ? normalizeAppVisibilityRoles(req.body?.[sidebarVisibilityRolesField])
+      : normalizeAppVisibilityRoles(
+        currentMenu.sidebar?.visibilityRoles,
+        normalizeVisibilityRole(
+          req.body[`display_sidebar_min_role_${id}`],
+          currentMenu.sidebar?.minRole || 'disabled'
+        )
+      );
     const overviewSidebarMinRole = isCustom
       ? 'disabled'
       : normalizeVisibilityRole(
@@ -2491,7 +2604,7 @@ app.post('/settings/apps', requireSettingsAdmin, (req, res) => {
     const launchMinRole = launchMode === 'disabled' ? 'disabled' : launchMinRoleInput;
     const settingsMinRole = normalizeVisibilityRole(currentMenu.settings?.minRole || 'admin', 'admin');
     const menu = buildMenuAccessConfig({
-      sidebar: sidebarMinRole,
+      sidebar: sidebarVisibilityRoles,
       sidebarOverview: overviewSidebarMinRole,
       sidebarSettings: appSettingsSidebarMinRole,
       sidebarActivity: activitySidebarMinRole,
@@ -2726,9 +2839,13 @@ app.post('/settings/default-apps/add', requireSettingsAdmin, (req, res) => {
   const apps = Array.isArray(config.apps) ? config.apps : [];
   const defaultAppId = normalizeAppId(req.body?.default_app_id || req.body?.id || '');
   const requestedCategory = String(req.body?.default_app_category || req.body?.category || '').trim();
+  const requestedSettingsTab = String(req.body?.settings_tab || '').trim().toLowerCase();
+  const redirectBase = requestedSettingsTab === 'app'
+    ? '/settings?tab=app&appCategory=general'
+    : '/settings?tab=custom';
   const redirectWithError = (message) => {
     const encodedMessage = encodeURIComponent(String(message || 'Unable to add default app.').trim());
-    return res.redirect(`/settings?tab=custom&defaultAppError=${encodedMessage}`);
+    return res.redirect(`${redirectBase}&defaultAppError=${encodedMessage}`);
   };
 
   if (!defaultAppId) {
@@ -2894,12 +3011,13 @@ app.post('/settings/default-apps/add', requireSettingsAdmin, (req, res) => {
     saveConfig({ ...config, apps: [...apps, { ...nextApp, order: maxOrder + 1 }], dashboardRemovedElements });
   }
 
-  return res.redirect('/settings?tab=custom&defaultAppResult=added');
+  return res.redirect(`${redirectBase}&defaultAppResult=added`);
 });
 
 app.post('/settings/default-apps/remove', requireSettingsAdmin, (req, res) => {
   const config = loadConfig();
   const apps = Array.isArray(config.apps) ? config.apps : [];
+  const defaultCatalogIdSet = buildDefaultAppIdSet();
   const defaultAppId = normalizeAppId(req.body?.id || req.body?.default_app_id || '');
   const wantsJson = String(req.get('content-type') || '').toLowerCase().includes('application/json')
     || String(req.get('accept') || '').toLowerCase().includes('application/json');
@@ -2919,13 +3037,8 @@ app.post('/settings/default-apps/remove', requireSettingsAdmin, (req, res) => {
   }
 
   const current = apps[appIndex];
-  const defaultCatalogIdSet = new Set(
-    (Array.isArray(loadDefaultApps()) ? loadDefaultApps() : [])
-      .map((appItem) => normalizeAppId(appItem?.id))
-      .filter(Boolean)
-  );
   const isDefaultCatalogApp = defaultCatalogIdSet.has(normalizeAppId(current?.id));
-  if (current?.custom) {
+  if (isCustomAppRecord(current, defaultCatalogIdSet)) {
     return replyError('Custom apps must be removed with the custom app delete action.');
   }
   if (!canManageWithDefaultAppManager(current) && !isDefaultCatalogApp) {
@@ -2978,15 +3091,33 @@ app.post('/settings/icons/delete', requireSettingsAdmin, (req, res) => {
 
 app.post('/settings/general', requireSettingsAdmin, (req, res) => {
   const config = loadConfig();
+  const currentGeneral = resolveGeneralSettings(config);
   const serverName = String(req.body?.server_name || '').trim();
   const remoteUrl = String(req.body?.remote_url || '').trim();
   const localUrl = String(req.body?.local_url || '').trim();
   const basePath = normalizeBasePath(req.body?.base_path || '');
-  const restrictGuests = Boolean(req.body?.restrictGuests);
-  const autoOpenSingleAppMenuItem = Boolean(req.body?.autoOpenSingleAppMenuItem);
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const hasField = (fieldName) => Object.prototype.hasOwnProperty.call(body, fieldName);
+  const restrictGuests = hasField('restrictGuests')
+    ? Boolean(body.restrictGuests)
+    : Boolean(currentGeneral.restrictGuests);
+  const autoOpenSingleAppMenuItem = hasField('autoOpenSingleAppMenuItem')
+    ? Boolean(body.autoOpenSingleAppMenuItem)
+    : Boolean(currentGeneral.autoOpenSingleAppMenuItem);
+  const currentPressActions = normalizeSidebarButtonPressActions(currentGeneral.sidebarButtonPressActions);
   const parseRolePressActions = (roleKey) => ({
-    short: normalizeSidebarAppButtonAction(req.body?.[`sidebar_button_short_press_action_${roleKey}`], 'default'),
-    long: normalizeSidebarAppButtonAction(req.body?.[`sidebar_button_long_press_action_${roleKey}`], 'default'),
+    short: normalizeSidebarAppButtonAction(
+      hasField(`sidebar_button_short_press_action_${roleKey}`)
+        ? body[`sidebar_button_short_press_action_${roleKey}`]
+        : currentPressActions?.[roleKey]?.short,
+      currentPressActions?.[roleKey]?.short || 'default'
+    ),
+    long: normalizeSidebarAppButtonAction(
+      hasField(`sidebar_button_long_press_action_${roleKey}`)
+        ? body[`sidebar_button_long_press_action_${roleKey}`]
+        : currentPressActions?.[roleKey]?.long,
+      currentPressActions?.[roleKey]?.long || 'default'
+    ),
   });
   const sidebarButtonPressActions = normalizeSidebarButtonPressActions({
     guest: parseRolePressActions('guest'),
@@ -2994,8 +3125,12 @@ app.post('/settings/general', requireSettingsAdmin, (req, res) => {
     'co-admin': parseRolePressActions('co-admin'),
     admin: parseRolePressActions('admin'),
   });
-  const hideSidebarAppSettingsLink = Boolean(req.body?.hideSidebarAppSettingsLink);
-  const hideSidebarActivityLink = Boolean(req.body?.hideSidebarActivityLink);
+  const hideSidebarAppSettingsLink = hasField('hideSidebarAppSettingsLink')
+    ? Boolean(body.hideSidebarAppSettingsLink)
+    : Boolean(currentGeneral.hideSidebarAppSettingsLink);
+  const hideSidebarActivityLink = hasField('hideSidebarActivityLink')
+    ? Boolean(body.hideSidebarActivityLink)
+    : Boolean(currentGeneral.hideSidebarActivityLink);
   const nextGeneral = {
     serverName: serverName || DEFAULT_GENERAL_SETTINGS.serverName,
     remoteUrl,
@@ -3013,13 +3148,74 @@ app.post('/settings/general', requireSettingsAdmin, (req, res) => {
   res.redirect('/settings');
 });
 
+app.post('/settings/apps/general', requireSettingsAdmin, (req, res) => {
+  const config = loadConfig();
+  const currentGeneral = resolveGeneralSettings(config);
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const hasField = (fieldName) => Object.prototype.hasOwnProperty.call(body, fieldName);
+  const currentPressActions = normalizeSidebarButtonPressActions(currentGeneral.sidebarButtonPressActions);
+  const parseRolePressActions = (roleKey) => ({
+    short: normalizeSidebarAppButtonAction(
+      hasField(`sidebar_button_short_press_action_${roleKey}`)
+        ? body[`sidebar_button_short_press_action_${roleKey}`]
+        : currentPressActions?.[roleKey]?.short,
+      currentPressActions?.[roleKey]?.short || 'default'
+    ),
+    long: normalizeSidebarAppButtonAction(
+      hasField(`sidebar_button_long_press_action_${roleKey}`)
+        ? body[`sidebar_button_long_press_action_${roleKey}`]
+        : currentPressActions?.[roleKey]?.long,
+      currentPressActions?.[roleKey]?.long || 'default'
+    ),
+  });
+  const sidebarButtonPressActions = normalizeSidebarButtonPressActions({
+    guest: parseRolePressActions('guest'),
+    user: parseRolePressActions('user'),
+    'co-admin': parseRolePressActions('co-admin'),
+    admin: parseRolePressActions('admin'),
+  });
+  const autoOpenSingleAppMenuItem = hasField('autoOpenSingleAppMenuItem')
+    ? Boolean(body.autoOpenSingleAppMenuItem)
+    : Boolean(currentGeneral.autoOpenSingleAppMenuItem);
+  const hideSidebarAppSettingsLink = hasField('hideSidebarAppSettingsLink')
+    ? Boolean(body.hideSidebarAppSettingsLink)
+    : Boolean(currentGeneral.hideSidebarAppSettingsLink);
+  const hideSidebarActivityLink = hasField('hideSidebarActivityLink')
+    ? Boolean(body.hideSidebarActivityLink)
+    : Boolean(currentGeneral.hideSidebarActivityLink);
+
+  const nextGeneral = {
+    ...currentGeneral,
+    autoOpenSingleAppMenuItem,
+    sidebarButtonShortPressAction: sidebarButtonPressActions.user.short,
+    sidebarButtonLongPressAction: sidebarButtonPressActions.user.long,
+    sidebarButtonPressActions,
+    hideSidebarAppSettingsLink,
+    hideSidebarActivityLink,
+  };
+  saveConfig({ ...config, general: nextGeneral });
+  res.redirect('/settings?tab=app&appCategory=general&appGeneralResult=saved');
+});
+
 function buildNotificationSettingsFromBody(body, currentSettings = DEFAULT_NOTIFICATION_SETTINGS) {
   const fallback = currentSettings || DEFAULT_NOTIFICATION_SETTINGS;
   const rawMode = String(body?.apprise_mode || fallback.appriseMode || '').trim().toLowerCase();
   const rawDelaySeconds = Number(body?.widget_status_delay_seconds ?? fallback.widgetStatusDelaySeconds);
+  const rawPollSeconds = Number(body?.widget_status_poll_seconds ?? fallback.widgetStatusPollSeconds);
+  const rawRequestTimeoutMs = Number(body?.widget_status_request_timeout_ms ?? fallback.widgetStatusRequestTimeoutMs);
+  const rawMaxConcurrency = Number(body?.widget_status_max_concurrency ?? fallback.widgetStatusMaxConcurrency);
   const widgetStatusDelaySeconds = Number.isFinite(rawDelaySeconds)
     ? Math.max(5, Math.min(3600, Math.round(rawDelaySeconds)))
     : (Number(fallback.widgetStatusDelaySeconds) || DEFAULT_NOTIFICATION_SETTINGS.widgetStatusDelaySeconds);
+  const widgetStatusPollSeconds = Number.isFinite(rawPollSeconds)
+    ? Math.max(15, Math.min(600, Math.round(rawPollSeconds)))
+    : (Number(fallback.widgetStatusPollSeconds) || DEFAULT_NOTIFICATION_SETTINGS.widgetStatusPollSeconds);
+  const widgetStatusRequestTimeoutMs = Number.isFinite(rawRequestTimeoutMs)
+    ? Math.max(1000, Math.min(20000, Math.round(rawRequestTimeoutMs)))
+    : (Number(fallback.widgetStatusRequestTimeoutMs) || DEFAULT_NOTIFICATION_SETTINGS.widgetStatusRequestTimeoutMs);
+  const widgetStatusMaxConcurrency = Number.isFinite(rawMaxConcurrency)
+    ? Math.max(1, Math.min(10, Math.round(rawMaxConcurrency)))
+    : (Number(fallback.widgetStatusMaxConcurrency) || DEFAULT_NOTIFICATION_SETTINGS.widgetStatusMaxConcurrency);
   return {
     appriseEnabled: Boolean(body?.apprise_enabled),
     appriseApiUrl: String(body?.apprise_api_url || fallback.appriseApiUrl || '').trim(),
@@ -3029,6 +3225,9 @@ function buildNotificationSettingsFromBody(body, currentSettings = DEFAULT_NOTIF
     appriseTag: String(body?.apprise_tag || fallback.appriseTag || '').trim(),
     widgetStatusEnabled: Boolean(body?.widget_status_enabled),
     widgetStatusDelaySeconds,
+    widgetStatusPollSeconds,
+    widgetStatusRequestTimeoutMs,
+    widgetStatusMaxConcurrency,
   };
 }
 
@@ -3075,119 +3274,83 @@ app.post('/settings/notifications/test', requireSettingsAdmin, async (req, res) 
 });
 
 app.post('/settings/custom-apps', requireSettingsAdmin, (req, res) => {
-  const config = loadConfig();
-  const name = String(req.body?.name || '').trim();
-  const category = String(req.body?.category || '').trim();
-  const iconData = String(req.body?.iconData || '').trim();
-  const iconPath = String(req.body?.iconPath || '').trim();
-  if (!name) return res.status(400).json({ error: 'Missing app name.' });
+  try {
+    const config = loadConfig();
+    const name = String(req.body?.name || '').trim();
+    const category = String(req.body?.category || '').trim();
+    const iconData = String(req.body?.iconData || '').trim();
+    const iconPath = String(req.body?.iconPath || '').trim();
+    if (!name) return res.status(400).json({ error: 'Missing app name.' });
 
-  const categoryOrder = resolveCategoryOrder(config, config.apps || [], { includeAppCategories: false });
-  const categoryKeys = new Set(categoryOrder.map((item) => item.toLowerCase()));
-  const fallbackCategory = categoryOrder.find((item) => item.toLowerCase() === 'utilities')
-    || categoryOrder[0]
-    || 'Tools';
-  const resolvedCategory = categoryKeys.has(category.toLowerCase()) ? category : fallbackCategory;
+    const categoryOrder = resolveCategoryOrder(config, config.apps || [], { includeAppCategories: false });
+    const categoryKeys = new Set(categoryOrder.map((item) => String(item || '').toLowerCase()).filter(Boolean));
+    const fallbackCategory = categoryOrder.find((item) => String(item || '').toLowerCase() === 'utilities')
+      || categoryOrder[0]
+      || 'Tools';
+    const normalizedCategory = category.toLowerCase();
+    const resolvedCategory = categoryKeys.has(normalizedCategory) ? category : fallbackCategory;
 
-  const slug = slugifyId(name) || 'custom-app';
-  const id = `custom-${slug}-${crypto.randomBytes(3).toString('hex')}`;
-  let iconValue = '';
-  if (iconPath) {
-    iconValue = iconPath;
-  } else if (iconData) {
-    const iconResult = saveCustomAppIcon(iconData, id, name);
-    iconValue = iconResult.iconPath || iconResult.iconData || '';
+    const slug = slugifyId(name) || 'custom-app';
+    const id = `custom-${slug}-${crypto.randomBytes(3).toString('hex')}`;
+    let iconValue = '';
+    if (iconPath) {
+      iconValue = iconPath;
+    } else if (iconData) {
+      const iconResult = saveCustomAppIcon(iconData, id, name);
+      iconValue = iconResult.iconPath || iconResult.iconData || '';
+    }
+
+    const apps = Array.isArray(config.apps) ? config.apps : [];
+    const maxOrder = Math.max(0, ...apps.filter((app) => app.category === resolvedCategory).map((app) => Number(app.order) || 0));
+    const appItem = {
+      id,
+      name,
+      category: resolvedCategory,
+      order: maxOrder + 1,
+      favourite: false,
+      custom: true,
+      icon: iconValue,
+      url: '',
+      localUrl: '',
+      remoteUrl: '',
+      apiKey: '',
+      menu: buildMenuAccessConfig({
+        sidebar: 'user',
+        overview: 'disabled',
+        launch: 'user',
+        settings: 'admin',
+      }),
+      launchMode: 'new-tab',
+    };
+
+    saveConfig({ ...config, apps: [...apps, appItem] });
+    res.json({ ok: true, app: appItem });
+  } catch (err) {
+    const errorMessage = safeMessage(err, 'Failed to add custom app.');
+    pushLog({
+      level: 'error',
+      app: 'settings',
+      action: 'custom-apps.add',
+      message: 'Failed to add custom app.',
+      meta: { error: errorMessage },
+    });
+    res.status(500).json({ error: errorMessage });
   }
-
-  const apps = Array.isArray(config.apps) ? config.apps : [];
-  const maxOrder = Math.max(0, ...apps.filter((app) => app.category === resolvedCategory).map((app) => Number(app.order) || 0));
-  const appItem = {
-    id,
-    name,
-    category: resolvedCategory,
-    order: maxOrder + 1,
-    favourite: false,
-    custom: true,
-    icon: iconValue,
-    url: '',
-    localUrl: '',
-    remoteUrl: '',
-    apiKey: '',
-    menu: buildMenuAccessConfig({
-      sidebar: 'user',
-      overview: 'disabled',
-      launch: 'user',
-      settings: 'admin',
-    }),
-    launchMode: 'new-tab',
-  };
-
-  saveConfig({ ...config, apps: [...apps, appItem] });
-  res.json({ ok: true, app: appItem });
 });
 
 app.post('/settings/custom-apps/delete', requireSettingsAdmin, (req, res) => {
-  const config = loadConfig();
-  const id = String(req.body?.id || '').trim();
-  if (!id) return res.status(400).json({ error: 'Missing app id.' });
+  try {
+    const config = loadConfig();
+    const defaultAppIdSet = buildDefaultAppIdSet();
+    const id = String(req.body?.id || '').trim();
+    if (!id) return res.status(400).json({ error: 'Missing app id.' });
 
-  const apps = Array.isArray(config.apps) ? config.apps : [];
-  const appItem = apps.find((app) => app.id === id);
-  if (!appItem || !appItem.custom) return res.status(404).json({ error: 'Custom app not found.' });
+    const apps = Array.isArray(config.apps) ? config.apps : [];
+    const appItem = apps.find((app) => app.id === id);
+    if (!appItem || !isCustomAppRecord(appItem, defaultAppIdSet)) return res.status(404).json({ error: 'Custom app not found.' });
 
-  if (appItem.icon && appItem.icon.startsWith('/icons/custom/')) {
-    const iconPath = path.join(__dirname, '..', 'public', appItem.icon.replace(/^\/+/, ''));
-    if (fs.existsSync(iconPath)) {
-      try {
-        fs.unlinkSync(iconPath);
-      } catch (err) {
-        // ignore delete errors
-      }
-    }
-  }
-
-  saveConfig({ ...config, apps: apps.filter((app) => app.id !== id) });
-  res.json({ ok: true });
-});
-
-app.post('/settings/custom-apps/update', requireSettingsAdmin, (req, res) => {
-  const config = loadConfig();
-  const id = String(req.body?.id || '').trim();
-  const name = String(req.body?.name || '').trim();
-  const category = String(req.body?.category || '').trim();
-  const iconData = String(req.body?.iconData || '').trim();
-  const iconPath = String(req.body?.iconPath || '').trim();
-  if (!id) return res.status(400).json({ error: 'Missing app id.' });
-  if (!name) return res.status(400).json({ error: 'Missing app name.' });
-
-  const apps = Array.isArray(config.apps) ? config.apps : [];
-  const appIndex = apps.findIndex((app) => app.id === id && app.custom);
-  if (appIndex === -1) return res.status(404).json({ error: 'Custom app not found.' });
-
-  const categoryOrder = resolveCategoryOrder(config, apps, { includeAppCategories: false });
-  const categoryKeys = new Set(categoryOrder.map((item) => item.toLowerCase()));
-  const fallbackCategory = categoryOrder.find((item) => item.toLowerCase() === 'utilities')
-    || categoryOrder[0]
-    || 'Tools';
-  const resolvedCategory = categoryKeys.has(category.toLowerCase()) ? category : fallbackCategory;
-
-  const current = apps[appIndex];
-  let iconValue = current.icon || '';
-  if (iconPath) {
-    if (iconValue.startsWith('/icons/custom/')) {
-      const iconFile = path.join(__dirname, '..', 'public', iconValue.replace(/^\/+/, ''));
-      if (fs.existsSync(iconFile)) {
-        try {
-          fs.unlinkSync(iconFile);
-        } catch (err) {
-          // ignore delete errors
-        }
-      }
-    }
-    iconValue = iconPath;
-  } else if (iconData) {
-    if (iconValue.startsWith('/icons/custom/')) {
-      const iconPath = path.join(__dirname, '..', 'public', iconValue.replace(/^\/+/, ''));
+    if (appItem.icon && appItem.icon.startsWith('/icons/custom/')) {
+      const iconPath = path.join(__dirname, '..', 'public', appItem.icon.replace(/^\/+/, ''));
       if (fs.existsSync(iconPath)) {
         try {
           fs.unlinkSync(iconPath);
@@ -3196,20 +3359,96 @@ app.post('/settings/custom-apps/update', requireSettingsAdmin, (req, res) => {
         }
       }
     }
-    const iconResult = saveCustomAppIcon(iconData, id, name);
-    iconValue = iconResult.iconPath || iconResult.iconData || '';
-  }
 
-  const nextApp = {
-    ...current,
-    name,
-    category: resolvedCategory,
-    icon: iconValue,
-  };
-  const nextApps = [...apps];
-  nextApps[appIndex] = nextApp;
-  saveConfig({ ...config, apps: nextApps });
-  res.json({ ok: true, app: nextApp });
+    saveConfig({ ...config, apps: apps.filter((app) => app.id !== id) });
+    res.json({ ok: true });
+  } catch (err) {
+    const errorMessage = safeMessage(err, 'Failed to delete custom app.');
+    pushLog({
+      level: 'error',
+      app: 'settings',
+      action: 'custom-apps.delete',
+      message: 'Failed to delete custom app.',
+      meta: { error: errorMessage },
+    });
+    res.status(500).json({ error: errorMessage });
+  }
+});
+
+app.post('/settings/custom-apps/update', requireSettingsAdmin, (req, res) => {
+  try {
+    const config = loadConfig();
+    const defaultAppIdSet = buildDefaultAppIdSet();
+    const id = String(req.body?.id || '').trim();
+    const name = String(req.body?.name || '').trim();
+    const category = String(req.body?.category || '').trim();
+    const iconData = String(req.body?.iconData || '').trim();
+    const iconPath = String(req.body?.iconPath || '').trim();
+    if (!id) return res.status(400).json({ error: 'Missing app id.' });
+    if (!name) return res.status(400).json({ error: 'Missing app name.' });
+
+    const apps = Array.isArray(config.apps) ? config.apps : [];
+    const appIndex = apps.findIndex((app) => app.id === id && isCustomAppRecord(app, defaultAppIdSet));
+    if (appIndex === -1) return res.status(404).json({ error: 'Custom app not found.' });
+
+    const categoryOrder = resolveCategoryOrder(config, apps, { includeAppCategories: false });
+    const categoryKeys = new Set(categoryOrder.map((item) => String(item || '').toLowerCase()).filter(Boolean));
+    const fallbackCategory = categoryOrder.find((item) => String(item || '').toLowerCase() === 'utilities')
+      || categoryOrder[0]
+      || 'Tools';
+    const normalizedCategory = category.toLowerCase();
+    const resolvedCategory = categoryKeys.has(normalizedCategory) ? category : fallbackCategory;
+
+    const current = apps[appIndex];
+    let iconValue = current.icon || '';
+    if (iconPath) {
+      if (iconValue.startsWith('/icons/custom/')) {
+        const iconFile = path.join(__dirname, '..', 'public', iconValue.replace(/^\/+/, ''));
+        if (fs.existsSync(iconFile)) {
+          try {
+            fs.unlinkSync(iconFile);
+          } catch (err) {
+            // ignore delete errors
+          }
+        }
+      }
+      iconValue = iconPath;
+    } else if (iconData) {
+      if (iconValue.startsWith('/icons/custom/')) {
+        const iconPath = path.join(__dirname, '..', 'public', iconValue.replace(/^\/+/, ''));
+        if (fs.existsSync(iconPath)) {
+          try {
+            fs.unlinkSync(iconPath);
+          } catch (err) {
+            // ignore delete errors
+          }
+        }
+      }
+      const iconResult = saveCustomAppIcon(iconData, id, name);
+      iconValue = iconResult.iconPath || iconResult.iconData || '';
+    }
+
+    const nextApp = {
+      ...current,
+      name,
+      category: resolvedCategory,
+      icon: iconValue,
+    };
+    const nextApps = [...apps];
+    nextApps[appIndex] = nextApp;
+    saveConfig({ ...config, apps: nextApps });
+    res.json({ ok: true, app: nextApp });
+  } catch (err) {
+    const errorMessage = safeMessage(err, 'Failed to update custom app.');
+    pushLog({
+      level: 'error',
+      app: 'settings',
+      action: 'custom-apps.update',
+      message: 'Failed to update custom app.',
+      meta: { error: errorMessage },
+    });
+    res.status(500).json({ error: errorMessage });
+  }
 });
 
 app.post('/settings/logs', requireSettingsAdmin, (req, res) => {
@@ -3386,9 +3625,21 @@ app.post('/settings/roles', requireSettingsAdmin, (req, res) => {
 
 app.post('/apps/:id/settings', requireAdmin, (req, res) => {
   const config = loadConfig();
+  const defaultAppIdSet = buildDefaultAppIdSet();
   const shouldUpdateOverviewElements = Boolean(req.body.overviewElementsForm);
   const shouldUpdateTautulliCards = Boolean(req.body.tautulliCardsForm);
   const isDisplayOnlyUpdate = shouldUpdateOverviewElements || shouldUpdateTautulliCards;
+  const hasOwnBodyField = (field) => Object.prototype.hasOwnProperty.call(req.body || {}, field);
+  const hasVisibilityUpdate = (
+    hasOwnBodyField('app_visibility_roles_launch_present')
+    || hasOwnBodyField('app_visibility_roles_overview_present')
+    || hasOwnBodyField('app_visibility_roles_settings_present')
+    || hasOwnBodyField('app_visibility_roles_activity_present')
+  );
+  const resolveVisibilityRolesFromBody = (field, currentRoles) => {
+    if (!hasOwnBodyField(`${field}_present`)) return normalizeAppVisibilityRoles(currentRoles);
+    return normalizeAppVisibilityRoles(req.body?.[field]);
+  };
   const plexAdminUser = String(req.body?.plexAdminUser || '').trim();
   const shouldIgnoreJwtToken = (value) => {
     const raw = String(value || '').trim();
@@ -3410,6 +3661,33 @@ app.post('/apps/:id/settings', requireAdmin, (req, res) => {
     const tautulliCards = shouldUpdateTautulliCards
       ? buildTautulliCardsFromRequest(appItem, req.body)
       : appItem.tautulliCards;
+    const currentMenu = normalizeMenu(appItem);
+    const isCustomApp = isCustomAppRecord(appItem, defaultAppIdSet);
+    const currentLaunchRoles = normalizeAppVisibilityRoles(currentMenu?.launch?.visibilityRoles, currentMenu?.launch?.minRole);
+    const currentOverviewRoles = normalizeAppVisibilityRoles(currentMenu?.overview?.visibilityRoles, currentMenu?.overview?.minRole);
+    const currentSidebarSettingsRoles = normalizeAppVisibilityRoles(
+      currentMenu?.sidebarSettings?.visibilityRoles,
+      currentMenu?.sidebarSettings?.minRole || currentMenu?.settings?.minRole || 'admin'
+    );
+    const currentActivityRoles = normalizeAppVisibilityRoles(currentMenu?.sidebarActivity?.visibilityRoles, currentMenu?.sidebarActivity?.minRole);
+    const nextLaunchRoles = resolveVisibilityRolesFromBody('app_visibility_roles_launch', currentLaunchRoles);
+    const nextOverviewRoles = isCustomApp
+      ? []
+      : resolveVisibilityRolesFromBody('app_visibility_roles_overview', currentOverviewRoles);
+    const nextSidebarSettingsRoles = resolveVisibilityRolesFromBody('app_visibility_roles_settings', currentSidebarSettingsRoles)
+      .filter((role) => APP_SETTINGS_AND_ACTIVITY_ALLOWED_ROLES.has(role));
+    const nextActivityRoles = resolveVisibilityRolesFromBody('app_visibility_roles_activity', currentActivityRoles)
+      .filter((role) => APP_SETTINGS_AND_ACTIVITY_ALLOWED_ROLES.has(role));
+    const nextMenu = hasVisibilityUpdate
+      ? {
+        ...currentMenu,
+        launch: buildMenuRoleSection(currentMenu?.launch, nextLaunchRoles, { fallbackMinRole: 'disabled', includeLegacyFlags: true }),
+        overview: buildMenuRoleSection(currentMenu?.overview, nextOverviewRoles, { fallbackMinRole: 'disabled', includeLegacyFlags: true }),
+        sidebarOverview: buildMenuRoleSection(currentMenu?.sidebarOverview, nextOverviewRoles, { fallbackMinRole: 'disabled' }),
+        sidebarSettings: buildMenuRoleSection(currentMenu?.sidebarSettings, nextSidebarSettingsRoles, { fallbackMinRole: 'admin' }),
+        sidebarActivity: buildMenuRoleSection(currentMenu?.sidebarActivity, nextActivityRoles, { fallbackMinRole: 'admin' }),
+      }
+      : appItem.menu;
     return {
       ...appItem,
       name: nextName || appItem.name || getBaseAppTitle(baseId),
@@ -3439,6 +3717,9 @@ app.post('/apps/:id/settings', requireAdmin, (req, res) => {
       rommRecentProbeLimit: isDisplayOnlyUpdate
         ? (appItem.rommRecentProbeLimit ?? '')
         : (req.body.rommRecentProbeLimit !== undefined ? req.body.rommRecentProbeLimit : (appItem.rommRecentProbeLimit ?? '')),
+      uptimeKumaSlug: isDisplayOnlyUpdate
+        ? (appItem.uptimeKumaSlug ?? '')
+        : (req.body.uptimeKumaSlug !== undefined ? req.body.uptimeKumaSlug : (appItem.uptimeKumaSlug ?? '')),
       plexToken: (() => {
         if (isDisplayOnlyUpdate) return appItem.plexToken || '';
         const nextToken = req.body.plexToken !== undefined ? req.body.plexToken : (appItem.plexToken || '');
@@ -3456,6 +3737,7 @@ app.post('/apps/:id/settings', requireAdmin, (req, res) => {
       plexMachine: isDisplayOnlyUpdate
         ? appItem.plexMachine || ''
         : (req.body.plexMachine !== undefined ? req.body.plexMachine : (appItem.plexMachine || '')),
+      menu: nextMenu,
       overviewElements,
       tautulliCards,
     };

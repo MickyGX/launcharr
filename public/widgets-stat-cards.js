@@ -292,6 +292,91 @@
     }
     return {};
   }
+  function normalizeLinksUrl(value) {
+    var input = String(value || '').trim();
+    if (!input) return '';
+    var candidate = input;
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(candidate)) candidate = 'https://' + candidate;
+    try {
+      var parsed = new URL(candidate);
+      if (!parsed.hostname) return '';
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+      return parsed.toString();
+    } catch (_e) {
+      return '';
+    }
+  }
+  function linkInitials(name, fallback) {
+    var source = String(name || '').trim() || String(fallback || '').trim();
+    if (!source) return '??';
+    var tokens = source
+      .replace(/[_\-.]+/g, ' ')
+      .split(/\s+/)
+      .map(function (token) { return token.trim(); })
+      .filter(Boolean);
+    if (tokens.length >= 2) return ((tokens[0][0] || '') + (tokens[1][0] || '')).toUpperCase();
+    var clean = source.replace(/[^a-z0-9]/gi, '');
+    return (clean.slice(0, 2) || source.slice(0, 2)).toUpperCase();
+  }
+  function bindLinksWidgetFaviconFallback(rootEl) {
+    if (!rootEl) return;
+    rootEl.querySelectorAll('img[data-link-favicon]').forEach(function (img) {
+      if (img._linksFaviconBound) return;
+      img._linksFaviconBound = true;
+      img.addEventListener('error', function () {
+        var fallbackSrc = String(img.dataset.fallbackSrc || '').trim();
+        var triedFallback = img.dataset.fallbackTried === '1';
+        if (fallbackSrc && !triedFallback && img.src !== fallbackSrc) {
+          img.dataset.fallbackTried = '1';
+          img.src = fallbackSrc;
+          return;
+        }
+        img.style.display = 'none';
+        var initialsEl = img.closest('.dashboard-links-avatar') && img.closest('.dashboard-links-avatar').querySelector('.dashboard-links-initials');
+        if (initialsEl) initialsEl.hidden = false;
+      });
+    });
+  }
+  function buildLinksWidget(containerEl) {
+    var raw = containerEl.getAttribute('data-system-config') || '{}';
+    var cfg = parseSystemConfigAttr(raw);
+    var title = String(cfg.title || cfg.name || 'Links').trim() || 'Links';
+    var showUrl = cfg.showUrl !== false;
+    var rows = (Array.isArray(cfg.links) ? cfg.links : [])
+      .map(function (row) {
+        var rowObj = (row && typeof row === 'object') ? row : {};
+        var url = normalizeLinksUrl(rowObj.url || rowObj.href || '');
+        if (!url) return null;
+        var hostname = '';
+        var origin = '';
+        try {
+          var parsed = new URL(url);
+          hostname = String(parsed.hostname || '').trim();
+          origin = String(parsed.origin || '').trim();
+        } catch (_e) { /* ignore */ }
+        var name = String(rowObj.name || rowObj.title || '').trim() || hostname || url;
+        var favicon = origin ? origin.replace(/\/$/, '') + '/favicon.ico' : '';
+        var fallback = hostname ? 'https://www.google.com/s2/favicons?domain=' + encodeURIComponent(hostname) + '&sz=64' : '';
+        return { name: name, url: url, hostname: hostname, favicon: favicon, fallback: fallback };
+      })
+      .filter(Boolean)
+      .slice(0, 250);
+    var rowsHtml = rows.map(function (row) {
+      var initials = linkInitials(row.name, row.hostname);
+      var urlHtml = showUrl ? '<span class="dashboard-links-host">' + escapeHtml(row.hostname || row.url) + '</span>' : '';
+      return '<a class="dashboard-links-row" href="' + escapeHtml(row.url) + '" target="_blank" rel="noopener noreferrer">' +
+        '<span class="dashboard-links-avatar">' +
+          (row.favicon ? '<img data-link-favicon src="' + escapeHtml(row.favicon) + '" data-fallback-src="' + escapeHtml(row.fallback) + '" alt="" />' : '') +
+          '<span class="dashboard-links-initials"' + (row.favicon ? ' hidden' : '') + '>' + escapeHtml(initials) + '</span>' +
+        '</span>' +
+        '<span class="dashboard-links-name">' + escapeHtml(row.name) + '</span>' +
+        urlHtml +
+      '</a>';
+    }).join('');
+    containerEl.innerHTML = '<div class="dashboard-links-title">' + escapeHtml(title) + '</div>' +
+      '<div class="dashboard-links-list">' + (rowsHtml || '<div class="dashboard-links-empty">No links configured yet</div>') + '</div>';
+    bindLinksWidgetFaviconFallback(containerEl);
+  }
 
   // Build the child elements of a sys-resources container from its config
   function buildSystemBar(containerEl) {
@@ -457,24 +542,31 @@
     if (refreshSeconds > 0 && refreshSeconds < 15) refreshSeconds = 60;
 
     var cards = Array.from(barEl.querySelectorAll('.dashboard-stat-card[data-app-id]'));
-    var sysContainers = Array.from(barEl.querySelectorAll('.dashboard-system-bar[data-system-type="sys-resources"]'));
+    var sysResourceContainers = Array.from(barEl.querySelectorAll('.dashboard-system-bar[data-system-type="sys-resources"]'));
+    var linksContainers = Array.from(barEl.querySelectorAll('.dashboard-links-widget[data-system-type="links"]'));
 
-    if (!cards.length && !sysContainers.length) return;
+    if (!cards.length && !sysResourceContainers.length && !linksContainers.length) return;
 
     // Build sys-resources child DOM from config
-    sysContainers.forEach(function (c) { buildSystemBar(c); });
+    linksContainers.forEach(function (c) { buildLinksWidget(c); });
+    sysResourceContainers.forEach(function (c) { buildSystemBar(c); });
     if (barEl._bindSearchForms) barEl._bindSearchForms();
 
     function refreshCard(card) {
       var appId = String(card.dataset.appId || '').trim();
       if (!appId) return;
+      if (card.dataset.statsLoading === '1') return;
+      card.dataset.statsLoading = '1';
       fetchStats(appId)
         .then(function (data) { renderCard(card, data); })
-        .catch(function () { renderCardError(card); });
+        .catch(function () { renderCardError(card); })
+        .finally(function () { card.dataset.statsLoading = '0'; });
     }
 
     function refreshSysContainers() {
-      sysContainers.forEach(function (containerEl) {
+      sysResourceContainers.forEach(function (containerEl) {
+        if (containerEl.dataset.systemLoading === '1') return;
+        containerEl.dataset.systemLoading = '1';
         // Collect disk paths needed for this container
         var diskPaths = Array.from(containerEl.querySelectorAll('[data-chip-type="disk"][data-chip-path]'))
           .map(function (el) { return el.dataset.chipPath; })
@@ -495,6 +587,9 @@
           })
           .catch(function () {
             refreshSystemBarWithData(containerEl, null, null);
+          })
+          .finally(function () {
+            containerEl.dataset.systemLoading = '0';
           });
       });
     }

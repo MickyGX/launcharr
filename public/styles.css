@@ -276,6 +276,25 @@ html[data-brand-theme="readarr"]{
   font-size:12px;
   font-weight:600;
 }
+.user-menu-inline-form{
+  margin:0;
+}
+.user-menu-item.user-menu-item--button{
+  width:100%;
+  border:0;
+  background:transparent;
+  cursor:pointer;
+  text-align:left;
+  font-family:inherit;
+  font-size:12px;
+  font-weight:600;
+  line-height:1.25;
+  color:inherit;
+}
+.user-menu-item.user-menu-item--button:focus-visible{
+  outline:1px solid rgba(var(--brand-rgb),.62);
+  outline-offset:1px;
+}
 .user-menu-role-picker{
   display:flex;
   flex-direction:column-reverse;
@@ -500,4 +519,3 @@ html[data-brand-theme="readarr"]{
 .dash-sidebar .email{
   color:rgba(234,246,245,.75);
 }
-

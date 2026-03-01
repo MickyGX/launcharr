@@ -129,7 +129,7 @@
                 </label>
                 <label class="field">
                   <span>New password (optional)</span>
-                  <input type="password" name="newPassword" placeholder="Leave blank to keep current password" />
+                  <input type="password" name="newPassword" placeholder="Leave blank, or use min 12 with upper/lower/number/symbol" />
                 </label>
                 <label class="field">
                   <span>Confirm new password</span>
@@ -274,7 +274,8 @@
             <div class="settings-card">
               <div class="settings-card-title">View mode</div>
               <div class="settings-card-sub">Preview user access without leaving your account</div>
-              <form method="get" action="/switch-view" class="settings-access-form" id="viewModeForm">
+              <form method="post" action="/switch-view" class="settings-access-form" id="viewModeForm">
+                <input type="hidden" name="_csrf" value="<%= csrfToken || '' %>" />
                 <input type="hidden" name="role" value="<%= role === 'admin' ? 'user' : 'admin' %>" />
                 <div class="settings-access-row">
                   <label class="settings-toggle">

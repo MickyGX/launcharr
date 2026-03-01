@@ -60,13 +60,41 @@ export function registerApiSpecialty(app, ctx) {
     SYSTEM_WIDGET_TIMEZONES,
     normalizeSystemWidget,
   } = ctx;
-  const WIDGET_STATUS_MONITOR_POLL_MS = 15000;
-  const WIDGET_STATUS_MONITOR_REQUEST_TIMEOUT_MS = 12000;
+  const WIDGET_STATUS_MONITOR_POLL_SECONDS_DEFAULT = 45;
+  const WIDGET_STATUS_MONITOR_POLL_SECONDS_MIN = 15;
+  const WIDGET_STATUS_MONITOR_POLL_SECONDS_MAX = 600;
+  const WIDGET_STATUS_MONITOR_REQUEST_TIMEOUT_MS_DEFAULT = 4000;
+  const WIDGET_STATUS_MONITOR_REQUEST_TIMEOUT_MS_MIN = 1000;
+  const WIDGET_STATUS_MONITOR_REQUEST_TIMEOUT_MS_MAX = 20000;
+  const WIDGET_STATUS_MONITOR_MAX_CONCURRENCY_DEFAULT = 4;
+  const WIDGET_STATUS_MONITOR_MAX_CONCURRENCY_MIN = 1;
+  const WIDGET_STATUS_MONITOR_MAX_CONCURRENCY_MAX = 10;
   const WIDGET_STATUS_MONITOR_INTERNAL_HEADER = 'x-launcharr-internal-token';
   const widgetStatusInternalToken = String(widgetStatsInternalToken || '').trim();
   const widgetStatusMonitorBaseUrl = `http://127.0.0.1:${Number(process.env.PORT) || 3333}`;
   const widgetStatusMonitorState = new Map();
   let widgetStatusMonitorTickRunning = false;
+
+  function resolveWidgetMonitorRuntimeSettings(notificationSettings = {}) {
+    const rawPollSeconds = Number(notificationSettings?.widgetStatusPollSeconds);
+    const rawRequestTimeoutMs = Number(notificationSettings?.widgetStatusRequestTimeoutMs);
+    const rawMaxConcurrency = Number(notificationSettings?.widgetStatusMaxConcurrency);
+    const pollSeconds = Number.isFinite(rawPollSeconds)
+      ? Math.max(WIDGET_STATUS_MONITOR_POLL_SECONDS_MIN, Math.min(WIDGET_STATUS_MONITOR_POLL_SECONDS_MAX, Math.round(rawPollSeconds)))
+      : WIDGET_STATUS_MONITOR_POLL_SECONDS_DEFAULT;
+    const requestTimeoutMs = Number.isFinite(rawRequestTimeoutMs)
+      ? Math.max(WIDGET_STATUS_MONITOR_REQUEST_TIMEOUT_MS_MIN, Math.min(WIDGET_STATUS_MONITOR_REQUEST_TIMEOUT_MS_MAX, Math.round(rawRequestTimeoutMs)))
+      : WIDGET_STATUS_MONITOR_REQUEST_TIMEOUT_MS_DEFAULT;
+    const maxConcurrency = Number.isFinite(rawMaxConcurrency)
+      ? Math.max(WIDGET_STATUS_MONITOR_MAX_CONCURRENCY_MIN, Math.min(WIDGET_STATUS_MONITOR_MAX_CONCURRENCY_MAX, Math.round(rawMaxConcurrency)))
+      : WIDGET_STATUS_MONITOR_MAX_CONCURRENCY_DEFAULT;
+    return {
+      pollSeconds,
+      pollMs: pollSeconds * 1000,
+      requestTimeoutMs,
+      maxConcurrency,
+    };
+  }
 
   function normalizeWidgetMonitorState(value) {
     const raw = String(value || '').trim().toLowerCase();
@@ -92,6 +120,7 @@ export function registerApiSpecialty(app, ctx) {
   function buildWidgetStatusMonitorSnapshot() {
     const config = loadConfig();
     const notificationSettings = resolveNotificationSettings(config);
+    const runtimeSettings = resolveWidgetMonitorRuntimeSettings(notificationSettings);
     const delaySecondsRaw = Number(notificationSettings?.widgetStatusDelaySeconds);
     const delaySeconds = Number.isFinite(delaySecondsRaw)
       ? Math.max(5, Math.min(3600, Math.round(delaySecondsRaw)))
@@ -130,7 +159,9 @@ export function registerApiSpecialty(app, ctx) {
       appriseEnabled: Boolean(notificationSettings?.appriseEnabled),
       widgetStatusEnabled: Boolean(notificationSettings?.widgetStatusEnabled),
       delaySeconds,
-      pollSeconds: Math.round(WIDGET_STATUS_MONITOR_POLL_MS / 1000),
+      pollSeconds: runtimeSettings.pollSeconds,
+      requestTimeoutMs: runtimeSettings.requestTimeoutMs,
+      maxConcurrency: runtimeSettings.maxConcurrency,
       items,
       generatedAt: new Date().toISOString(),
     };
@@ -156,7 +187,8 @@ export function registerApiSpecialty(app, ctx) {
           const appId = normalizeAppId(widget.appId);
           if (!appId) return;
           const baseId = getAppBaseId(appId);
-          if (!getWidgetStatType(baseId)) return;
+          const statType = getWidgetStatType(baseId);
+          if (!statType || statType.fallback) return;
           if (!appById.has(appId)) return;
           appIds.add(appId);
         });
@@ -169,9 +201,9 @@ export function registerApiSpecialty(app, ctx) {
     }));
   }
 
-  async function fetchWidgetMonitorState(appId) {
+  async function fetchWidgetMonitorState(appId, requestTimeoutMs) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), WIDGET_STATUS_MONITOR_REQUEST_TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
     try {
       const headers = { Accept: 'application/json' };
       if (widgetStatusInternalToken) {
@@ -193,6 +225,25 @@ export function registerApiSpecialty(app, ctx) {
     }
   }
 
+  async function mapWithConcurrency(items, maxConcurrency, mapper) {
+    const list = Array.isArray(items) ? items : [];
+    if (!list.length) return [];
+    const workerCount = Math.max(1, Math.min(Number(maxConcurrency) || 1, list.length));
+    const results = new Array(list.length);
+    let cursor = 0;
+
+    const workers = Array.from({ length: workerCount }, async () => {
+      while (cursor < list.length) {
+        const index = cursor;
+        cursor += 1;
+        results[index] = await mapper(list[index], index);
+      }
+    });
+
+    await Promise.all(workers);
+    return results;
+  }
+
   async function runWidgetStatusMonitorTick() {
     if (widgetStatusMonitorTickRunning) return;
     widgetStatusMonitorTickRunning = true;
@@ -200,11 +251,16 @@ export function registerApiSpecialty(app, ctx) {
       const config = loadConfig();
       const notificationSettings = resolveNotificationSettings(config);
       const monitorEnabled = Boolean(notificationSettings?.appriseEnabled && notificationSettings?.widgetStatusEnabled);
+      if (!monitorEnabled) {
+        if (widgetStatusMonitorState.size) widgetStatusMonitorState.clear();
+        return;
+      }
       const delaySeconds = Number(notificationSettings?.widgetStatusDelaySeconds);
       const effectiveDelaySeconds = Number.isFinite(delaySeconds)
         ? Math.max(5, Math.min(3600, Math.round(delaySeconds)))
         : 60;
       const delayMs = effectiveDelaySeconds * 1000;
+      const runtimeSettings = resolveWidgetMonitorRuntimeSettings(notificationSettings);
       const targets = resolveWidgetMonitorTargets(config);
       const targetIdSet = new Set(targets.map((target) => target.appId));
 
@@ -214,10 +270,14 @@ export function registerApiSpecialty(app, ctx) {
 
       if (!targets.length) return;
       const now = Date.now();
-      const statusResults = await Promise.all(targets.map(async (target) => ({
-        ...target,
-        ...(await fetchWidgetMonitorState(target.appId)),
-      })));
+      const statusResults = await mapWithConcurrency(
+        targets,
+        runtimeSettings.maxConcurrency,
+        async (target) => ({
+          ...target,
+          ...(await fetchWidgetMonitorState(target.appId, runtimeSettings.requestTimeoutMs)),
+        })
+      );
       const notifications = [];
 
       statusResults.forEach((result) => {
@@ -661,6 +721,749 @@ export function registerApiSpecialty(app, ctx) {
     return res.status(502).json({ error: lastError || 'Failed to fetch Romm data.' });
   });
 
+  // ─── MeTube overview ──────────────────────────────────────────────────────
+
+  app.get('/api/metube/queue', requireUser, async (req, res) => {
+    try {
+      const config = loadConfig();
+      const apps = Array.isArray(config?.apps) ? config.apps : [];
+      const metubeApp = apps.find((appItem) => getAppBaseId(normalizeAppId(appItem?.id)) === 'metube');
+      if (!metubeApp) return res.status(404).json({ error: 'MeTube app is not configured.' });
+      if (!canAccessDashboardApp(config, metubeApp, getEffectiveRole(req))) {
+        return res.status(403).json({ error: 'MeTube dashboard access denied.' });
+      }
+
+      const candidates = resolveAppApiCandidates(metubeApp, req);
+      if (!candidates.length) return res.status(400).json({ error: 'Missing MeTube URL.' });
+
+      let lastError = '';
+
+      for (const baseUrl of candidates) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          let response;
+          try {
+            response = await fetch(
+              buildAppApiUrl(baseUrl, 'history').toString(),
+              { headers: { Accept: 'application/json' }, signal: controller.signal },
+            );
+          } finally {
+            clearTimeout(timeoutId);
+          }
+          if (!response.ok) {
+            lastError = `MeTube responded with status ${response.status}`;
+            continue;
+          }
+          const json = await response.json().catch(() => ({}));
+          // /history returns arrays: { queue: [...], pending: [...], done: [...] }
+          const queueArr   = Array.isArray(json.queue)   ? json.queue   : [];
+          const pendingArr = Array.isArray(json.pending) ? json.pending : [];
+          const doneArr    = Array.isArray(json.done)    ? json.done    : [];
+
+          const mapEntry = (item) => {
+            const rawStatus = String(item?.status ?? item?.state ?? '').toLowerCase();
+            let status = 'queued';
+            if (rawStatus === 'downloading' || rawStatus === 'started') status = 'downloading';
+            else if (rawStatus === 'error' || rawStatus === 'failed') status = 'error';
+            else if (rawStatus === 'finished' || rawStatus === 'done' || rawStatus === 'complete') status = 'done';
+            return {
+              id: String(item?.id || ''),
+              title: String(item?.title || item?.url || item?.id || 'Unknown').trim(),
+              url: String(item?.url || '').trim(),
+              status,
+              percent: Number(item?.percent ?? item?.progress ?? 0) || 0,
+              eta: Number(item?.eta ?? 0) || 0,
+              speed: String(item?.speed || item?.download_speed || '').trim(),
+            };
+          };
+
+          const queue = [...queueArr, ...pendingArr].map(mapEntry);
+          const done  = doneArr.map(mapEntry);
+
+          return res.json({ queue, done });
+        } catch (err) {
+          lastError = safeMessage(err) || `Failed to reach MeTube via ${baseUrl}.`;
+        }
+      }
+
+      return res.status(502).json({ error: lastError || 'Failed to fetch MeTube data.' });
+    } catch (err) {
+      return res.status(500).json({ error: safeMessage(err) || 'Failed to fetch MeTube queue.' });
+    }
+  });
+
+  // ─── Audiobookshelf overview ───────────────────────────────────────────────
+
+  app.get('/api/audiobookshelf/recent', requireUser, async (req, res) => {
+    try {
+      const config = loadConfig();
+      const apps = Array.isArray(config?.apps) ? config.apps : [];
+      const absApp = apps.find((appItem) => getAppBaseId(normalizeAppId(appItem?.id)) === 'audiobookshelf');
+      if (!absApp) return res.status(404).json({ error: 'Audiobookshelf app is not configured.' });
+      if (!canAccessDashboardApp(config, absApp, getEffectiveRole(req))) {
+        return res.status(403).json({ error: 'Audiobookshelf dashboard access denied.' });
+      }
+
+      const candidates = resolveAppApiCandidates(absApp, req);
+      if (!candidates.length) return res.status(400).json({ error: 'Missing Audiobookshelf URL.' });
+
+      const apiKey = String(absApp.apiKey || '').trim();
+      if (!apiKey) return res.status(400).json({ error: 'Audiobookshelf API key is not configured.' });
+
+      const rawLimit = Number(req.query?.limit);
+      const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(100, Math.max(1, Math.round(rawLimit))) : 20;
+
+      const headers = { Accept: 'application/json', Authorization: `Bearer ${apiKey}` };
+      let lastError = '';
+
+      for (const baseUrl of candidates) {
+        try {
+          // Fetch all libraries first
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          let libsResponse;
+          try {
+            libsResponse = await fetch(
+              buildAppApiUrl(baseUrl, 'api/libraries').toString(),
+              { headers, signal: controller.signal },
+            );
+          } finally {
+            clearTimeout(timeoutId);
+          }
+          if (!libsResponse.ok) {
+            lastError = `Audiobookshelf responded with status ${libsResponse.status}`;
+            continue;
+          }
+          const libsJson = await libsResponse.json().catch(() => ({}));
+          const libraries = Array.isArray(libsJson?.libraries) ? libsJson.libraries : [];
+          if (!libraries.length) return res.json({ items: [] });
+
+          // Fetch recently added from each library in parallel
+          const perLib = Math.max(limit, 10);
+          const libResults = await Promise.all(
+            libraries.map(async (lib) => {
+              try {
+                const ctrl2 = new AbortController();
+                const tid2 = setTimeout(() => ctrl2.abort(), 10000);
+                let r;
+                try {
+                  r = await fetch(
+                    buildAppApiUrl(baseUrl, `api/libraries/${encodeURIComponent(lib.id)}/items`).toString() +
+                      `?sort=addedAt&desc=1&limit=${perLib}`,
+                    { headers, signal: ctrl2.signal },
+                  );
+                } finally {
+                  clearTimeout(tid2);
+                }
+                if (!r.ok) return [];
+                const data = await r.json().catch(() => ({}));
+                const results = Array.isArray(data?.results) ? data.results : (Array.isArray(data?.items) ? data.items : []);
+                return results.map((item) => ({
+                  ...item,
+                  _libraryId: lib.id,
+                  _mediaType: String(lib.mediaType || '').toLowerCase(),
+                }));
+              } catch (_err) {
+                return [];
+              }
+            }),
+          );
+
+          // Merge and sort by addedAt descending
+          const allItems = libResults.flat();
+          allItems.sort((a, b) => {
+            const aTs = Number(a.addedAt ?? 0);
+            const bTs = Number(b.addedAt ?? 0);
+            return bTs - aTs;
+          });
+
+          const items = allItems.slice(0, limit).map((item) => {
+            const id = String(item?.id || '').trim();
+            const mediaType = String(item?._mediaType || item?.mediaType || '').toLowerCase();
+            const isPodcast = mediaType === 'podcast';
+            const meta = isPodcast ? item?.media?.metadata : item?.media?.metadata;
+            const title = String(meta?.title || item?.media?.metadata?.title || id || 'Unknown').trim();
+            const author = String(meta?.authorName || meta?.author || '').trim();
+            const addedAt = Number(item?.addedAt ?? 0);
+            return {
+              id,
+              title,
+              author,
+              mediaType: isPodcast ? 'podcast' : 'book',
+              addedAt: addedAt ? addedAt * 1000 : 0,
+              thumbUrl: id ? `/api/audiobookshelf/cover/${encodeURIComponent(id)}` : '',
+            };
+          }).filter((item) => Boolean(item.id));
+
+          return res.json({ items });
+        } catch (err) {
+          lastError = safeMessage(err) || `Failed to reach Audiobookshelf via ${baseUrl}.`;
+        }
+      }
+
+      return res.status(502).json({ error: lastError || 'Failed to fetch Audiobookshelf data.' });
+    } catch (err) {
+      return res.status(500).json({ error: safeMessage(err) || 'Failed to fetch Audiobookshelf recent items.' });
+    }
+  });
+
+  app.get('/api/audiobookshelf/cover/:itemId', requireUser, async (req, res) => {
+    try {
+      const itemId = String(req.params.itemId || '').trim();
+      if (!itemId || !/^[\w-]+$/.test(itemId)) return res.status(400).send('');
+
+      const config = loadConfig();
+      const apps = Array.isArray(config?.apps) ? config.apps : [];
+      const absApp = apps.find((appItem) => getAppBaseId(normalizeAppId(appItem?.id)) === 'audiobookshelf');
+      if (!absApp) return res.status(404).send('');
+      if (!canAccessDashboardApp(config, absApp, getEffectiveRole(req))) return res.status(403).send('');
+
+      const candidates = resolveAppApiCandidates(absApp, req);
+      if (!candidates.length) return res.status(400).send('');
+
+      const apiKey = String(absApp.apiKey || '').trim();
+      if (!apiKey) return res.status(400).send('');
+
+      const fetchHeaders = { Authorization: `Bearer ${apiKey}` };
+
+      for (const baseUrl of candidates) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 15000);
+          let response;
+          try {
+            response = await fetch(
+              buildAppApiUrl(baseUrl, `api/items/${encodeURIComponent(itemId)}/cover`).toString(),
+              { headers: fetchHeaders, signal: controller.signal },
+            );
+          } finally {
+            clearTimeout(timeoutId);
+          }
+          if (!response.ok) continue;
+          const contentType = response.headers.get('content-type') || 'image/jpeg';
+          res.set('Content-Type', contentType);
+          res.set('Cache-Control', 'public, max-age=86400');
+          const buffer = await response.arrayBuffer();
+          return res.send(Buffer.from(buffer));
+        } catch (_err) {
+          // try next candidate
+        }
+      }
+
+      return res.status(502).send('');
+    } catch (err) {
+      return res.status(500).json({ error: safeMessage(err) || 'Failed to proxy Audiobookshelf cover.' });
+    }
+  });
+
+  // ─── Tdarr overview ───────────────────────────────────────────────────────
+
+  app.get('/api/tdarr/stats', requireUser, async (req, res) => {
+    try {
+      const config = loadConfig();
+      const apps = Array.isArray(config?.apps) ? config.apps : [];
+      const tdarrApp = apps.find((appItem) => getAppBaseId(normalizeAppId(appItem?.id)) === 'tdarr');
+      if (!tdarrApp) return res.status(404).json({ error: 'Tdarr app is not configured.' });
+      if (!canAccessDashboardApp(config, tdarrApp, getEffectiveRole(req))) {
+        return res.status(403).json({ error: 'Tdarr dashboard access denied.' });
+      }
+
+      const candidates = resolveAppApiCandidates(tdarrApp, req);
+      if (!candidates.length) return res.status(400).json({ error: 'Missing Tdarr URL.' });
+
+      const apiKey = String(tdarrApp.apiKey || '').trim();
+      const fetchHeaders = { 'Content-Type': 'application/json', Accept: 'application/json' };
+      if (apiKey) fetchHeaders['x-api-key'] = apiKey;
+      const body = JSON.stringify({ data: { collection: 'StatisticsJSONDB', mode: 'getById', docID: 'statistics' } });
+      let lastError = '';
+
+      for (const baseUrl of candidates) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          let response;
+          try {
+            response = await fetch(
+              buildAppApiUrl(baseUrl, 'api/v2/cruddb').toString(),
+              { method: 'POST', headers: fetchHeaders, body, signal: controller.signal },
+            );
+          } finally {
+            clearTimeout(timeoutId);
+          }
+          if (!response.ok) {
+            lastError = `Tdarr responded with status ${response.status}`;
+            continue;
+          }
+          const j = await response.json().catch(() => ({}));
+          const v = (a, b) => Number(j[a] ?? j[b] ?? 0);
+          const queue     = v('table1ViewableCount', 'table1Count') + v('table4ViewableCount', 'table4Count');
+          const processed = v('table2ViewableCount', 'table2Count') + v('table5ViewableCount', 'table5Count');
+          const errored   = v('table3ViewableCount', 'table3Count') + v('table6ViewableCount', 'table6Count');
+          const savedGb   = Math.abs(Number(j.sizeDiff ?? 0)).toFixed(2);
+          return res.json({ queue, processed, errored, savedGb });
+        } catch (err) {
+          lastError = safeMessage(err) || `Failed to reach Tdarr via ${baseUrl}.`;
+        }
+      }
+
+      return res.status(502).json({ error: lastError || 'Failed to fetch Tdarr stats.' });
+    } catch (err) {
+      return res.status(500).json({ error: safeMessage(err) || 'Failed to fetch Tdarr stats.' });
+    }
+  });
+
+  // ─── Immich overview ──────────────────────────────────────────────────────
+
+  app.get('/api/immich/recent', requireUser, async (req, res) => {
+    try {
+      const config = loadConfig();
+      const apps = Array.isArray(config?.apps) ? config.apps : [];
+      const immichApp = apps.find((appItem) => getAppBaseId(normalizeAppId(appItem?.id)) === 'immich');
+      if (!immichApp) return res.status(404).json({ error: 'Immich app is not configured.' });
+      if (!canAccessDashboardApp(config, immichApp, getEffectiveRole(req))) {
+        return res.status(403).json({ error: 'Immich dashboard access denied.' });
+      }
+
+      const candidates = resolveAppApiCandidates(immichApp, req);
+      if (!candidates.length) return res.status(400).json({ error: 'Missing Immich URL.' });
+
+      const apiKey = String(immichApp.apiKey || '').trim();
+      if (!apiKey) return res.status(400).json({ error: 'Immich API key is not configured.' });
+
+      const rawSize = Number(req.query?.size);
+      const size = Number.isFinite(rawSize) && rawSize > 0 ? Math.min(100, Math.max(1, Math.round(rawSize))) : 20;
+
+      const headers = { Accept: 'application/json', 'x-api-key': apiKey };
+      let lastError = '';
+
+      for (const baseUrl of candidates) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          let response;
+          try {
+            response = await fetch(
+              buildAppApiUrl(baseUrl, 'api/assets').toString() + `?order=desc&size=${size}&withExif=false`,
+              { headers, signal: controller.signal },
+            );
+          } finally {
+            clearTimeout(timeoutId);
+          }
+          if (!response.ok) {
+            lastError = `Immich responded with status ${response.status}`;
+            continue;
+          }
+          const json = await response.json().catch(() => []);
+          const rawItems = Array.isArray(json) ? json : (Array.isArray(json?.assets) ? json.assets : []);
+          const items = rawItems.map((asset) => {
+            const id = String(asset?.id || '').trim();
+            const title = String(asset?.originalFileName || asset?.fileName || id || 'Untitled').trim();
+            const type = String(asset?.type || '').toUpperCase() === 'VIDEO' ? 'video' : 'photo';
+            const date = asset?.fileCreatedAt || asset?.localDateTime || asset?.createdAt || '';
+            return { id, title, type, date, thumbUrl: id ? `/api/immich/thumbnail/${encodeURIComponent(id)}` : '' };
+          }).filter((item) => Boolean(item.id));
+          return res.json({ items });
+        } catch (err) {
+          lastError = safeMessage(err) || `Failed to reach Immich via ${baseUrl}.`;
+        }
+      }
+
+      return res.status(502).json({ error: lastError || 'Failed to fetch Immich data.' });
+    } catch (err) {
+      return res.status(500).json({ error: safeMessage(err) || 'Failed to fetch Immich recent assets.' });
+    }
+  });
+
+  app.get('/api/immich/thumbnail/:assetId', requireUser, async (req, res) => {
+    try {
+      const assetId = String(req.params.assetId || '').trim();
+      if (!assetId || !/^[\w-]+$/.test(assetId)) return res.status(400).send('');
+
+      const config = loadConfig();
+      const apps = Array.isArray(config?.apps) ? config.apps : [];
+      const immichApp = apps.find((appItem) => getAppBaseId(normalizeAppId(appItem?.id)) === 'immich');
+      if (!immichApp) return res.status(404).send('');
+      if (!canAccessDashboardApp(config, immichApp, getEffectiveRole(req))) {
+        return res.status(403).send('');
+      }
+
+      const candidates = resolveAppApiCandidates(immichApp, req);
+      if (!candidates.length) return res.status(400).send('');
+
+      const apiKey = String(immichApp.apiKey || '').trim();
+      if (!apiKey) return res.status(400).send('');
+
+      const thumbSize = String(req.query?.size || 'preview').trim().toLowerCase() === 'thumbnail' ? 'thumbnail' : 'preview';
+      const fetchHeaders = { 'x-api-key': apiKey };
+
+      for (const baseUrl of candidates) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 15000);
+          let response;
+          try {
+            response = await fetch(
+              buildAppApiUrl(baseUrl, `api/assets/${encodeURIComponent(assetId)}/thumbnail`).toString() + `?size=${thumbSize}`,
+              { headers: fetchHeaders, signal: controller.signal },
+            );
+          } finally {
+            clearTimeout(timeoutId);
+          }
+          if (!response.ok) continue;
+          const contentType = response.headers.get('content-type') || 'image/jpeg';
+          res.set('Content-Type', contentType);
+          res.set('Cache-Control', 'public, max-age=86400');
+          const buffer = await response.arrayBuffer();
+          return res.send(Buffer.from(buffer));
+        } catch (_err) {
+          // try next candidate
+        }
+      }
+
+      return res.status(502).send('');
+    } catch (err) {
+      return res.status(500).json({ error: safeMessage(err) || 'Failed to proxy Immich thumbnail.' });
+    }
+  });
+
+  // ─── Wizarr overview ──────────────────────────────────────────────────────
+
+  app.get('/api/wizarr/overview', requireUser, async (req, res) => {
+    try {
+      const config = loadConfig();
+      const apps = Array.isArray(config?.apps) ? config.apps : [];
+      const wizarrApp = apps.find((appItem) => getAppBaseId(normalizeAppId(appItem?.id)) === 'wizarr');
+      if (!wizarrApp) return res.status(404).json({ error: 'Wizarr app is not configured.' });
+      if (!canAccessDashboardApp(config, wizarrApp, getEffectiveRole(req))) {
+        return res.status(403).json({ error: 'Wizarr dashboard access denied.' });
+      }
+
+      const candidates = resolveAppApiCandidates(wizarrApp, req);
+      if (!candidates.length) return res.status(400).json({ error: 'Missing Wizarr URL.' });
+
+      const apiKey = String(wizarrApp.apiKey || '').trim();
+      const headers = { Accept: 'application/json' };
+      if (apiKey) headers['X-API-Key'] = apiKey;
+
+      let lastError = '';
+
+      for (const baseUrl of candidates) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          let usersRes, invitationsRes;
+          try {
+            [usersRes, invitationsRes] = await Promise.all([
+              fetch(buildAppApiUrl(baseUrl, 'api/users').toString(), { headers, signal: controller.signal }),
+              fetch(buildAppApiUrl(baseUrl, 'api/invitations').toString(), { headers, signal: controller.signal }),
+            ]);
+          } finally {
+            clearTimeout(timeoutId);
+          }
+
+          if (!usersRes.ok && !invitationsRes.ok) {
+            lastError = `Wizarr responded with status ${usersRes.status}`;
+            continue;
+          }
+
+          const usersJson = usersRes.ok ? await usersRes.json().catch(() => []) : [];
+          const invJson = invitationsRes.ok ? await invitationsRes.json().catch(() => []) : [];
+          const users = Array.isArray(usersJson) ? usersJson : (Array.isArray(usersJson?.data) ? usersJson.data : []);
+          const invitations = Array.isArray(invJson) ? invJson : (Array.isArray(invJson?.data) ? invJson.data : []);
+
+          return res.json({ users, invitations });
+        } catch (err) {
+          lastError = safeMessage(err) || `Failed to reach Wizarr via ${baseUrl}.`;
+        }
+      }
+
+      return res.status(502).json({ error: lastError || 'Failed to fetch Wizarr data.' });
+    } catch (err) {
+      return res.status(500).json({ error: safeMessage(err) || 'Failed to fetch Wizarr overview.' });
+    }
+  });
+
+  // ─── Uptime Kuma overview ─────────────────────────────────────────────────
+
+  app.get('/api/uptime-kuma/status', requireUser, async (req, res) => {
+    try {
+      const config = loadConfig();
+      const apps = Array.isArray(config?.apps) ? config.apps : [];
+      const ukApp = apps.find((appItem) => getAppBaseId(normalizeAppId(appItem?.id)) === 'uptime-kuma');
+      if (!ukApp) return res.status(404).json({ error: 'Uptime Kuma app is not configured.' });
+      if (!canAccessDashboardApp(config, ukApp, getEffectiveRole(req))) {
+        return res.status(403).json({ error: 'Uptime Kuma dashboard access denied.' });
+      }
+
+      const slug = String(ukApp.uptimeKumaSlug || 'default').trim();
+      const candidates = resolveAppApiCandidates(ukApp, req);
+      if (!candidates.length) return res.status(400).json({ error: 'Missing Uptime Kuma URL.' });
+
+      let lastError = null;
+      for (const baseUrl of candidates) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 12000);
+        try {
+          const encodedSlug = encodeURIComponent(slug);
+          const pageUrl = buildAppApiUrl(baseUrl, `api/status-page/${encodedSlug}`).toString();
+          const hbUrl = buildAppApiUrl(baseUrl, `api/status-page/heartbeat/${encodedSlug}`).toString();
+          const headers = { Accept: 'application/json' };
+
+          // Fetch status page (names + groups) and heartbeats in parallel
+          const [pageRes, hbRes] = await Promise.all([
+            fetch(pageUrl, { headers, signal: controller.signal }),
+            fetch(hbUrl, { headers, signal: controller.signal }),
+          ]);
+          clearTimeout(timeout);
+
+          if (!pageRes.ok && !hbRes.ok) {
+            lastError = `HTTP ${pageRes.status}/${hbRes.status} from ${baseUrl}`;
+            continue;
+          }
+
+          const pagePayload = pageRes.ok ? await pageRes.json().catch(() => ({})) : {};
+          const hbPayload = hbRes.ok ? await hbRes.json().catch(() => ({})) : {};
+
+          const heartbeatList = hbPayload?.heartbeatList ?? {};
+
+          // Build a monitorId→{name} map from the public group list
+          const nameById = {};
+          const publicGroupList = Array.isArray(pagePayload?.publicGroupList) ? pagePayload.publicGroupList : [];
+          for (const group of publicGroupList) {
+            for (const mon of (Array.isArray(group.monitorList) ? group.monitorList : [])) {
+              const id = String(mon.id ?? '');
+              if (id) nameById[id] = String(mon.name || id).trim();
+            }
+          }
+
+          // Helper: extract status array + compute uptime% from a heartbeat array
+          function summariseBeats(rawBeats) {
+            const arr = Array.isArray(rawBeats) ? rawBeats : [];
+            const statuses = arr.map((b) => Number(b?.status ?? -1));
+            const up = statuses.filter((s) => s === 1).length;
+            const total = statuses.length;
+            const uptime = total > 0 ? Math.round((up / total) * 1000) / 10 : -1;
+            return { statuses, uptime };
+          }
+
+          // Build groups preserving status-page order; fall back to flat list if no groups
+          let groups;
+          if (publicGroupList.length > 0) {
+            groups = publicGroupList.map((group) => {
+              const monitors = (Array.isArray(group.monitorList) ? group.monitorList : []).map((mon) => {
+                const id = String(mon.id ?? '');
+                const rawBeats = heartbeatList[id];
+                const { statuses, uptime } = summariseBeats(rawBeats);
+                const latest = Array.isArray(rawBeats) ? rawBeats[rawBeats.length - 1] : (rawBeats || {});
+                return {
+                  id,
+                  name: String(mon.name || id).trim(),
+                  status: Number(latest?.status ?? -1),
+                  msg: String(latest?.msg || '').trim(),
+                  statuses,
+                  uptime,
+                };
+              });
+              return { name: String(group.name || 'Monitors').trim(), monitors };
+            });
+          } else {
+            // Heartbeat-only fallback — no names available
+            const monitors = Object.entries(heartbeatList).map(([id, rawBeats]) => {
+              const { statuses, uptime } = summariseBeats(rawBeats);
+              const latest = Array.isArray(rawBeats) ? rawBeats[rawBeats.length - 1] : (rawBeats || {});
+              return {
+                id,
+                name: nameById[id] || id,
+                status: Number(latest?.status ?? -1),
+                msg: String(latest?.msg || '').trim(),
+                statuses,
+                uptime,
+              };
+            });
+            monitors.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+            groups = [{ name: 'Monitors', monitors }];
+          }
+
+          return res.json({ slug, groups });
+        } catch (err) {
+          clearTimeout(timeout);
+          lastError = safeMessage(err) || `Failed to reach Uptime Kuma via ${baseUrl}.`;
+        }
+      }
+
+      return res.status(502).json({ error: lastError || 'Failed to fetch Uptime Kuma data.' });
+    } catch (err) {
+      return res.status(500).json({ error: safeMessage(err) || 'Failed to fetch Uptime Kuma status.' });
+    }
+  });
+
+  // ─── Guacamole overview ───────────────────────────────────────────────────
+
+  app.get('/api/guacamole/overview', requireUser, async (req, res) => {
+    try {
+      const config = loadConfig();
+      const apps = Array.isArray(config?.apps) ? config.apps : [];
+      const guacApp = apps.find((appItem) => getAppBaseId(normalizeAppId(appItem?.id)) === 'guacamole');
+      if (!guacApp) return res.status(404).json({ error: 'Guacamole app is not configured.' });
+      if (!canAccessDashboardApp(config, guacApp, getEffectiveRole(req))) {
+        return res.status(403).json({ error: 'Guacamole dashboard access denied.' });
+      }
+
+      const candidates = resolveAppApiCandidates(guacApp, req);
+      if (!candidates.length) return res.status(400).json({ error: 'Missing Guacamole URL.' });
+
+      const guacUsername = String(guacApp.username || '').trim();
+      const guacPassword = String(guacApp.password || '').trim();
+      let lastError = '';
+
+      for (const baseUrl of candidates) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 12000);
+        try {
+          // Step 1: authenticate and get token
+          const tokenBody = new URLSearchParams({ username: guacUsername, password: guacPassword }).toString();
+          const tokenRes = await fetch(buildAppApiUrl(baseUrl, 'api/tokens').toString(), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+            body: tokenBody,
+            signal: controller.signal,
+          });
+          if (!tokenRes.ok) {
+            lastError = `Guacamole auth failed with status ${tokenRes.status}`;
+            clearTimeout(timeout);
+            continue;
+          }
+          const tokenPayload = await tokenRes.json().catch(() => ({}));
+          const authToken = String(tokenPayload?.authToken || '').trim();
+          const dataSource = String(tokenPayload?.dataSource || 'mysql').trim();
+          if (!authToken) {
+            lastError = 'Guacamole did not return an auth token.';
+            clearTimeout(timeout);
+            continue;
+          }
+
+          // Step 2: fetch active connections, connections list, and users in parallel
+          const tokenParam = `token=${encodeURIComponent(authToken)}`;
+          const [activeRes, connRes, usersRes] = await Promise.all([
+            fetch(`${buildAppApiUrl(baseUrl, `api/session/data/${dataSource}/activeConnections`)}?${tokenParam}`, { headers: { Accept: 'application/json' }, signal: controller.signal }),
+            fetch(`${buildAppApiUrl(baseUrl, `api/session/data/${dataSource}/connections`)}?${tokenParam}`, { headers: { Accept: 'application/json' }, signal: controller.signal }),
+            fetch(`${buildAppApiUrl(baseUrl, `api/session/data/${dataSource}/users`)}?${tokenParam}`, { headers: { Accept: 'application/json' }, signal: controller.signal }),
+          ]);
+          clearTimeout(timeout);
+
+          const activeJson = activeRes.ok ? await activeRes.json().catch(() => ({})) : {};
+          const connJson = connRes.ok ? await connRes.json().catch(() => ({})) : {};
+          const usersJson = usersRes.ok ? await usersRes.json().catch(() => ({})) : {};
+
+          // Shape active sessions — each value has connection info nested
+          const activeSessions = Object.values(activeJson || {}).map((s) => ({
+            identifier: String(s?.identifier || ''),
+            connectionName: String(s?.connection?.name || s?.connectionIdentifier || ''),
+            protocol: String(s?.connection?.protocol || ''),
+            username: String(s?.username || ''),
+            startDate: s?.startDate || null,
+            remoteHost: String(s?.remoteHost || ''),
+          }));
+
+          // Shape connections list
+          const connectionsList = Object.values(connJson || {}).map((c) => ({
+            identifier: String(c?.identifier || ''),
+            name: String(c?.name || ''),
+            protocol: String(c?.protocol || ''),
+            parentIdentifier: String(c?.parentIdentifier || ''),
+            activeConnections: Number(c?.activeConnections ?? 0),
+          })).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+
+          return res.json({ activeSessions, connections: connectionsList });
+        } catch (err) {
+          clearTimeout(timeout);
+          lastError = safeMessage(err) || `Failed to reach Guacamole via ${baseUrl}.`;
+        }
+      }
+
+      return res.status(502).json({ error: lastError || 'Failed to fetch Guacamole data.' });
+    } catch (err) {
+      return res.status(500).json({ error: safeMessage(err) || 'Failed to fetch Guacamole overview.' });
+    }
+  });
+
+  // ─── Traefik overview ─────────────────────────────────────────────────────
+
+  app.get('/api/traefik/overview', requireUser, async (req, res) => {
+    try {
+      const config = loadConfig();
+      const apps = Array.isArray(config?.apps) ? config.apps : [];
+      const traefikApp = apps.find((appItem) => getAppBaseId(normalizeAppId(appItem?.id)) === 'traefik');
+      if (!traefikApp) return res.status(404).json({ error: 'Traefik app is not configured.' });
+      if (!canAccessDashboardApp(config, traefikApp, getEffectiveRole(req))) {
+        return res.status(403).json({ error: 'Traefik dashboard access denied.' });
+      }
+
+      const candidates = resolveAppApiCandidates(traefikApp, req);
+      if (!candidates.length) return res.status(400).json({ error: 'Missing Traefik URL.' });
+
+      const apiKey = String(traefikApp.apiKey || '').trim();
+      let lastError = '';
+
+      for (const baseUrl of candidates) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 12000);
+        try {
+          const headers = { Accept: 'application/json' };
+          if (apiKey) {
+            headers['Authorization'] = `Bearer ${apiKey}`;
+          } else if (traefikApp.username && traefikApp.password) {
+            headers['Authorization'] = 'Basic ' + Buffer.from(`${traefikApp.username}:${traefikApp.password}`).toString('base64');
+          }
+
+          const [routersRes, servicesRes] = await Promise.all([
+            fetch(buildAppApiUrl(baseUrl, 'api/http/routers').toString(), { headers, signal: controller.signal }),
+            fetch(buildAppApiUrl(baseUrl, 'api/http/services').toString(), { headers, signal: controller.signal }),
+          ]);
+          clearTimeout(timeout);
+
+          // If both fail, record the error and try the next candidate rather than silently returning empty data
+          if (!routersRes.ok && !servicesRes.ok) {
+            lastError = `Traefik API returned ${routersRes.status} for routers and ${servicesRes.status} for services. Ensure the Traefik API is enabled (--api or --api.insecure=true).`;
+            continue;
+          }
+
+          const routersJson = routersRes.ok ? await routersRes.json().catch(() => []) : [];
+          const servicesJson = servicesRes.ok ? await servicesRes.json().catch(() => []) : [];
+
+          const routers = (Array.isArray(routersJson) ? routersJson : Object.values(routersJson || {}))
+            .map((r) => ({
+              name: String(r?.name || r?.routerName || ''),
+              status: String(r?.status || 'unknown'),
+              entryPoints: Array.isArray(r?.entryPoints) ? r.entryPoints.join(', ') : String(r?.entryPoints || ''),
+              service: String(r?.service || ''),
+              rule: String(r?.rule || ''),
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+
+          const services = (Array.isArray(servicesJson) ? servicesJson : Object.values(servicesJson || {}))
+            .map((s) => ({
+              name: String(s?.name || s?.serviceName || ''),
+              status: String(s?.status || 'unknown'),
+              type: String(s?.type || ''),
+              serverCount: Number(s?.loadBalancer?.servers?.length ?? 0),
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+
+          return res.json({ routers, services });
+        } catch (err) {
+          clearTimeout(timeout);
+          lastError = safeMessage(err) || `Failed to reach Traefik via ${baseUrl}.`;
+        }
+      }
+
+      return res.status(502).json({ error: lastError || 'Failed to fetch Traefik data.' });
+    } catch (err) {
+      return res.status(500).json({ error: safeMessage(err) || 'Failed to fetch Traefik overview.' });
+    }
+  });
+
   // ─── Widget Bar CRUD ──────────────────────────────────────────────────────
 
   app.get('/api/widget-bars', requireSettingsAdmin, (req, res) => {
@@ -996,8 +1799,14 @@ export function registerApiSpecialty(app, ctx) {
       if (systemType && !SYSTEM_WIDGET_TYPE_BY_ID.has(systemType)) {
         return res.status(400).json({ error: `Unsupported system widget type: ${systemType}` });
       }
-      // Widget IDs must be unique across all rows in the bar
-      const existingWidgetIds = new Set(bar.rows.flatMap((r) => r.widgets.map((w) => normalizeWidgetId(w.id || ''))).filter(Boolean));
+      // Widget IDs must be unique across all widget bars to avoid cross-bar collisions in DOM/data attributes.
+      const existingWidgetIds = new Set(
+        bars
+          .flatMap((entryBar) => (Array.isArray(entryBar?.rows) ? entryBar.rows : []))
+          .flatMap((rowEntry) => (Array.isArray(rowEntry?.widgets) ? rowEntry.widgets : []))
+          .map((widgetEntry) => normalizeWidgetId(widgetEntry?.id || ''))
+          .filter(Boolean)
+      );
       const baseWidgetId = normalizeWidgetId(`wg-${systemType || appId}`);
       let widgetId = baseWidgetId;
       let suffix = 2;
@@ -1321,10 +2130,6 @@ export function registerApiSpecialty(app, ctx) {
       }
 
       const typeId = getAppBaseId(appItem.id);
-      const statType = getWidgetStatType(typeId);
-      if (!statType) {
-        return res.status(400).json({ error: `No stat type for app family: ${typeId}` });
-      }
 
       const candidates = resolveAppApiCandidates(appItem, req);
       if (!candidates.length) {
@@ -1336,8 +2141,13 @@ export function registerApiSpecialty(app, ctx) {
       async function doFetch(urlString, fetchHeaders, opts) {
         const method = String(opts?.method || 'GET').toUpperCase();
         const body = opts?.body;
+        const timeoutMsRaw = Number(opts?.timeoutMs);
+        const timeoutMs = Number.isFinite(timeoutMsRaw)
+          ? Math.max(1000, Math.min(15000, Math.round(timeoutMsRaw)))
+          : 8000;
+        const startedAt = Date.now();
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
         try {
           const response = await fetch(urlString, {
             method,
@@ -1348,7 +2158,14 @@ export function registerApiSpecialty(app, ctx) {
           const text = await response.text().catch(() => '');
           let json = null;
           try { json = text ? JSON.parse(text) : null; } catch (_e) { json = null; }
-          return { ok: response.ok, status: response.status, headers: response.headers, json, text };
+          return {
+            ok: response.ok,
+            status: response.status,
+            headers: response.headers,
+            json,
+            text,
+            durationMs: Math.max(0, Date.now() - startedAt),
+          };
         } finally {
           clearTimeout(timeout);
         }
@@ -1369,14 +2186,25 @@ export function registerApiSpecialty(app, ctx) {
         return lastResult;
       }
 
-      async function tryCandidatePaths(paths, fetchHeaders) {
+      async function tryCandidatePaths(paths, fetchHeaders, opts) {
+        const requestOpts = (opts && typeof opts === 'object') ? { ...opts } : {};
+        const acceptedStatuses = new Set(
+          (Array.isArray(requestOpts.acceptStatuses) ? requestOpts.acceptStatuses : [])
+            .map((value) => Number(value))
+            .filter((value) => Number.isFinite(value))
+        );
+        delete requestOpts.acceptStatuses;
         let lastResult = null;
         for (const path of (Array.isArray(paths) ? paths : [])) {
-          const result = await tryAllCandidates(async (baseUrl) =>
-            doFetch(buildAppApiUrl(baseUrl, path).toString(), fetchHeaders)
-          );
-          if (result?.ok) return result;
-          if (result) lastResult = result;
+          for (const baseUrl of candidates) {
+            try {
+              const result = await doFetch(buildAppApiUrl(baseUrl, path).toString(), fetchHeaders, requestOpts);
+              if (result?.ok || acceptedStatuses.has(Number(result?.status))) return result;
+              if (result) lastResult = result;
+            } catch (_e) {
+              // Try the next candidate URL/path pair.
+            }
+          }
         }
         return lastResult;
       }
@@ -1415,6 +2243,35 @@ export function registerApiSpecialty(app, ctx) {
         return null;
       }
 
+      function pickValueFromPath(source, path) {
+        const rawPath = String(path || '').trim();
+        if (!rawPath) return null;
+        const parts = rawPath.split('.').map((part) => part.trim()).filter(Boolean);
+        if (!parts.length) return null;
+        let cur = source;
+        for (const part of parts) {
+          if (!cur || typeof cur !== 'object') return null;
+          if (!(part in cur)) return null;
+          cur = cur[part];
+        }
+        return cur;
+      }
+
+      function pickTextFromPaths(source, paths) {
+        for (const path of (Array.isArray(paths) ? paths : [])) {
+          const value = pickValueFromPath(source, path);
+          if (value === null || value === undefined) continue;
+          if (typeof value === 'string') {
+            const trimmed = value.trim();
+            if (trimmed) return trimmed;
+            continue;
+          }
+          if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+          if (typeof value === 'boolean') return value ? 'true' : 'false';
+        }
+        return '';
+      }
+
       function parseMetricNumber(value) {
         const direct = parseFiniteNumber(value);
         if (Number.isFinite(direct)) return direct;
@@ -1440,6 +2297,47 @@ export function registerApiSpecialty(app, ctx) {
         if (!payload || typeof payload !== 'object') return [];
         const list = payload.records || payload.items || payload.results || payload.data;
         return Array.isArray(list) ? list : [];
+      }
+
+      function resolveArrayPayload(payload, preferredKeys = []) {
+        if (Array.isArray(payload)) return { list: payload, found: true };
+        if (!payload || typeof payload !== 'object') return { list: [], found: false };
+        for (const key of (Array.isArray(preferredKeys) ? preferredKeys : [])) {
+          if (Array.isArray(payload?.[key])) return { list: payload[key], found: true };
+        }
+        const fallbackKeys = ['records', 'items', 'results', 'data'];
+        for (const key of fallbackKeys) {
+          if (Array.isArray(payload?.[key])) return { list: payload[key], found: true };
+        }
+        return { list: [], found: false };
+      }
+
+      function extractCountFromPayload(payload, opts = {}) {
+        const options = (opts && typeof opts === 'object') ? opts : {};
+        const extraKeys = Array.isArray(options.numericKeys) ? options.numericKeys : [];
+        const extraPaths = Array.isArray(options.numericPaths) ? options.numericPaths : [];
+        const listKeys = Array.isArray(options.arrayKeys) ? options.arrayKeys : [];
+        const count = pickFiniteFromObject(payload, [
+          'count',
+          'total',
+          'totalCount',
+          'totalItems',
+          'itemCount',
+          'resultsCount',
+          ...extraKeys,
+        ]);
+        if (count !== null) return Math.max(0, Math.round(count));
+        const countFromPath = pickFiniteFromPaths(payload, [
+          'count',
+          'total',
+          'stats.count',
+          'stats.total',
+          ...extraPaths,
+        ]);
+        if (countFromPath !== null) return Math.max(0, Math.round(countFromPath));
+        const { list, found } = resolveArrayPayload(payload, listKeys);
+        if (found) return list.length;
+        return null;
       }
 
       function countEnabledEntries(list) {
@@ -1544,6 +2442,53 @@ export function registerApiSpecialty(app, ctx) {
           return `${text}K`;
         }
         return String(n);
+      }
+
+      function formatDurationFromSeconds(value) {
+        const parsed = parseMetricNumber(value);
+        if (!Number.isFinite(parsed)) return '';
+        let totalSeconds = Math.max(0, Math.round(parsed));
+        const days = Math.floor(totalSeconds / 86400);
+        totalSeconds -= days * 86400;
+        const hours = Math.floor(totalSeconds / 3600);
+        totalSeconds -= hours * 3600;
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds - (minutes * 60);
+        if (days > 0) return `${days}d ${hours}h`;
+        if (hours > 0) return `${hours}h ${minutes}m`;
+        if (minutes > 0) return `${minutes}m ${seconds}s`;
+        return `${seconds}s`;
+      }
+
+      function buildGenericApiHeaders() {
+        const headers = { Accept: 'application/json' };
+        if (apiKey) {
+          // Send only one variant — HTTP headers are case-insensitive at the protocol
+          // level, but Node.js fetch (undici) appends duplicate JS property names as a
+          // comma-joined multi-value which breaks strict auth middleware (e.g. Profilarr).
+          if (/^bearer\s+/i.test(apiKey)) {
+            headers.Authorization = apiKey;
+          } else {
+            headers['X-Api-Key'] = apiKey;
+          }
+        }
+        const authHeader = buildBasicAuthHeader(appItem.username || '', appItem.password || '');
+        if (authHeader && !headers.Authorization) headers.Authorization = authHeader;
+        return headers;
+      }
+
+      function hasReachableResult(results) {
+        return (Array.isArray(results) ? results : []).some((result) => {
+          const code = Number(result?.status);
+          return Number.isFinite(code) && code >= 100 && code < 500;
+        });
+      }
+
+      function hasAuthRequiredResult(results) {
+        return (Array.isArray(results) ? results : []).some((result) => {
+          const code = Number(result?.status);
+          return code === 401 || code === 403;
+        });
       }
 
       let status = 'unknown';
@@ -2392,12 +3337,771 @@ export function registerApiSpecialty(app, ctx) {
           status = 'down';
         }
 
-      // ── fallback: system status check ────────────────────────────────────
+      // ── immich ───────────────────────────────────────────────────────────
+      } else if (typeId === 'immich') {
+        const headers = { Accept: 'application/json' };
+        if (apiKey) headers['x-api-key'] = apiKey;
+        const result = await tryCandidatePaths(['api/server/statistics', 'api/server-info/stats'], headers);
+        if (result?.ok && result.json) {
+          status = 'up';
+          const j = result.json;
+          const photos = Number(j.photos ?? j.photoCount ?? j.total_photos) || 0;
+          const videos = Number(j.videos ?? j.videoCount ?? j.total_videos) || 0;
+          const users = Number(j.usage?.length ?? j.usageByUser?.length ?? j.users) || 0;
+          const usageBytes = j.usage
+            ? (Array.isArray(j.usage) ? j.usage.reduce((s, u) => s + (Number(u.usageRaw ?? u.usage) || 0), 0) : Number(j.usage))
+            : Number(j.diskSizeRaw ?? j.diskSize ?? 0);
+          const storageTB = usageBytes >= 1e12 ? `${(usageBytes / 1e12).toFixed(2)} TB`
+            : usageBytes >= 1e9 ? `${(usageBytes / 1e9).toFixed(1)} GB`
+            : usageBytes >= 1e6 ? `${(usageBytes / 1e6).toFixed(0)} MB` : `${usageBytes} B`;
+          metrics = [
+            { key: 'photos',  label: 'Photos',  value: photos },
+            { key: 'videos',  label: 'Videos',  value: videos },
+            { key: 'users',   label: 'Users',   value: users },
+            { key: 'storage', label: 'Storage', value: storageTB },
+          ];
+        } else {
+          status = 'down';
+        }
+
+      // ── portainer ────────────────────────────────────────────────────────
+      } else if (typeId === 'portainer') {
+        const portainerHeaders = { Accept: 'application/json' };
+        if (apiKey) portainerHeaders['X-API-Key'] = apiKey;
+        // Fetch endpoint list; pick first local endpoint (type=1) or just endpoint id 1
+        const endpointsResult = await tryAllCandidates(async (baseUrl) =>
+          doFetch(buildAppApiUrl(baseUrl, 'api/endpoints').toString(), portainerHeaders)
+        );
+        if (endpointsResult?.ok && Array.isArray(endpointsResult.json)) {
+          status = 'up';
+          const endpoints = endpointsResult.json;
+          const endpoint = endpoints.find((e) => e.Type === 1) || endpoints[0];
+          let running = 0, stopped = 0, total = 0;
+          if (endpoint) {
+            const envId = endpoint.Id;
+            const containersResult = await tryAllCandidates(async (baseUrl) =>
+              doFetch(buildAppApiUrl(baseUrl, `api/endpoints/${envId}/docker/containers/json`).toString() + '?all=1', portainerHeaders)
+            );
+            if (containersResult?.ok && Array.isArray(containersResult.json)) {
+              const containers = containersResult.json;
+              total = containers.length;
+              running = containers.filter((c) => String(c.State || '').toLowerCase() === 'running').length;
+              stopped = total - running;
+            } else {
+              // Fall back to snapshot stats
+              const snap = endpoint.Snapshots?.[0] || endpoint.Snapshot || {};
+              running = Number(snap.RunningContainerCount ?? snap.running) || 0;
+              stopped = Number(snap.StoppedContainerCount ?? snap.stopped) || 0;
+              total = running + stopped;
+            }
+          }
+          metrics = [
+            { key: 'running', label: 'Running', value: running },
+            { key: 'stopped', label: 'Stopped', value: stopped },
+            { key: 'total',   label: 'Total',   value: total },
+          ];
+        } else {
+          status = 'down';
+        }
+
+      // ── glances ──────────────────────────────────────────────────────────
+      } else if (typeId === 'glances') {
+        const glancesAuth = {};
+        const username = String(appItem.username || '').trim();
+        const password = String(appItem.password || '').trim();
+        if (username && password) glancesAuth.Authorization = buildBasicAuthHeader(username, password);
+        const glancesHeaders = { Accept: 'application/json', ...glancesAuth };
+        // Try v3 API then v4 naming
+        const [cpuResult, memResult, loadResult] = await Promise.all([
+          tryCandidatePaths(['api/3/cpu', 'api/4/cpu', 'api/cpu'], glancesHeaders),
+          tryCandidatePaths(['api/3/mem', 'api/4/mem', 'api/mem'], glancesHeaders),
+          tryCandidatePaths(['api/3/load', 'api/4/load', 'api/load'], glancesHeaders),
+        ]);
+        if (cpuResult?.ok || memResult?.ok) {
+          status = 'up';
+          const cpu = cpuResult?.json;
+          const mem = memResult?.json;
+          const load = loadResult?.json;
+          const cpuPct = Number(cpu?.total ?? cpu?.user ?? 0);
+          const memPct = Number(mem?.percent ?? 0);
+          const loadVal = Number(load?.min5 ?? load?.['1min'] ?? load?.avg1 ?? 0);
+          metrics = [
+            { key: 'cpu',    label: 'CPU',      value: `${cpuPct.toFixed(1)}%` },
+            { key: 'memory', label: 'Memory',   value: `${memPct.toFixed(1)}%` },
+            { key: 'load',   label: 'Load Avg', value: loadVal.toFixed(2) },
+          ];
+        } else {
+          status = 'down';
+        }
+
+      // ── uptime-kuma ──────────────────────────────────────────────────────
+      } else if (typeId === 'uptime-kuma') {
+        // Uptime Kuma exposes public status page heartbeat JSON; slug configured via uptimeKumaSlug field
+        const slug = String(appItem.uptimeKumaSlug || 'default').trim();
+        const result = await tryAllCandidates(async (baseUrl) =>
+          doFetch(buildAppApiUrl(baseUrl, `api/status-page/heartbeat/${slug}`).toString(), { Accept: 'application/json' })
+        );
+        if (result?.ok && result.json) {
+          status = 'up';
+          const heartbeatList = result.json?.heartbeatList ?? result.json?.data ?? {};
+          const monitorList = result.json?.monitorList ?? {};
+          const monitors = Object.values(heartbeatList).map((beats) => {
+            const latest = Array.isArray(beats) ? beats[beats.length - 1] : beats;
+            return Number(latest?.status ?? -1);
+          });
+          const up = monitors.filter((s) => s === 1).length;
+          const down = monitors.filter((s) => s === 0).length;
+          const pending = monitors.filter((s) => s === 2).length;
+          const maintenance = monitors.filter((s) => s === 3).length;
+          metrics = [
+            { key: 'up',          label: 'Up',          value: up },
+            { key: 'down',        label: 'Down',        value: down },
+            { key: 'pending',     label: 'Pending',     value: pending },
+            { key: 'maintenance', label: 'Maintenance', value: maintenance },
+          ];
+        } else {
+          status = 'down';
+        }
+
+      // ── speedtest-tracker ────────────────────────────────────────────────
+      } else if (typeId === 'speedtest-tracker') {
+        const stHeaders = { Accept: 'application/json' };
+        if (apiKey) stHeaders['Authorization'] = `Bearer ${apiKey}`;
+        const username = String(appItem.username || '').trim();
+        const password = String(appItem.password || '').trim();
+        if (!apiKey && username && password) stHeaders.Authorization = buildBasicAuthHeader(username, password);
+        // Primary: /api/speedtest/latest (alexjustesen/speedtest-tracker v1.x backwards-compat route)
+        // Fallback: /api/v1/results/latest for older forks; /api/healthcheck as last-resort ping
+        const result = await tryCandidatePaths(
+          ['api/speedtest/latest', 'api/v1/results/latest', 'api/healthcheck'],
+          stHeaders
+        );
+        if (result?.ok && result.json) {
+          status = 'up';
+          const j = result.json?.data ?? result.json;
+          // download/upload returned in Mbps by the backwards-compat route
+          const rawDown = Number(j.download ?? j.download_bits ?? j.download_mbps ?? 0);
+          const rawUp = Number(j.upload ?? j.upload_bits ?? j.upload_mbps ?? 0);
+          // Values > 10000 are raw bits/s; smaller values are already Mbps
+          const toMbps = (v) => v > 10000 ? `${(v / 1e6).toFixed(1)} Mbps` : `${Number(v).toFixed(1)} Mbps`;
+          const ping = Number(j.ping ?? j.latency ?? 0);
+          if (rawDown === 0 && rawUp === 0) {
+            metrics = []; // healthcheck fallback — up but no test data yet
+          } else {
+            metrics = [
+              { key: 'download', label: 'Download', value: toMbps(rawDown) },
+              { key: 'upload',   label: 'Upload',   value: toMbps(rawUp) },
+              { key: 'ping',     label: 'Ping',     value: `${ping.toFixed(0)} ms` },
+            ];
+          }
+        } else {
+          status = 'down';
+        }
+
+      // ── gluetun ──────────────────────────────────────────────────────────
+      } else if (typeId === 'gluetun') {
+        const [vpnResult, ipResult] = await Promise.all([
+          tryAllCandidates(async (baseUrl) =>
+            doFetch(buildAppApiUrl(baseUrl, 'v1/openvpn/status').toString(), { Accept: 'application/json' })
+          ),
+          tryAllCandidates(async (baseUrl) =>
+            doFetch(buildAppApiUrl(baseUrl, 'v1/publicip/ip').toString(), { Accept: 'application/json' })
+          ),
+        ]);
+        if (vpnResult?.ok || ipResult?.ok) {
+          status = 'up';
+          const vpnStatus = String(vpnResult?.json?.status ?? vpnResult?.json?.state ?? '').toLowerCase();
+          const connected = vpnStatus === 'running' || vpnStatus === 'connected';
+          const publicIp = String(ipResult?.json?.public_ip ?? ipResult?.json?.ip ?? '—');
+          const country = String(ipResult?.json?.country ?? ipResult?.json?.location ?? '—');
+          metrics = [
+            { key: 'status',  label: 'VPN Status', value: connected ? 'Connected' : (vpnStatus || 'Unknown') },
+            { key: 'ip',      label: 'Public IP',  value: publicIp },
+            { key: 'country', label: 'Country',    value: country },
+          ];
+        } else {
+          status = 'down';
+        }
+
+      // ── paperless-ngx ────────────────────────────────────────────────────
+      } else if (typeId === 'paperless-ngx') {
+        const plxHeaders = { Accept: 'application/json' };
+        if (apiKey) plxHeaders.Authorization = `Token ${apiKey}`;
+        const username = String(appItem.username || '').trim();
+        const password = String(appItem.password || '').trim();
+        if (!apiKey && username && password) plxHeaders.Authorization = buildBasicAuthHeader(username, password);
+        const result = await tryCandidatePaths(
+          ['api/statistics/', 'api/statistics', 'api/v1/statistics/'],
+          plxHeaders
+        );
+        if (result?.ok && result.json) {
+          status = 'up';
+          const j = result.json;
+          const documents = Number(j.documents_total ?? j.total ?? j.count) || 0;
+          const inbox = Number(j.documents_inbox ?? j.inbox_count ?? j.inbox) || 0;
+          metrics = [
+            { key: 'documents', label: 'Documents', value: documents },
+            { key: 'inbox',     label: 'Inbox',     value: inbox },
+          ];
+        } else {
+          status = 'down';
+        }
+
+      // ── metube ───────────────────────────────────────────────────────────
+      } else if (typeId === 'metube') {
+        // MeTube exposes /history which returns { queue: [...], pending: [...], done: [...] }
+        const result = await tryAllCandidates(async (baseUrl) =>
+          doFetch(buildAppApiUrl(baseUrl, 'history').toString(), { Accept: 'application/json' })
+        );
+        if (result?.ok && result.json) {
+          status = 'up';
+          const j = result.json;
+          const queueArr   = Array.isArray(j.queue)   ? j.queue   : [];
+          const pendingArr = Array.isArray(j.pending) ? j.pending : [];
+          const doneArr    = Array.isArray(j.done)    ? j.done    : [];
+          const allActive  = [...queueArr, ...pendingArr];
+          const downloading = allActive.filter((e) => {
+            const s = String(e?.status ?? e?.state ?? '').toLowerCase();
+            return s === 'downloading' || s === 'started';
+          }).length;
+          const queued = allActive.filter((e) => {
+            const s = String(e?.status ?? e?.state ?? '').toLowerCase();
+            return !s || s === 'pending' || s === 'queued';
+          }).length;
+          metrics = [
+            { key: 'downloading', label: 'Downloading', value: downloading },
+            { key: 'queued',      label: 'Queued',      value: queued },
+            { key: 'done',        label: 'Done',        value: doneArr.length },
+          ];
+        } else {
+          status = 'down';
+        }
+
+      // ── audiobookshelf ───────────────────────────────────────────────────
+      } else if (typeId === 'audiobookshelf') {
+        const absHeaders = { Accept: 'application/json' };
+        if (apiKey) absHeaders.Authorization = `Bearer ${apiKey}`;
+        const libsResult = await tryAllCandidates(async (baseUrl) =>
+          doFetch(buildAppApiUrl(baseUrl, 'api/libraries').toString(), absHeaders)
+        );
+        if (libsResult?.ok && libsResult.json) {
+          const libraries = Array.isArray(libsResult.json.libraries) ? libsResult.json.libraries : [];
+          const statsResults = await Promise.all(
+            libraries.map((lib) =>
+              tryAllCandidates(async (baseUrl) =>
+                doFetch(buildAppApiUrl(baseUrl, `api/libraries/${lib.id}/stats`).toString(), absHeaders)
+              )
+            )
+          );
+          let books = 0, podcasts = 0;
+          libraries.forEach((lib, i) => {
+            const s = statsResults[i]?.json ?? {};
+            if (lib.mediaType === 'book') books += Number(s.totalItems ?? 0);
+            else if (lib.mediaType === 'podcast') podcasts += Number(s.totalItems ?? 0);
+          });
+          status = 'up';
+          metrics = [
+            { key: 'books',    label: 'Books',    value: books },
+            { key: 'podcasts', label: 'Podcasts', value: podcasts },
+          ];
+        } else {
+          status = 'down';
+        }
+
+      // ── tdarr ────────────────────────────────────────────────────────────
+      } else if (typeId === 'tdarr') {
+        const tdarrBody = JSON.stringify({ data: { collection: 'StatisticsJSONDB', mode: 'getById', docID: 'statistics' } });
+        const tdarrHeaders = { 'Content-Type': 'application/json', Accept: 'application/json' };
+        if (apiKey) tdarrHeaders['x-api-key'] = apiKey;
+        const result = await tryAllCandidates(async (baseUrl) =>
+          doFetch(buildAppApiUrl(baseUrl, 'api/v2/cruddb').toString(), tdarrHeaders, { method: 'POST', body: tdarrBody })
+        );
+        if (result?.ok && result.json) {
+          status = 'up';
+          const j = result.json;
+          const v = (a, b) => Number(j[a] ?? j[b] ?? 0);
+          const queue     = v('table1ViewableCount', 'table1Count') + v('table4ViewableCount', 'table4Count');
+          const processed = v('table2ViewableCount', 'table2Count') + v('table5ViewableCount', 'table5Count');
+          const errored   = v('table3ViewableCount', 'table3Count') + v('table6ViewableCount', 'table6Count');
+          const savedGb   = Math.abs(Number(j.sizeDiff ?? 0)).toFixed(2);
+          metrics = [
+            { key: 'queue',     label: 'Queue',       value: queue },
+            { key: 'processed', label: 'Processed',   value: processed },
+            { key: 'errored',   label: 'Errored',     value: errored },
+            { key: 'saved',     label: 'Space Saved', value: `${savedGb} GB` },
+          ];
+        } else {
+          status = 'down';
+        }
+
+      // ── guacamole ────────────────────────────────────────────────────────
+      } else if (typeId === 'guacamole') {
+        const guacUsername = String(appItem.username || '').trim();
+        const guacPassword = String(appItem.password || '').trim();
+        // Must use the same baseUrl for all requests after token auth
+        let guacDone = false;
+        for (const candidateUrl of candidates) {
+          const tokenBody = new URLSearchParams({ username: guacUsername, password: guacPassword }).toString();
+          const tokenResult = await doFetch(
+            buildAppApiUrl(candidateUrl, 'api/tokens').toString(),
+            { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+            { method: 'POST', body: tokenBody }
+          );
+          if (!tokenResult?.ok || !tokenResult.json?.authToken) continue;
+          const { authToken, dataSource } = tokenResult.json;
+          const ds = String(dataSource || 'mysql').trim();
+          const tokenParam = `token=${encodeURIComponent(authToken)}`;
+          const [activeResult, connResult, usersResult] = await Promise.all([
+            doFetch(`${buildAppApiUrl(candidateUrl, `api/session/data/${ds}/activeConnections`)}?${tokenParam}`, { Accept: 'application/json' }),
+            doFetch(`${buildAppApiUrl(candidateUrl, `api/session/data/${ds}/connections`)}?${tokenParam}`, { Accept: 'application/json' }),
+            doFetch(`${buildAppApiUrl(candidateUrl, `api/session/data/${ds}/users`)}?${tokenParam}`, { Accept: 'application/json' }),
+          ]);
+          status = 'up';
+          const activeSessions = activeResult?.ok && activeResult.json && typeof activeResult.json === 'object' ? Object.keys(activeResult.json).length : 0;
+          const totalConnections = connResult?.ok && connResult.json && typeof connResult.json === 'object' ? Object.keys(connResult.json).length : 0;
+          const totalUsers = usersResult?.ok && usersResult.json && typeof usersResult.json === 'object' ? Object.keys(usersResult.json).length : 0;
+          metrics = [
+            { key: 'active',      label: 'Active',      value: activeSessions },
+            { key: 'connections', label: 'Connections', value: totalConnections },
+            { key: 'users',       label: 'Users',       value: totalUsers },
+          ];
+          guacDone = true;
+          break;
+        }
+        if (!guacDone) status = 'down';
+
+      // ── traefik ──────────────────────────────────────────────────────────
+      } else if (typeId === 'traefik') {
+        const traefikHeaders = { Accept: 'application/json' };
+        if (apiKey) traefikHeaders['Authorization'] = `Bearer ${apiKey}`;
+        if (appItem.username && appItem.password) {
+          traefikHeaders['Authorization'] = 'Basic ' + Buffer.from(`${appItem.username}:${appItem.password}`).toString('base64');
+        }
+        const result = await tryCandidatePaths(['api/overview'], traefikHeaders);
+        if (result?.ok && result.json) {
+          status = 'up';
+          const j = result.json;
+          metrics = [
+            { key: 'routers',     label: 'Routers',     value: Number(j?.http?.routers?.total     ?? 0) },
+            { key: 'services',    label: 'Services',    value: Number(j?.http?.services?.total    ?? 0) },
+            { key: 'middlewares', label: 'Middlewares', value: Number(j?.http?.middlewares?.total ?? 0) },
+          ];
+        } else {
+          status = 'down';
+        }
+
+      // ── dozzle ───────────────────────────────────────────────────────────
+      } else if (typeId === 'dozzle') {
+        // Helper: read the initial containers-changed SSE event from a connected response.
+        // controller is aborted by the caller when done; timeoutMs guards against slow streams.
+        const readDozzleContainersChanged = (sseRes, controller, timeoutMs = 3000) => {
+          const body = sseRes?.body;
+          if (!body || typeof body.getReader !== 'function') return Promise.resolve(null);
+          const reader = body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+
+          return new Promise((resolve) => {
+            let settled = false;
+            let currentEvent = '';
+            let currentDataLines = [];
+            let timer = null;
+
+            const cleanup = (result = null) => {
+              if (settled) return;
+              settled = true;
+              if (timer) clearTimeout(timer);
+              controller.signal.removeEventListener('abort', onAbort);
+              reader.cancel().catch(() => {});
+              resolve(result);
+            };
+            const onAbort = () => cleanup(null);
+            const dispatchEvent = () => {
+              if (currentEvent === 'containers-changed' && currentDataLines.length) {
+                try {
+                  const parsed = JSON.parse(currentDataLines.join('\n').trim());
+                  if (Array.isArray(parsed)) { cleanup(parsed); return; }
+                } catch {}
+              }
+              currentEvent = '';
+              currentDataLines = [];
+            };
+            const parseLines = () => {
+              const lines = buffer.split('\n');
+              buffer = lines.pop() || '';
+              for (const rawLine of lines) {
+                if (settled) return;
+                const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
+                if (!line) { dispatchEvent(); continue; }
+                if (line.startsWith(':')) continue;
+                if (line.startsWith('event:')) { currentEvent = line.slice(6).trim(); continue; }
+                if (line.startsWith('data:')) currentDataLines.push(line.slice(5).trimStart());
+              }
+            };
+            const pump = () => {
+              if (settled) return;
+              reader.read()
+                .then(({ done, value }) => {
+                  if (settled) return;
+                  if (done) { buffer += '\n'; parseLines(); cleanup(null); return; }
+                  if (value) { buffer += decoder.decode(value, { stream: true }); parseLines(); }
+                  if (!settled) pump();
+                })
+                .catch(() => cleanup(null));
+            };
+
+            controller.signal.addEventListener('abort', onAbort, { once: true });
+            timer = setTimeout(() => cleanup(null), Math.max(500, timeoutMs));
+            pump();
+          });
+        };
+
+        // Single 4-second budget covers ALL operations (auth + SSE across all candidates).
+        // Per-step signals are composed with AbortSignal.any() so the tighter limit always wins.
+        const budgetCtrl = new AbortController();
+        const budgetTimer = setTimeout(() => budgetCtrl.abort(), 4000);
+        let dozzleDone = false;
+
+        try {
+          const dozzleHeaders = { Accept: 'text/event-stream', 'Cache-Control': 'no-cache' };
+
+          // Step 1: resolve credentials.
+          // Dozzle supports two auth modes:
+          //   a) Dozzle simple auth (users.yml) — POST /api/token → session cookie
+          //   b) Reverse-proxy basic auth (e.g. Traefik) — Authorization: Basic header
+          // Try (a) first; if /api/token succeeds use the cookie; otherwise fall back to (b).
+          if (appItem.username && appItem.password) {
+            const basicAuth = 'Basic ' + Buffer.from(`${appItem.username}:${appItem.password}`).toString('base64');
+            let gotSessionCookie = false;
+            for (const baseUrl of candidates) {
+              if (budgetCtrl.signal.aborted) break;
+              try {
+                const tokenRes = await fetch(buildAppApiUrl(baseUrl, 'api/token').toString(), {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                  body: new URLSearchParams({ username: appItem.username, password: appItem.password }).toString(),
+                  signal: AbortSignal.any([budgetCtrl.signal, AbortSignal.timeout(1500)]),
+                });
+                if (tokenRes.ok) {
+                  const cookie = (tokenRes.headers.get('set-cookie') || '').split(';')[0].trim();
+                  if (cookie) { dozzleHeaders['Cookie'] = cookie; gotSessionCookie = true; }
+                }
+                // Any HTTP response (200, 401, 404, etc.) means we've learned enough:
+                // either we got a cookie (Dozzle simple-auth) or this instance has no token auth.
+                // No need to try the remaining candidates — they're the same Dozzle instance.
+                break;
+              } catch {}
+              // catch = timeout/network error: try next candidate
+            }
+            // Fall back to Basic auth (covers Traefik/proxy-level auth on the remote URL)
+            if (!gotSessionCookie) dozzleHeaders['Authorization'] = basicAuth;
+          }
+
+          // Step 2: connect to SSE stream and read the initial containers-changed event
+          for (const baseUrl of candidates) {
+            if (budgetCtrl.signal.aborted) break;
+            try {
+              const sseRes = await fetch(buildAppApiUrl(baseUrl, 'api/events/stream').toString(), {
+                headers: dozzleHeaders,
+                signal: AbortSignal.any([budgetCtrl.signal, AbortSignal.timeout(2000)]),
+              });
+              if (!sseRes.ok) continue;
+
+              // Wire an inner controller to the budget so cleanup always fires
+              const innerCtrl = new AbortController();
+              const propagate = () => innerCtrl.abort();
+              budgetCtrl.signal.addEventListener('abort', propagate, { once: true });
+              const containers = await readDozzleContainersChanged(sseRes, innerCtrl, 2500);
+              budgetCtrl.signal.removeEventListener('abort', propagate);
+              innerCtrl.abort(); // release any remaining reader
+
+              if (containers !== null) {
+                status = 'up';
+                // Dozzle v10's SSE containers-changed initial event only includes running
+                // containers — stopped containers are not in the snapshot. Report the count
+                // as "Running" only; there is no reliable way to count stopped containers
+                // from a single SSE connection.
+                const running = containers.length;
+                metrics = [
+                  { key: 'running', label: 'Running', value: running },
+                ];
+                dozzleDone = true;
+                break;
+              }
+            } catch {}
+          }
+        } finally {
+          clearTimeout(budgetTimer);
+          budgetCtrl.abort();
+        }
+
+        if (!dozzleDone) status = 'down';
+
+      // ── wizarr ───────────────────────────────────────────────────────────
+      } else if (typeId === 'wizarr') {
+        const wzHeaders = { Accept: 'application/json' };
+        if (apiKey) wzHeaders['X-API-Key'] = apiKey;
+        const result = await tryCandidatePaths(['api/status', 'api/v1/status'], wzHeaders);
+        if (result?.ok && result.json) {
+          status = 'up';
+          const j = result.json;
+          metrics = [
+            { key: 'users',   label: 'Users',   value: Number(j.users   ?? 0) },
+            { key: 'pending', label: 'Pending', value: Number(j.pending ?? 0) },
+            { key: 'expired', label: 'Expired', value: Number(j.expired ?? 0) },
+          ];
+        } else {
+          status = 'down';
+        }
+
+      // ── termix ───────────────────────────────────────────────────────────
+      } else if (typeId === 'termix') {
+        const headers = buildGenericApiHeaders();
+        const lightProbeOpts = { timeoutMs: 2500, acceptStatuses: [401, 403] };
+        const [statusResult, statsResult, sessionsResult, versionResult] = await Promise.all([
+          tryCandidatePaths(['api/status', 'api/v1/status', 'status'], headers, lightProbeOpts),
+          tryCandidatePaths(['api/stats', 'api/v1/stats', 'api/server/stats', 'api/system/stats'], headers, lightProbeOpts),
+          tryCandidatePaths(['api/sessions', 'api/v1/sessions', 'api/session', 'api/v1/session'], headers, lightProbeOpts),
+          tryCandidatePaths(['api/version', 'api/v1/version', 'version'], headers, lightProbeOpts),
+        ]);
+        const results = [statusResult, statsResult, sessionsResult, versionResult].filter(Boolean);
+        if (hasReachableResult(results)) {
+          status = 'up';
+          const authRequired = hasAuthRequiredResult(results);
+          const sessionsCount = extractCountFromPayload(sessionsResult?.json, {
+            arrayKeys: ['sessions', 'connections'],
+            numericKeys: ['activeSessions', 'sessionCount'],
+            numericPaths: ['sessions.active', 'stats.sessions.active', 'stats.sessions.total'],
+          });
+          const clientsCount = extractCountFromPayload(statsResult?.json, {
+            arrayKeys: ['clients', 'connections'],
+            numericKeys: ['activeConnections', 'clientCount', 'connectionCount'],
+            numericPaths: ['clients.active', 'connections.active', 'stats.clients.active'],
+          });
+          const uptimeText = formatDurationFromSeconds(
+            pickFiniteFromPaths(statsResult?.json, ['uptimeSeconds', 'uptime', 'stats.uptimeSeconds', 'stats.uptime', 'server.uptime'])
+              ?? pickFiniteFromPaths(statusResult?.json, ['uptimeSeconds', 'uptime', 'stats.uptimeSeconds', 'stats.uptime', 'server.uptime'])
+          );
+          metrics = [
+            { key: 'sessions', label: 'Sessions', value: sessionsCount !== null ? sessionsCount : (authRequired ? 'Auth required' : '—') },
+            { key: 'clients',  label: 'Clients',  value: clientsCount !== null ? clientsCount : (authRequired ? 'Auth required' : '—') },
+            { key: 'uptime',   label: 'Uptime',   value: uptimeText || (authRequired ? 'Auth required' : '—') },
+          ];
+        } else {
+          status = 'down';
+        }
+
+      // ── apprise ──────────────────────────────────────────────────────────
+      } else if (typeId === 'apprise') {
+        const headers = buildGenericApiHeaders();
+        const result = await tryCandidatePaths(
+          ['status', 'api/status', 'api/v1/status'],
+          headers,
+          { timeoutMs: 2500, acceptStatuses: [401, 403] }
+        );
+        const results = [result].filter(Boolean);
+        if (hasReachableResult(results)) {
+          status = 'up';
+          const authRequired = hasAuthRequiredResult(results);
+          const payload = (result?.json && typeof result.json === 'object') ? result.json : {};
+          const stateText = pickTextFromPaths(payload, ['status', 'result', 'state', 'details.status', 'details.state'])
+            || (authRequired ? 'Auth required' : 'Online');
+          const queued = extractCountFromPayload(payload, {
+            numericKeys: ['queued', 'queue', 'pending'],
+            numericPaths: ['details.queued', 'details.queue', 'details.queues.pending', 'queues.pending', 'queue.pending'],
+          });
+          const versionText = pickTextFromPaths(payload, ['version', 'appVersion', 'app_version', 'details.version']);
+          metrics = [
+            { key: 'state',   label: 'State',   value: stateText },
+            { key: 'queued',  label: 'Queued',  value: queued !== null ? queued : (authRequired ? 'Auth required' : '—') },
+            { key: 'version', label: 'Version', value: versionText || '—' },
+          ];
+        } else {
+          status = 'down';
+        }
+
+      // ── ersatztv ─────────────────────────────────────────────────────────
+      } else if (typeId === 'ersatztv') {
+        const headers = buildGenericApiHeaders();
+        const lightProbeOpts = { timeoutMs: 2500, acceptStatuses: [401, 403] };
+        const [channelsResult, sessionsResult] = await Promise.all([
+          tryCandidatePaths(['api/channels', 'api/v1/channels'], headers, lightProbeOpts),
+          tryCandidatePaths(['api/sessions'], headers, lightProbeOpts),
+        ]);
+        const results = [channelsResult, sessionsResult].filter(Boolean);
+        if (hasReachableResult(results)) {
+          status = 'up';
+          const authRequired = hasAuthRequiredResult(results);
+          const channels = extractCountFromPayload(channelsResult?.json, {
+            arrayKeys: ['channels'],
+            numericKeys: ['channelCount'],
+            numericPaths: ['stats.channels', 'counts.channels'],
+          });
+          const streams = Array.isArray(sessionsResult?.json) ? sessionsResult.json.length : null;
+          metrics = [
+            { key: 'channels', label: 'Channels', value: channels !== null ? channels : (authRequired ? 'Auth required' : '—') },
+            { key: 'streams',  label: 'Streams',  value: streams !== null ? streams : (authRequired ? 'Auth required' : '—') },
+          ];
+        } else {
+          status = 'down';
+        }
+
+      // ── sortarr ──────────────────────────────────────────────────────────
+      } else if (typeId === 'sortarr') {
+        const headers = buildGenericApiHeaders();
+        const lightProbeOpts = { timeoutMs: 2500, acceptStatuses: [401, 403] };
+        const [healthResult, versionResult, profilesResult, rulesResult] = await Promise.all([
+          tryCandidatePaths(['api/health', 'api/v1/health', 'api/status', 'api/v1/status', 'health'], headers, lightProbeOpts),
+          tryCandidatePaths(['api/version', 'api/v1/version'], headers, lightProbeOpts),
+          tryCandidatePaths(['api/profiles', 'api/v1/profiles', 'api/profile', 'api/v1/profile'], headers, lightProbeOpts),
+          tryCandidatePaths(['api/rules', 'api/v1/rules', 'api/sorts', 'api/v1/sorts'], headers, lightProbeOpts),
+        ]);
+        const results = [healthResult, versionResult, profilesResult, rulesResult].filter(Boolean);
+        if (hasReachableResult(results)) {
+          status = 'up';
+          const authRequired = hasAuthRequiredResult(results);
+          const profiles = extractCountFromPayload(profilesResult?.json, {
+            arrayKeys: ['profiles'],
+            numericKeys: ['profileCount'],
+            numericPaths: ['stats.profiles', 'counts.profiles'],
+          });
+          const rules = extractCountFromPayload(rulesResult?.json, {
+            arrayKeys: ['rules', 'sorts'],
+            numericKeys: ['ruleCount', 'sortCount'],
+            numericPaths: ['stats.rules', 'counts.rules'],
+          });
+          const versionText = pickTextFromPaths(versionResult?.json, ['version', 'appVersion', 'apiVersion', 'build.version']);
+          metrics = [
+            { key: 'profiles', label: 'Profiles', value: profiles !== null ? profiles : (authRequired ? 'Auth required' : '—') },
+            { key: 'rules',    label: 'Rules',    value: rules !== null ? rules : (authRequired ? 'Auth required' : '—') },
+            { key: 'version',  label: 'Version',  value: versionText || '—' },
+          ];
+        } else {
+          status = 'down';
+        }
+
+      // ── agregarr ─────────────────────────────────────────────────────────
+      } else if (typeId === 'agregarr') {
+        const headers = buildGenericApiHeaders();
+        const lightProbeOpts = { timeoutMs: 2500, acceptStatuses: [401, 403] };
+        const [healthResult, versionResult, appsResult, rulesResult] = await Promise.all([
+          tryCandidatePaths(['api/health', 'api/v1/health', 'api/status', 'api/v1/status', 'health'], headers, lightProbeOpts),
+          tryCandidatePaths(['api/version', 'api/v1/version'], headers, lightProbeOpts),
+          tryCandidatePaths(['api/apps', 'api/v1/apps', 'api/arrs', 'api/v1/arrs'], headers, lightProbeOpts),
+          tryCandidatePaths(['api/rules', 'api/v1/rules', 'api/filters', 'api/v1/filters'], headers, lightProbeOpts),
+        ]);
+        const results = [healthResult, versionResult, appsResult, rulesResult].filter(Boolean);
+        if (hasReachableResult(results)) {
+          status = 'up';
+          const authRequired = hasAuthRequiredResult(results);
+          const appsCount = extractCountFromPayload(appsResult?.json, {
+            arrayKeys: ['apps', 'arrs'],
+            numericKeys: ['appCount'],
+            numericPaths: ['stats.apps', 'counts.apps'],
+          });
+          const rulesCount = extractCountFromPayload(rulesResult?.json, {
+            arrayKeys: ['rules', 'filters'],
+            numericKeys: ['ruleCount', 'filterCount'],
+            numericPaths: ['stats.rules', 'counts.rules'],
+          });
+          const versionText = pickTextFromPaths(versionResult?.json, ['version', 'appVersion', 'apiVersion', 'build.version']);
+          metrics = [
+            { key: 'apps',    label: 'Apps',    value: appsCount !== null ? appsCount : (authRequired ? 'Auth required' : '—') },
+            { key: 'rules',   label: 'Rules',   value: rulesCount !== null ? rulesCount : (authRequired ? 'Auth required' : '—') },
+            { key: 'version', label: 'Version', value: versionText || '—' },
+          ];
+        } else {
+          status = 'down';
+        }
+
+      // ── profilarr ────────────────────────────────────────────────────────
+      } else if (typeId === 'profilarr') {
+        const headers = buildGenericApiHeaders();
+        const [settingsResult, tasksResult] = await Promise.all([
+          tryCandidatePaths(['api/settings'], headers, { timeoutMs: 2500, acceptStatuses: [401, 403] }),
+          tryCandidatePaths(['api/tasks'], headers, { timeoutMs: 2500, acceptStatuses: [401, 403] }),
+        ]);
+        const results = [settingsResult, tasksResult].filter(Boolean);
+        if (hasReachableResult(results)) {
+          status = 'up';
+          const authRequired = hasAuthRequiredResult(results);
+          const tasks = Array.isArray(tasksResult?.json) ? tasksResult.json : [];
+          const taskStatus = (name) => {
+            const task = tasks.find((t) => String(t?.name || '').toLowerCase().includes(name));
+            if (!task) return null;
+            const s = String(task.status || '').toLowerCase();
+            if (s === 'success') return 'OK';
+            if (s === 'running' || s === 'in_progress') return 'Syncing';
+            if (s === 'failed' || s === 'error') return 'Failed';
+            return s || '—';
+          };
+          const syncStatus  = taskStatus('sync');
+          const backupStatus = taskStatus('backup');
+          metrics = [
+            { key: 'sync',   label: 'Sync',   value: syncStatus   !== null ? syncStatus   : (authRequired ? 'Auth required' : '—') },
+            { key: 'backup', label: 'Backup', value: backupStatus !== null ? backupStatus : (authRequired ? 'Auth required' : '—') },
+          ];
+        } else {
+          status = 'down';
+        }
+
+      // ── guardian ─────────────────────────────────────────────────────────
+      } else if (typeId === 'guardian') {
+        const headers = buildGenericApiHeaders();
+        const lightProbeOpts = { timeoutMs: 2500, acceptStatuses: [401, 403] };
+        const [healthResult, versionResult, devicesResult, blockedResult] = await Promise.all([
+          tryCandidatePaths(['api/health', 'api/v1/health', 'api/status', 'api/v1/status', 'health'], headers, lightProbeOpts),
+          tryCandidatePaths(['api/version', 'api/v1/version'], headers, lightProbeOpts),
+          tryCandidatePaths(['api/devices', 'api/v1/devices', 'api/clients', 'api/v1/clients'], headers, lightProbeOpts),
+          tryCandidatePaths(['api/blocked', 'api/v1/blocked', 'api/strikes', 'api/v1/strikes'], headers, lightProbeOpts),
+        ]);
+        const results = [healthResult, versionResult, devicesResult, blockedResult].filter(Boolean);
+        if (hasReachableResult(results)) {
+          status = 'up';
+          const authRequired = hasAuthRequiredResult(results);
+          const devices = extractCountFromPayload(devicesResult?.json, {
+            arrayKeys: ['devices', 'clients'],
+            numericKeys: ['deviceCount', 'clientCount'],
+            numericPaths: ['stats.devices', 'counts.devices'],
+          });
+          const blocked = extractCountFromPayload(blockedResult?.json, {
+            arrayKeys: ['blocked', 'strikes'],
+            numericKeys: ['blockedCount', 'strikeCount'],
+            numericPaths: ['stats.blocked', 'counts.blocked'],
+          });
+          const versionText = pickTextFromPaths(versionResult?.json, ['version', 'appVersion', 'apiVersion', 'build.version']);
+          metrics = [
+            { key: 'devices', label: 'Devices', value: devices !== null ? devices : (authRequired ? 'Auth required' : '—') },
+            { key: 'blocked', label: 'Blocked', value: blocked !== null ? blocked : (authRequired ? 'Auth required' : '—') },
+            { key: 'version', label: 'Version', value: versionText || '—' },
+          ];
+        } else {
+          status = 'down';
+        }
+
+      // ── fallback: generic reachability check for unsupported app types ──
       } else {
         const headers = { Accept: 'application/json' };
-        if (apiKey) headers['X-Api-Key'] = apiKey;
-        const result = await tryAllCandidates(async (baseUrl) => doFetch(buildAppApiUrl(baseUrl, 'api/v1/system/status').toString(), headers));
-        status = result?.ok ? 'up' : 'down';
+        if (apiKey) {
+          headers['X-Api-Key'] = apiKey;
+          if (!headers.Authorization) {
+            headers.Authorization = /^bearer\s+/i.test(apiKey) ? apiKey : `Bearer ${apiKey}`;
+          }
+        }
+        const genericAuth = buildBasicAuthHeader(appItem.username || '', appItem.password || '');
+        if (genericAuth && !headers.Authorization) headers.Authorization = genericAuth;
+
+        const genericProbePaths = [''];
+        const genericResult = await tryCandidatePaths(genericProbePaths, headers, { timeoutMs: 1500 });
+        const statusCode = Number(genericResult?.status);
+        const latencyMs = Number(genericResult?.durationMs);
+        metrics = [
+          { key: 'http_status', label: 'HTTP', value: Number.isFinite(statusCode) && statusCode > 0 ? statusCode : '—' },
+          { key: 'latency_ms', label: 'Latency', value: Number.isFinite(latencyMs) ? `${Math.max(0, Math.round(latencyMs))} ms` : '—' },
+        ];
+        status = genericResult && (genericResult.ok || (Number(genericResult.status) >= 200 && Number(genericResult.status) < 500))
+          ? 'up'
+          : 'down';
       }
 
       if (status === 'down') {
@@ -2420,12 +4124,24 @@ export function registerApiSpecialty(app, ctx) {
         message: 'Widget status monitor disabled: missing internal token.',
       });
     } else {
-      runWidgetStatusMonitorTick().catch(() => {});
-      const monitorTimer = setInterval(() => {
-        runWidgetStatusMonitorTick().catch(() => {});
-      }, WIDGET_STATUS_MONITOR_POLL_MS);
-      if (typeof monitorTimer.unref === 'function') monitorTimer.unref();
-      app.locals.__launcharrWidgetStatusMonitorTimer = monitorTimer;
+      const scheduleNextMonitorTick = () => {
+        const config = loadConfig();
+        const notificationSettings = resolveNotificationSettings(config);
+        const runtimeSettings = resolveWidgetMonitorRuntimeSettings(notificationSettings);
+        const monitorTimer = setTimeout(async () => {
+          try {
+            await runWidgetStatusMonitorTick();
+          } catch {}
+          scheduleNextMonitorTick();
+        }, runtimeSettings.pollMs);
+        if (typeof monitorTimer.unref === 'function') monitorTimer.unref();
+        app.locals.__launcharrWidgetStatusMonitorTimer = monitorTimer;
+      };
+      runWidgetStatusMonitorTick()
+        .catch(() => {})
+        .finally(() => {
+          scheduleNextMonitorTick();
+        });
     }
   }
 

@@ -72,6 +72,9 @@ Plex-based role assignment is managed in `Settings -> Users`.
 - `appriseTag`
 - `widgetStatusEnabled`
 - `widgetStatusDelaySeconds`
+- `widgetStatusPollSeconds`
+- `widgetStatusRequestTimeoutMs`
+- `widgetStatusMaxConcurrency`
 
 Use `Test Notification` to validate routing before rollout.
 
@@ -88,6 +91,28 @@ When enabled, widget status monitoring can trigger Apprise notifications after a
 Persisted file:
 
 - `data/logs.json` (or `LOG_PATH` if overridden)
+
+## Security Baseline
+
+Launcharr includes baseline hardening for reverse-proxy deployments and browser clients:
+
+- Conditional proxy trust with limited hop count:
+  - `TRUST_PROXY` (`true|false`)
+  - `TRUST_PROXY_HOPS` (default `1`, clamped)
+- Safer default request body limits:
+  - `URLENCODED_BODY_LIMIT` (default `8mb`)
+  - `JSON_BODY_LIMIT` (default `2mb`)
+- Per-route payload guards on sensitive endpoints (for example login/setup/session-switch routes).
+- CSRF protections on unsafe methods (`POST`, `PUT`, `PATCH`, `DELETE`), plus state-changing routes moved off `GET` (for example `/logout` and `/switch-view` now require `POST`).
+- Security response headers suitable for Launcharr's iframe usage (`frame-ancestors 'self'`, `X-Frame-Options: SAMEORIGIN`, `nosniff`, referrer/policy headers).
+- Local-auth password policy requires:
+  - minimum length `12`
+  - at least one lowercase letter
+  - at least one uppercase letter
+  - at least one number
+  - at least one symbol
+
+2FA note: local-auth 2FA is not yet built in. For production access, enforce MFA at your identity provider/reverse proxy (or use Plex/OIDC SSO) until native 2FA is added.
 
 ## Example Override (`config/config.json`)
 
@@ -115,7 +140,10 @@ Persisted file:
     "appriseConfigKey": "",
     "appriseTag": "",
     "widgetStatusEnabled": false,
-    "widgetStatusDelaySeconds": 60
+    "widgetStatusDelaySeconds": 60,
+    "widgetStatusPollSeconds": 45,
+    "widgetStatusRequestTimeoutMs": 4000,
+    "widgetStatusMaxConcurrency": 4
   }
 }
 ```

@@ -35,7 +35,12 @@ const SESSION_SECRET = process.env.SESSION_SECRET
     console.warn('[security] SESSION_SECRET is not set — generating a random secret. Sessions will reset on every restart. Set the SESSION_SECRET environment variable for persistent sessions.');
     return crypto.randomBytes(32).toString('hex');
   })();
-const LOCAL_AUTH_MIN_PASSWORD = 6;
+const LOCAL_AUTH_MIN_PASSWORD = 12;
+const TRUST_PROXY_ENABLED = parseEnvFlag(process.env.TRUST_PROXY, false);
+const TRUST_PROXY_HOPS = resolveProxyHopCount(process.env.TRUST_PROXY_HOPS, 1);
+const TRUST_PROXY_SETTING = TRUST_PROXY_ENABLED ? TRUST_PROXY_HOPS : false;
+const URLENCODED_BODY_LIMIT = String(process.env.URLENCODED_BODY_LIMIT || '8mb').trim() || '8mb';
+const JSON_BODY_LIMIT = String(process.env.JSON_BODY_LIMIT || '2mb').trim() || '2mb';
 const CONFIG_PATH = process.env.CONFIG_PATH || path.join(__dirname, '..', 'config', 'config.json');
 const APP_VERSION = process.env.APP_VERSION || loadPackageVersion();
 const ASSET_VERSION_BASE = normalizeVersionTag(APP_VERSION || '') || String(APP_VERSION || 'dev');
@@ -74,7 +79,7 @@ const MEDIA_APP_IDS = ['plex', 'jellyfin', 'emby'];
 const LEGACY_MULTI_INSTANCE_APP_IDS = ['radarr', 'sonarr', 'bazarr', 'transmission'];
 const DEFAULT_MAX_MULTI_INSTANCES_PER_APP = 5;
 const DEFAULT_INSTANCE_NAME_PLACEHOLDER = 'Instance (e.g. Main)';
-const DEFAULT_CATEGORY_ORDER = ['Admin', 'Media', 'Requesters', 'Manager', 'Games', 'Arr Suite', 'Indexers', 'Downloaders', 'Tools'];
+const DEFAULT_CATEGORY_ORDER = ['Admin', 'Media', 'Manager', 'Arr Suite', 'Indexers', 'Downloaders', 'Games', 'Photos', 'System', 'Documents', 'Tools', 'Finance', 'Requesters'];
 const DEFAULT_CATEGORY_ICON = '/icons/category.svg';
 const ARR_COMBINE_SECTIONS = [
   { key: 'downloadingSoon', elementId: 'downloading-soon' },
@@ -126,14 +131,36 @@ const WIDGET_STAT_TYPES = [
   { typeId: 'transmission', name: 'Transmission', icon: '/icons/transmission.svg', metricFields: [{ key: 'active', label: 'Active' }, { key: 'paused', label: 'Paused' }, { key: 'total', label: 'Total' }, { key: 'downloading', label: 'Downloading' }, { key: 'seeding', label: 'Seeding' }, { key: 'dlspeed', label: 'Download Speed' }, { key: 'upspeed', label: 'Upload Speed' }] },
   { typeId: 'maintainerr',  name: 'Maintainerr',  icon: '/icons/maintainerr.svg',  metricFields: [{ key: 'rules', label: 'Rules' }, { key: 'active', label: 'Active' }] },
   { typeId: 'cleanuparr',   name: 'Cleanuparr',   icon: '/icons/cleanuparr.svg',   metricFields: [{ key: 'tracked', label: 'Tracked' }, { key: 'removed', label: 'Removed' }] },
+  { typeId: 'agregarr',     name: 'Agregarr',     icon: '/icons/agregarr.svg',     metricFields: [{ key: 'apps', label: 'Apps' }, { key: 'rules', label: 'Rules' }, { key: 'version', label: 'Version' }] },
+  { typeId: 'profilarr',    name: 'Profilarr',    icon: '/icons/profilarr.svg',    metricFields: [{ key: 'sync', label: 'Sync' }, { key: 'backup', label: 'Backup' }] },
+  { typeId: 'sortarr',      name: 'Sortarr',      icon: '/icons/sortarr.svg',      metricFields: [{ key: 'profiles', label: 'Profiles' }, { key: 'rules', label: 'Rules' }, { key: 'version', label: 'Version' }] },
   { typeId: 'romm',         name: 'Romm',         icon: '/icons/romm.svg',         metricFields: [{ key: 'games', label: 'Games' }, { key: 'consoles', label: 'Consoles' }, { key: 'collections', label: 'Collections' }, { key: 'virtual_collections', label: 'Virtual Collections' }, { key: 'smart_collections', label: 'Smart Collections' }, { key: 'bios', label: 'BIOS' }, { key: 'saves', label: 'Saves' }] },
-  { typeId: 'seerr',        name: 'Overseerr',    icon: '/icons/seerr.png',        metricFields: [{ key: 'pending', label: 'Pending' }, { key: 'approved', label: 'Approved' }, { key: 'processing', label: 'Processing' }, { key: 'available', label: 'Available' }] },
-  { typeId: 'pulsarr',      name: 'Pulsarr',      icon: '/icons/pulsarr.svg',      metricFields: [{ key: 'auto_approved', label: 'Auto Approved' }, { key: 'approved', label: 'Approved' }, { key: 'movies', label: 'Movies' }, { key: 'shows', label: 'TV Shows' }] },
+  { typeId: 'ersatztv',         name: 'ErsatzTV',         icon: '/icons/ersatztv.png',         metricFields: [{ key: 'channels', label: 'Channels' }, { key: 'streams', label: 'Streams' }] },
+  { typeId: 'seerr',            name: 'Overseerr',        icon: '/icons/seerr.png',            metricFields: [{ key: 'pending', label: 'Pending' }, { key: 'approved', label: 'Approved' }, { key: 'processing', label: 'Processing' }, { key: 'available', label: 'Available' }] },
+  { typeId: 'pulsarr',          name: 'Pulsarr',          icon: '/icons/pulsarr.svg',          metricFields: [{ key: 'auto_approved', label: 'Auto Approved' }, { key: 'approved', label: 'Approved' }, { key: 'movies', label: 'Movies' }, { key: 'shows', label: 'TV Shows' }] },
+  { typeId: 'immich',           name: 'Immich',           icon: '/icons/immich.svg',           metricFields: [{ key: 'photos', label: 'Photos' }, { key: 'videos', label: 'Videos' }, { key: 'users', label: 'Users' }, { key: 'storage', label: 'Storage' }] },
+  { typeId: 'portainer',        name: 'Portainer',        icon: '/icons/portainer.svg',        metricFields: [{ key: 'running', label: 'Running' }, { key: 'stopped', label: 'Stopped' }, { key: 'total', label: 'Total' }] },
+  { typeId: 'glances',          name: 'Glances',          icon: '/icons/glances.svg',          metricFields: [{ key: 'cpu', label: 'CPU' }, { key: 'memory', label: 'Memory' }, { key: 'load', label: 'Load Avg' }] },
+  { typeId: 'uptime-kuma',      name: 'Uptime Kuma',      icon: '/icons/uptime-kuma.svg',      metricFields: [{ key: 'up', label: 'Up' }, { key: 'down', label: 'Down' }, { key: 'pending', label: 'Pending' }, { key: 'maintenance', label: 'Maintenance' }] },
+  { typeId: 'speedtest-tracker', name: 'Speedtest Tracker', icon: '/icons/speedtest-tracker.png', metricFields: [{ key: 'download', label: 'Download' }, { key: 'upload', label: 'Upload' }, { key: 'ping', label: 'Ping' }] },
+  { typeId: 'gluetun',          name: 'Gluetun',          icon: '/icons/gluetun.svg',          metricFields: [{ key: 'status', label: 'VPN Status' }, { key: 'ip', label: 'Public IP' }, { key: 'country', label: 'Country' }] },
+  { typeId: 'guardian',         name: 'Guardian',         icon: '/icons/guardian.svg',         metricFields: [{ key: 'devices', label: 'Devices' }, { key: 'blocked', label: 'Blocked' }, { key: 'version', label: 'Version' }] },
+  { typeId: 'paperless-ngx',    name: 'Paperless-ngx',    icon: '/icons/paperless-ngx.svg',    metricFields: [{ key: 'documents', label: 'Documents' }, { key: 'inbox', label: 'Inbox' }] },
+  { typeId: 'metube',           name: 'MeTube',           icon: '/icons/metube.svg',           metricFields: [{ key: 'downloading', label: 'Downloading' }, { key: 'queued', label: 'Queued' }, { key: 'done', label: 'Done' }] },
+  { typeId: 'audiobookshelf',  name: 'Audiobookshelf',  icon: '/icons/audiobookshelf.svg',  metricFields: [{ key: 'books', label: 'Books' }, { key: 'podcasts', label: 'Podcasts' }] },
+  { typeId: 'tdarr',           name: 'Tdarr',           icon: '/icons/tdarr.png',           metricFields: [{ key: 'queue', label: 'Queue' }, { key: 'processed', label: 'Processed' }, { key: 'errored', label: 'Errored' }, { key: 'saved', label: 'Space Saved' }] },
+  { typeId: 'apprise',         name: 'Apprise',         icon: '/icons/apprise.png',         metricFields: [{ key: 'state', label: 'State' }, { key: 'queued', label: 'Queued' }, { key: 'version', label: 'Version' }] },
+  { typeId: 'termix',          name: 'Termix',          icon: '/icons/termix.svg',          metricFields: [{ key: 'sessions', label: 'Sessions' }, { key: 'clients', label: 'Clients' }, { key: 'uptime', label: 'Uptime' }] },
+  { typeId: 'wizarr',          name: 'Wizarr',          icon: '/icons/wizarr.svg',          metricFields: [{ key: 'users', label: 'Users' }, { key: 'pending', label: 'Pending' }, { key: 'expired', label: 'Expired' }] },
+  { typeId: 'guacamole',       name: 'Guacamole',       icon: '/icons/guacamole.svg',       metricFields: [{ key: 'active', label: 'Active' }, { key: 'connections', label: 'Connections' }, { key: 'users', label: 'Users' }] },
+  { typeId: 'traefik',         name: 'Traefik',         icon: '/icons/traefik.svg',         metricFields: [{ key: 'routers', label: 'Routers' }, { key: 'services', label: 'Services' }, { key: 'middlewares', label: 'Middlewares' }] },
+  { typeId: 'dozzle',          name: 'Dozzle',          icon: '/icons/dozzle.svg',          metricFields: [{ key: 'running', label: 'Running' }] },
 ];
 const WIDGET_STAT_TYPE_BY_ID = new Map(WIDGET_STAT_TYPES.map((t) => [t.typeId, t]));
 
 const SYSTEM_WIDGET_TYPES = [
   { typeId: 'sys-resources', label: 'System Info', icon: '/icons/dashboard.svg', hasConfig: true, configFields: [] },
+  { typeId: 'links', label: 'Links', icon: '/icons/system.svg', hasConfig: true, configFields: [] },
 ];
 const SYSTEM_WIDGET_TYPE_BY_ID = new Map(SYSTEM_WIDGET_TYPES.map((t) => [t.typeId, t]));
 const SYSTEM_WIDGET_SEARCH_PROVIDERS = [
@@ -167,6 +194,46 @@ function normalizeSystemWidget(entry) {
   const id = normalizeWidgetId(entry.id || '') || normalizeWidgetId(`wg-${systemType}-${Math.random().toString(36).slice(2, 6)}`);
   if (!id) return null;
   const rawConfig = (entry.systemConfig && typeof entry.systemConfig === 'object') ? entry.systemConfig : {};
+  const normalizeLinksWidgetUrl = (rawValue) => {
+    const input = String(rawValue || '').trim();
+    if (!input) return '';
+    let candidate = input;
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(candidate)) candidate = `https://${candidate}`;
+    try {
+      const parsed = new URL(candidate);
+      if (!parsed.hostname) return '';
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+      return parsed.toString();
+    } catch (_err) {
+      return '';
+    }
+  };
+  if (systemType === 'links') {
+    const rawLinks = Array.isArray(rawConfig.links) ? rawConfig.links : [];
+    const links = rawLinks
+      .map((row) => {
+        const rawName = String((row && (row.name ?? row.title)) || '').trim();
+        const rawUrl = String((row && (row.url ?? row.href)) || '').trim();
+        const normalizedUrl = normalizeLinksWidgetUrl(rawUrl);
+        if (!normalizedUrl) return null;
+        let hostname = '';
+        try { hostname = String(new URL(normalizedUrl).hostname || '').trim(); } catch (_err) { /* ignore */ }
+        const name = rawName || hostname || normalizedUrl;
+        return {
+          name: String(name || '').trim().slice(0, 120),
+          url: normalizedUrl,
+        };
+      })
+      .filter(Boolean)
+      .slice(0, 250);
+    const title = String(rawConfig.title || rawConfig.name || 'Links').trim().slice(0, 80) || 'Links';
+    const systemConfig = {
+      title,
+      showUrl: rawConfig.showUrl !== false,
+      links,
+    };
+    return { id, systemType, systemConfig, icon: typeDef.icon, typeName: typeDef.label };
+  }
   const validProviders = SYSTEM_WIDGET_SEARCH_PROVIDERS.map((p) => p.id);
   const rawDisks = Array.isArray(rawConfig.disks) ? rawConfig.disks : [];
   const rawSearch = (rawConfig.search && typeof rawConfig.search === 'object') ? rawConfig.search : {};
@@ -285,6 +352,33 @@ const APP_OVERVIEW_ELEMENTS = {
   sabnzbd: [
     { id: 'activity-queue', name: 'Download Queue' },
   ],
+  immich: [
+    { id: 'recent', name: 'Recently Added' },
+  ],
+  wizarr: [
+    { id: 'users', name: 'Users' },
+    { id: 'invitations', name: 'Invitations' },
+  ],
+  metube: [
+    { id: 'queue', name: 'Download Queue' },
+  ],
+  audiobookshelf: [
+    { id: 'recently-added', name: 'Recently Added' },
+  ],
+  tdarr: [
+    { id: 'stats', name: 'Statistics' },
+  ],
+  'uptime-kuma': [
+    { id: 'status', name: 'Status Page' },
+  ],
+  guacamole: [
+    { id: 'active-sessions', name: 'Active Sessions' },
+    { id: 'connections', name: 'Connections' },
+  ],
+  traefik: [
+    { id: 'routers', name: 'Routers' },
+    { id: 'services', name: 'Services' },
+  ],
 };
 const PLEX_DISCOVERY_WATCHLISTED_URL = 'https://watch.plex.tv/discover/list/top_watchlisted';
 const PLEX_DISCOVERY_CACHE_TTL_MS = 15 * 60 * 1000;
@@ -358,6 +452,9 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
   appriseTag: '',
   widgetStatusEnabled: false,
   widgetStatusDelaySeconds: 60,
+  widgetStatusPollSeconds: 45,
+  widgetStatusRequestTimeoutMs: 4000,
+  widgetStatusMaxConcurrency: 4,
 };
 const ALLOWED_BRAND_THEMES = new Set(['custom', 'launcharr', 'rocketship', 'pulsarr', 'plex', 'radarr', 'sonarr', 'lidarr', 'readarr']);
 const DEFAULT_THEME_SETTINGS = {
@@ -393,7 +490,7 @@ const VISIBILITY_ROLE_RANK = {
   admin: 3,
 };
 const CATEGORY_VISIBILITY_SELECTABLE_ROLES = ['guest', 'user', 'co-admin', 'admin'];
-const SIDEBAR_APP_BUTTON_ACTIONS = new Set(['default', 'launch', 'settings', 'activity']);
+const SIDEBAR_APP_BUTTON_ACTIONS = new Set(['default', 'overview', 'launch', 'settings', 'activity']);
 
 function normalizeSidebarAppButtonAction(value, fallback = 'default') {
   const raw = String(value || '').trim().toLowerCase();
@@ -477,9 +574,21 @@ function resolveNotificationSettings(config) {
   const raw = config && typeof config.notifications === 'object' ? config.notifications : {};
   const rawMode = String(raw.appriseMode || DEFAULT_NOTIFICATION_SETTINGS.appriseMode || '').trim().toLowerCase();
   const rawDelaySeconds = Number(raw.widgetStatusDelaySeconds);
+  const rawPollSeconds = Number(raw.widgetStatusPollSeconds);
+  const rawRequestTimeoutMs = Number(raw.widgetStatusRequestTimeoutMs);
+  const rawMaxConcurrency = Number(raw.widgetStatusMaxConcurrency);
   const widgetStatusDelaySeconds = Number.isFinite(rawDelaySeconds)
     ? Math.max(5, Math.min(3600, Math.round(rawDelaySeconds)))
     : DEFAULT_NOTIFICATION_SETTINGS.widgetStatusDelaySeconds;
+  const widgetStatusPollSeconds = Number.isFinite(rawPollSeconds)
+    ? Math.max(15, Math.min(600, Math.round(rawPollSeconds)))
+    : DEFAULT_NOTIFICATION_SETTINGS.widgetStatusPollSeconds;
+  const widgetStatusRequestTimeoutMs = Number.isFinite(rawRequestTimeoutMs)
+    ? Math.max(1000, Math.min(20000, Math.round(rawRequestTimeoutMs)))
+    : DEFAULT_NOTIFICATION_SETTINGS.widgetStatusRequestTimeoutMs;
+  const widgetStatusMaxConcurrency = Number.isFinite(rawMaxConcurrency)
+    ? Math.max(1, Math.min(10, Math.round(rawMaxConcurrency)))
+    : DEFAULT_NOTIFICATION_SETTINGS.widgetStatusMaxConcurrency;
   return {
     appriseEnabled: raw.appriseEnabled === undefined
       ? DEFAULT_NOTIFICATION_SETTINGS.appriseEnabled
@@ -493,6 +602,9 @@ function resolveNotificationSettings(config) {
       ? DEFAULT_NOTIFICATION_SETTINGS.widgetStatusEnabled
       : Boolean(raw.widgetStatusEnabled),
     widgetStatusDelaySeconds,
+    widgetStatusPollSeconds,
+    widgetStatusRequestTimeoutMs,
+    widgetStatusMaxConcurrency,
   };
 }
 
@@ -1250,12 +1362,24 @@ function pushLog(entry) {
 
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
-app.set('trust proxy', true);
+app.set('trust proxy', TRUST_PROXY_SETTING);
 
 app.use(httpAccessLogMiddleware);
+app.use((req, res, next) => {
+  // Baseline hardening headers that are compatible with Launcharr's iframe app pages.
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  res.setHeader('Content-Security-Policy', "frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'");
+  next();
+});
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.use(express.urlencoded({ extended: false, limit: '25mb' }));
-app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: false, limit: URLENCODED_BODY_LIMIT }));
+app.use(express.json({ limit: JSON_BODY_LIMIT }));
 app.use((req, res, next) => {
   res.locals.assetVersion = ASSET_VERSION;
   const generalSettings = resolveGeneralSettings(loadConfig());
@@ -1273,6 +1397,20 @@ app.use(
     maxAge: 7 * 24 * 60 * 60 * 1000,
   })
 );
+app.use((req, res, next) => {
+  if (!req.session || typeof req.session !== 'object') return next();
+  if (!req.session.csrfToken) req.session.csrfToken = crypto.randomBytes(24).toString('hex');
+  res.locals.csrfToken = req.session.csrfToken;
+  return next();
+});
+app.use(csrfProtectionMiddleware);
+app.use('/login', createRequestBodySizeGuard(32 * 1024));
+app.use('/setup', createRequestBodySizeGuard(32 * 1024));
+app.use('/logout', createRequestBodySizeGuard(8 * 1024));
+app.use('/switch-view', createRequestBodySizeGuard(8 * 1024));
+app.use('/settings/local-users', createRequestBodySizeGuard(32 * 1024));
+app.use('/api/plex/pin', createRequestBodySizeGuard(64 * 1024));
+app.use('/api/logs/client', createRequestBodySizeGuard(64 * 1024));
 app.use((req, res, next) => {
   const sessionUser = req.session?.user;
   if (!sessionUser || typeof sessionUser !== 'object') return next();
@@ -4654,6 +4792,122 @@ function parseEnvFlag(value, fallback = false) {
   return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
 }
 
+function resolveProxyHopCount(value, fallback = 1) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return Math.max(1, Math.round(fallback || 1));
+  return Math.max(1, Math.min(10, Math.round(parsed)));
+}
+
+function buildCurrentRequestOrigin(req) {
+  const protocol = String(req.protocol || 'http').trim().toLowerCase() || 'http';
+  const host = String(req.get('host') || '').trim().toLowerCase();
+  if (!host) return '';
+  return `${protocol}://${host}`;
+}
+
+function isSameOriginValue(value, req) {
+  const raw = String(value || '').trim();
+  if (!raw) return false;
+  try {
+    const parsed = new URL(raw);
+    const expectedOrigin = buildCurrentRequestOrigin(req);
+    if (!expectedOrigin) return false;
+    const expected = new URL(expectedOrigin);
+    return parsed.protocol.toLowerCase() === expected.protocol.toLowerCase()
+      && parsed.host.toLowerCase() === expected.host.toLowerCase();
+  } catch (_err) {
+    return false;
+  }
+}
+
+function safeTokenEquals(expectedValue, providedValue) {
+  const expected = String(expectedValue || '');
+  const provided = String(providedValue || '');
+  if (!expected || !provided) return false;
+  const expectedBuf = Buffer.from(expected);
+  const providedBuf = Buffer.from(provided);
+  if (expectedBuf.length !== providedBuf.length) return false;
+  return crypto.timingSafeEqual(expectedBuf, providedBuf);
+}
+
+function isUnsafeHttpMethod(method) {
+  const normalized = String(method || '').trim().toUpperCase();
+  return normalized === 'POST' || normalized === 'PUT' || normalized === 'PATCH' || normalized === 'DELETE';
+}
+
+function rejectCsrfRequest(req, res) {
+  const payload = { error: 'CSRF validation failed.' };
+  const acceptsJson = String(req.get('accept') || '').toLowerCase().includes('application/json')
+    || String(req.get('content-type') || '').toLowerCase().includes('application/json')
+    || String(req.path || '').startsWith('/api/');
+  if (acceptsJson) return res.status(403).json(payload);
+  return res.status(403).send(payload.error);
+}
+
+function csrfProtectionMiddleware(req, res, next) {
+  if (!isUnsafeHttpMethod(req.method)) return next();
+
+  const sessionToken = String(req.session?.csrfToken || '').trim();
+  const suppliedToken = String(
+    req.get('x-csrf-token')
+      || req.body?._csrf
+      || req.query?._csrf
+      || ''
+  ).trim();
+  if (sessionToken && safeTokenEquals(sessionToken, suppliedToken)) return next();
+
+  const origin = String(req.get('origin') || '').trim();
+  if (origin) {
+    if (isSameOriginValue(origin, req)) return next();
+    return rejectCsrfRequest(req, res);
+  }
+
+  const referer = String(req.get('referer') || '').trim();
+  if (referer) {
+    if (isSameOriginValue(referer, req)) return next();
+    return rejectCsrfRequest(req, res);
+  }
+
+  // Requests without Origin/Referer (CLI tools, legacy clients) are allowed.
+  return next();
+}
+
+function createRequestBodySizeGuard(maxBytes) {
+  const limitBytes = Number(maxBytes);
+  const effectiveLimit = Number.isFinite(limitBytes) ? Math.max(1, Math.round(limitBytes)) : 0;
+  if (!effectiveLimit) return (_req, _res, next) => next();
+  return (req, res, next) => {
+    if (!isUnsafeHttpMethod(req.method)) return next();
+    const contentLength = Number(req.get('content-length'));
+    if (Number.isFinite(contentLength) && contentLength > effectiveLimit) {
+      return res.status(413).send('Payload too large.');
+    }
+    if (req.body && typeof req.body === 'object') {
+      try {
+        const estimatedBytes = Buffer.byteLength(JSON.stringify(req.body), 'utf8');
+        if (estimatedBytes > effectiveLimit) {
+          return res.status(413).send('Payload too large.');
+        }
+      } catch (_err) {
+        // ignore serialization errors
+      }
+    }
+    return next();
+  };
+}
+
+function validateLocalPasswordStrength(passwordValue) {
+  const password = String(passwordValue || '');
+  if (!password || password.length < LOCAL_AUTH_MIN_PASSWORD) {
+    return `Password must be at least ${LOCAL_AUTH_MIN_PASSWORD} characters.`;
+  }
+  if (!/[a-z]/.test(password)) return 'Password must include at least one lowercase letter.';
+  if (!/[A-Z]/.test(password)) return 'Password must include at least one uppercase letter.';
+  if (!/[0-9]/.test(password)) return 'Password must include at least one number.';
+  if (!/[^A-Za-z0-9]/.test(password)) return 'Password must include at least one symbol.';
+  return '';
+}
+
 function setupConsoleLogRedaction() {
   if (!LOG_REDACT_HOSTS && !LOG_REDACT_IPS) return;
   if (globalThis.__launcharrConsoleRedactionInstalled) return;
@@ -5121,6 +5375,84 @@ function roleMeetsMinRole(role, minRole) {
   return roleRank >= minRoleRank;
 }
 
+const MENU_VISIBILITY_SELECTABLE_ROLES = VISIBILITY_ROLE_ORDER.filter((role) => role !== 'disabled');
+
+function visibilityRolesFromLegacyMinRole(minRole = 'disabled') {
+  const normalized = normalizeVisibilityRole(minRole, 'disabled');
+  if (normalized === 'disabled') return [];
+  const minRank = Number(VISIBILITY_ROLE_RANK[normalized]);
+  return MENU_VISIBILITY_SELECTABLE_ROLES.filter((role) => {
+    const rank = Number(VISIBILITY_ROLE_RANK[role]);
+    return Number.isFinite(rank) && Number.isFinite(minRank) && rank >= minRank;
+  });
+}
+
+function normalizeMenuVisibilityRoles(value, fallback = undefined) {
+  const hasExplicitArray = Array.isArray(value);
+  const inputList = hasExplicitArray
+    ? value
+    : (typeof value === 'string' && value.includes(','))
+      ? value.split(',')
+      : (value === undefined ? [] : [value]);
+  const parsed = uniqueList(
+    inputList
+      .map((item) => parseVisibilityRole(item))
+      .filter((role) => role && role !== 'disabled' && MENU_VISIBILITY_SELECTABLE_ROLES.includes(role))
+  );
+  if (parsed.length) {
+    return MENU_VISIBILITY_SELECTABLE_ROLES.filter((role) => parsed.includes(role));
+  }
+  if (hasExplicitArray) return [];
+  if (fallback === undefined) return [];
+  if (Array.isArray(fallback)) {
+    return normalizeMenuVisibilityRoles(fallback);
+  }
+  return visibilityRolesFromLegacyMinRole(fallback);
+}
+
+function normalizeMenuRoleSection(rawSection, fallbackRole = 'disabled') {
+  const source = rawSection && typeof rawSection === 'object' ? rawSection : {};
+  const fallbackMinRole = normalizeVisibilityRole(source.minRole, fallbackRole);
+  const hasExplicitVisibilityRoles = Object.prototype.hasOwnProperty.call(source, 'visibilityRoles');
+  const visibilityRoles = hasExplicitVisibilityRoles
+    ? normalizeMenuVisibilityRoles(source.visibilityRoles)
+    : visibilityRolesFromLegacyMinRole(fallbackMinRole);
+  const minRole = visibilityRoles.length
+    ? normalizeVisibilityRole(visibilityRoles[0], fallbackRole)
+    : (hasExplicitVisibilityRoles ? 'disabled' : fallbackMinRole);
+  return {
+    ...source,
+    minRole,
+    visibilityRoles,
+  };
+}
+
+function normalizeMenuSectionFromInput(input, fallbackRole = 'disabled') {
+  if (input && typeof input === 'object' && !Array.isArray(input)) {
+    return normalizeMenuRoleSection(input, fallbackRole);
+  }
+  if (Array.isArray(input)) {
+    const visibilityRoles = normalizeMenuVisibilityRoles(input);
+    return {
+      minRole: visibilityRoles.length ? visibilityRoles[0] : 'disabled',
+      visibilityRoles,
+    };
+  }
+  const minRole = normalizeVisibilityRole(input, fallbackRole);
+  return {
+    minRole,
+    visibilityRoles: visibilityRolesFromLegacyMinRole(minRole),
+  };
+}
+
+function canRoleAccessMenuSection(section, role, fallbackRole = 'disabled') {
+  const roleKey = parseVisibilityRole(role);
+  if (!roleKey) return false;
+  const source = section && typeof section === 'object' ? section : {};
+  const visibilityRoles = normalizeMenuVisibilityRoles(source.visibilityRoles, source.minRole || fallbackRole);
+  return visibilityRoles.includes(roleKey);
+}
+
 function deriveSectionMinRoleFromLegacy(sectionName, section) {
   const userAllowed = Boolean(section?.user);
   const adminAllowed = Boolean(section?.admin);
@@ -5135,12 +5467,17 @@ function normalizeMenuSection(sectionName, rawSection, fallbackRole = 'disabled'
   const explicitMinRole = parseVisibilityRole(source.minRole);
   const legacyMinRole = hasSectionObject ? deriveSectionMinRoleFromLegacy(sectionName, source) : '';
   const resolvedMinRole = explicitMinRole || legacyMinRole || normalizeVisibilityRole(fallbackRole, 'disabled');
-  const minRole = normalizeVisibilityRole(resolvedMinRole, fallbackRole);
+  const normalizedSection = normalizeMenuRoleSection(source, resolvedMinRole);
+  const visibilityRoles = normalizeMenuVisibilityRoles(
+    normalizedSection.visibilityRoles,
+    normalizedSection.minRole
+  );
   return {
-    ...source,
-    minRole,
-    user: roleMeetsMinRole('user', minRole),
-    admin: roleMeetsMinRole('admin', minRole),
+    ...normalizedSection,
+    visibilityRoles,
+    minRole: visibilityRoles.length ? visibilityRoles[0] : 'disabled',
+    user: visibilityRoles.includes('user'),
+    admin: visibilityRoles.includes('admin'),
   };
 }
 
@@ -5168,32 +5505,35 @@ function buildMenuAccessConfig({
   launch = 'disabled',
   settings = 'disabled',
 } = {}) {
-  const overviewRole = normalizeVisibilityRole(overview, 'disabled');
-  const launchRole = normalizeVisibilityRole(launch, 'disabled');
-  const settingsRole = normalizeVisibilityRole(settings, 'disabled');
-  const sidebarOverviewRole = normalizeVisibilityRole(sidebarOverview, overviewRole);
-  const sidebarSettingsRole = normalizeVisibilityRole(sidebarSettings || settingsRole, settingsRole);
-  const sidebarActivityRole = normalizeVisibilityRole(sidebarActivity || 'admin', 'admin');
-  const sidebarRole = normalizeVisibilityRole(sidebar, deriveSidebarMinRole({}, [overviewRole, launchRole, settingsRole]));
+  const overviewSection = normalizeMenuSectionFromInput(overview, 'disabled');
+  const launchSection = normalizeMenuSectionFromInput(launch, 'disabled');
+  const settingsSection = normalizeMenuSectionFromInput(settings, 'disabled');
+  const sidebarOverviewSection = normalizeMenuSectionFromInput(sidebarOverview, overviewSection.minRole);
+  const sidebarSettingsSection = normalizeMenuSectionFromInput(sidebarSettings || settingsSection, settingsSection.minRole);
+  const sidebarActivitySection = normalizeMenuSectionFromInput(sidebarActivity || 'admin', 'admin');
+  const sidebarSection = normalizeMenuSectionFromInput(
+    sidebar,
+    deriveSidebarMinRole({}, [overviewSection.minRole, launchSection.minRole, settingsSection.minRole])
+  );
   return {
-    sidebar: { minRole: sidebarRole },
-    sidebarOverview: { minRole: sidebarOverviewRole },
-    sidebarSettings: { minRole: sidebarSettingsRole },
-    sidebarActivity: { minRole: sidebarActivityRole },
+    sidebar: sidebarSection,
+    sidebarOverview: sidebarOverviewSection,
+    sidebarSettings: sidebarSettingsSection,
+    sidebarActivity: sidebarActivitySection,
     overview: {
-      minRole: overviewRole,
-      user: roleMeetsMinRole('user', overviewRole),
-      admin: roleMeetsMinRole('admin', overviewRole),
+      ...overviewSection,
+      user: overviewSection.visibilityRoles.includes('user'),
+      admin: overviewSection.visibilityRoles.includes('admin'),
     },
     launch: {
-      minRole: launchRole,
-      user: roleMeetsMinRole('user', launchRole),
-      admin: roleMeetsMinRole('admin', launchRole),
+      ...launchSection,
+      user: launchSection.visibilityRoles.includes('user'),
+      admin: launchSection.visibilityRoles.includes('admin'),
     },
     settings: {
-      minRole: settingsRole,
-      user: roleMeetsMinRole('user', settingsRole),
-      admin: roleMeetsMinRole('admin', settingsRole),
+      ...settingsSection,
+      user: settingsSection.visibilityRoles.includes('user'),
+      admin: settingsSection.visibilityRoles.includes('admin'),
     },
   };
 }
@@ -5208,7 +5548,7 @@ function canAccessSidebarOverview(appItem, role) {
   const roleKey = parseVisibilityRole(role);
   if (!roleKey) return false;
   const menu = normalizeMenu(appItem);
-  return roleMeetsMinRole(roleKey, menu.sidebarOverview?.minRole);
+  return canRoleAccessMenuSection(menu.sidebarOverview, roleKey, 'disabled');
 }
 
 function canAccessSidebarSettings(appItem, role) {
@@ -5216,7 +5556,7 @@ function canAccessSidebarSettings(appItem, role) {
   const roleKey = parseVisibilityRole(role);
   if (!roleKey) return false;
   const menu = normalizeMenu(appItem);
-  return roleMeetsMinRole(roleKey, menu.sidebarSettings?.minRole);
+  return canRoleAccessMenuSection(menu.sidebarSettings, roleKey, 'disabled');
 }
 
 function canAccessSidebarActivity(appItem, role) {
@@ -5224,7 +5564,7 @@ function canAccessSidebarActivity(appItem, role) {
   const roleKey = parseVisibilityRole(role);
   if (!roleKey) return false;
   const menu = normalizeMenu(appItem);
-  return roleMeetsMinRole(roleKey, menu.sidebarActivity?.minRole);
+  return canRoleAccessMenuSection(menu.sidebarActivity, roleKey, 'disabled');
 }
 
 function getMenuAccess(appItem, role) {
@@ -5249,10 +5589,10 @@ function getMenuAccess(appItem, role) {
     };
   }
   return {
-    sidebar: roleMeetsMinRole(roleKey, menu.sidebar?.minRole),
-    overview: roleMeetsMinRole(roleKey, menu.overview?.minRole),
-    launch: roleMeetsMinRole(roleKey, menu.launch?.minRole) && launchEnabled,
-    settings: roleMeetsMinRole(roleKey, menu.settings?.minRole),
+    sidebar: canRoleAccessMenuSection(menu.sidebar, roleKey, 'disabled'),
+    overview: canRoleAccessMenuSection(menu.overview, roleKey, 'disabled'),
+    launch: canRoleAccessMenuSection(menu.launch, roleKey, 'disabled') && launchEnabled,
+    settings: canRoleAccessMenuSection(menu.settings, roleKey, 'disabled'),
   };
 }
 
@@ -5272,36 +5612,28 @@ function normalizeMenu(appItem) {
     const sidebarActivitySource = source.sidebarActivity && typeof source.sidebarActivity === 'object'
       ? source.sidebarActivity
       : {};
-    const sidebar = {
-      ...sidebarSource,
-      minRole: normalizeVisibilityRole(
-        sidebarSource.minRole,
-        deriveSidebarMinRole(sidebarSource, [overview.minRole, launch.minRole, settings.minRole])
-      ),
-    };
-    const sidebarOverview = {
-      ...sidebarOverviewSource,
-      minRole: normalizeVisibilityRole(sidebarOverviewSource.minRole, overview.minRole),
-    };
-    const sidebarSettings = {
-      ...sidebarSettingsSource,
-      minRole: normalizeVisibilityRole(sidebarSettingsSource.minRole, settings.minRole),
-    };
-    const sidebarActivity = {
-      ...sidebarActivitySource,
-      minRole: normalizeVisibilityRole(sidebarActivitySource.minRole, 'admin'),
-    };
+    const sidebar = normalizeMenuRoleSection(
+      sidebarSource,
+      deriveSidebarMinRole(sidebarSource, [overview.minRole, launch.minRole, settings.minRole])
+    );
+    const sidebarOverview = normalizeMenuRoleSection(sidebarOverviewSource, overview.minRole);
+    const sidebarSettings = normalizeMenuRoleSection(sidebarSettingsSource, settings.minRole);
+    const sidebarActivity = normalizeMenuRoleSection(sidebarActivitySource, 'admin');
     if (!Boolean(appItem?.custom)) {
-      const overviewRank = VISIBILITY_ROLE_RANK[normalizeVisibilityRole(overview.minRole, 'disabled')];
-      const sidebarOverviewRank = VISIBILITY_ROLE_RANK[normalizeVisibilityRole(sidebarOverview.minRole, 'disabled')];
-      if (sidebarOverviewRank >= 0 && (overviewRank < 0 || sidebarOverviewRank < overviewRank)) {
-        overview.minRole = sidebarOverview.minRole;
-        overview.user = roleMeetsMinRole('user', overview.minRole);
-        overview.admin = roleMeetsMinRole('admin', overview.minRole);
+      const mergedOverviewRoles = MENU_VISIBILITY_SELECTABLE_ROLES.filter((role) =>
+        overview.visibilityRoles.includes(role) || sidebarOverview.visibilityRoles.includes(role)
+      );
+      if (mergedOverviewRoles.length !== overview.visibilityRoles.length
+        || mergedOverviewRoles.some((role) => !overview.visibilityRoles.includes(role))) {
+        overview.visibilityRoles = mergedOverviewRoles;
+        overview.minRole = mergedOverviewRoles.length ? mergedOverviewRoles[0] : 'disabled';
+        overview.user = mergedOverviewRoles.includes('user');
+        overview.admin = mergedOverviewRoles.includes('admin');
       }
       // App settings route is admin-only; keep section access aligned for built-in apps.
-      if (settings.minRole !== 'admin') {
+      if (settings.minRole !== 'admin' || settings.visibilityRoles.length !== 1 || settings.visibilityRoles[0] !== 'admin') {
         settings.minRole = 'admin';
+        settings.visibilityRoles = ['admin'];
         settings.user = false;
         settings.admin = true;
       }
@@ -5435,7 +5767,14 @@ function normalizeCategoryEntries(items) {
       sidebarMenu: visibilityRoles.length > 0,
       visibilityRoles,
       sidebarMinRole: visibilityRoles.length > 0 ? (visibilityRoles[0] || 'user') : 'disabled',
-      icon: String(icon || '').trim(),
+      icon: (() => {
+        const iconValue = String(icon || '').trim();
+        // Normalize legacy Requesters icon path to current default.
+        if (key === 'requesters' && iconValue === '/icons/requesters.png') {
+          return '/icons/requesters.svg';
+        }
+        return iconValue;
+      })(),
     });
   });
   return entries;
@@ -5450,12 +5789,16 @@ function resolveDefaultCategoryIcon(name) {
   if (!key) return DEFAULT_CATEGORY_ICON;
   if (key === 'admin') return '/icons/admin.svg';
   if (key === 'media') return '/icons/media-play.svg';
-  if (key === 'requesters') return '/icons/requesters.png';
+  if (key === 'requesters') return '/icons/requesters.svg';
   if (key === 'manager') return '/icons/settings.svg';
   if (key === 'arr suite') return '/icons/app.svg';
   if (key === 'indexers') return '/icons/indexers.svg';
   if (key === 'downloaders') return '/icons/download.svg';
   if (key === 'tools') return '/icons/tools.svg';
+  if (key === 'photos') return '/icons/photos.svg';
+  if (key === 'system') return '/icons/system.svg';
+  if (key === 'documents') return '/icons/documents.svg';
+  if (key === 'finance') return '/icons/finance.svg';
   return DEFAULT_CATEGORY_ICON;
 }
 
@@ -5499,52 +5842,53 @@ function listIconFiles(dir, baseUrl) {
   }
 }
 
-function getDefaultSystemIconOptions() {
+function resolveKnownAppIconBaseNames(apps = []) {
+  const additionalBases = [
+    'dozzle',
+    'minecraft-bedrock',
+    'traefik',
+    'plex-login',
+    'plex-login-white',
+  ];
+  const combinedApps = dedupeApps([
+    ...loadDefaultApps(),
+    ...(Array.isArray(apps) ? apps : []),
+  ]);
+  const bases = new Set();
+  additionalBases.forEach((name) => {
+    const normalized = String(name || '').trim().toLowerCase();
+    if (normalized) bases.add(normalized);
+  });
+  combinedApps.forEach((appItem) => {
+    const id = normalizeAppId(appItem?.id);
+    if (id) bases.add(id);
+    const iconPath = String(appItem?.icon || '').trim();
+    if (!iconPath.startsWith('/icons/')) return;
+    const iconName = path.basename(iconPath).replace(/\.(svg|png|jpe?g|webp)$/i, '').toLowerCase();
+    if (iconName) bases.add(iconName);
+  });
+  return bases;
+}
+
+function getDefaultSystemIconOptions(apps = []) {
   const iconsDir = path.join(__dirname, '..', 'public', 'icons');
-  const excluded = new Set([
+  const excludedFiles = new Set([
     'launcharr-icon.png',
     'launcharr.svg',
     'appsa.png',
     'appsa.svg',
     'app-arr.svg',
-    'arr-suite.svg',
-    'prowlarr.svg',
-    'prowlarr.png',
-    'pulsarr.svg',
-    'pulsarr.png',
-    'seerr.svg',
-    'seerr.png',
-    'plex.svg',
-    'plex.png',
-    'jellyfin.svg',
-    'jellyfin.png',
-    'emby.svg',
-    'emby.png',
-    'radarr.svg',
-    'radarr.png',
-    'sonarr.svg',
-    'sonarr.png',
-    'lidarr.svg',
-    'lidarr.png',
-    'readarr.svg',
-    'readarr.png',
-    'bazarr.svg',
-    'bazarr.png',
-    'tautulli.svg',
-    'tautulli.png',
-    'transmission.svg',
-    'transmission.png',
-    'huntarr.svg',
-    'huntarr.png',
-    'cleanuparr.svg',
-    'cleanuparr.png',
-    'nzbget.svg',
   ]);
+  const knownAppIconBases = resolveKnownAppIconBaseNames(apps);
   try {
     return fs
       .readdirSync(iconsDir)
       .filter((name) => /\.svg$/i.test(name))
-      .filter((name) => !excluded.has(name))
+      .filter((name) => !excludedFiles.has(name))
+      .filter((name) => {
+        const baseName = path.basename(name).replace(/\.(svg|png|jpe?g|webp)$/i, '').toLowerCase();
+        return !knownAppIconBases.has(baseName);
+      })
       .map((name) => `/icons/${name}`);
   } catch (err) {
     return [];
@@ -5579,15 +5923,13 @@ function migrateLegacyCustomAppIcons() {
   }
 }
 
-function getCategoryIconOptions() {
-  return [...getDefaultSystemIconOptions(), ...getCustomSystemIconOptions()];
+function getCategoryIconOptions(apps = []) {
+  return [...getDefaultSystemIconOptions(apps), ...getCustomSystemIconOptions()];
 }
 
 function getDefaultAppIconOptions(apps = []) {
   const iconsDir = path.join(__dirname, '..', 'public', 'icons');
-  const appIds = (Array.isArray(apps) ? apps : [])
-    .map((appItem) => String(appItem?.id || '').trim().toLowerCase())
-    .filter(Boolean);
+  const appIds = Array.from(resolveKnownAppIconBaseNames(apps));
   const seen = new Set();
   const options = [];
   appIds.forEach((appId) => {
@@ -6402,7 +6744,7 @@ function buildDashboardElementsFromRequest(appItem, body) {
     }
     const orderValue = body[`${prefix}order`];
     const parsedOrder = Number(orderValue);
-    const isQueue = element.id === 'activity-queue';
+    const isQueue = element.id === 'activity-queue' || ['queue', 'users', 'invitations', 'status', 'active-sessions', 'connections', 'routers', 'services'].includes(element.id);
     const overviewVisibilityRole = normalizeVisibilityRole(
       body[`${prefix}overview_visibility_role`],
       resolveOverviewElementVisibilityRole(appItem, existingSettings.get(element.id) || {}, 'user')
@@ -6816,15 +7158,34 @@ function resolveAppLaunchMode(appItem, menu) {
   const configured = normalizeLaunchMode(appItem?.launchMode, '');
   if (configured) return configured;
   const accessMenu = menu || normalizeMenu(appItem);
-  return accessMenu.launch.user || accessMenu.launch.admin ? 'new-tab' : 'disabled';
+  const launchRoles = normalizeMenuVisibilityRoles(
+    accessMenu?.launch?.visibilityRoles,
+    accessMenu?.launch?.minRole || 'disabled'
+  );
+  return launchRoles.length ? 'new-tab' : 'disabled';
 }
 
 function resolveEffectiveLaunchMode(appItem, req, menu) {
   const configured = resolveAppLaunchMode(appItem, menu);
+  if (shouldForceLocalNewTab(appItem, configured, req)) return 'new-tab';
   return configured;
 }
 
 function shouldForceLocalNewTab(appItem, mode, req) {
+  const normalizedMode = normalizeLaunchMode(mode, '');
+  if (normalizedMode !== 'iframe') return false;
+  const baseId = getAppBaseId(appItem?.id);
+  if (baseId === 'agregarr' || baseId === 'sortarr') return true;
+  if (baseId !== 'tautulli') return false;
+  const requestHost = getRequestHost(req);
+  let targetHost = '';
+  try {
+    targetHost = new URL(resolveLaunchUrl(appItem, req)).hostname || '';
+  } catch (err) {
+    targetHost = '';
+  }
+  if (isLocalHost(requestHost)) return true;
+  if (isLocalHost(targetHost)) return true;
   return false;
 }
 
@@ -8557,12 +8918,23 @@ function decodePlexEscapes(value) {
 function requireAdmin(req, res, next) {
   const role = getEffectiveRole(req);
   if (role === 'admin') return next();
+  const requestPath = String(req.originalUrl || req.url || '').trim() || '/';
+  const method = String(req.method || 'GET').toUpperCase();
+  const isApiPath = requestPath.startsWith('/api/');
+  if (!role && !isApiPath && (method === 'GET' || method === 'HEAD')) {
+    try {
+      if (req.session) req.session.postLoginRedirect = requestPath;
+    } catch (err) {
+      /* ignore session write errors and fall back to plain login redirect */
+    }
+    return res.redirect('/login');
+  }
   pushLog({
     level: 'error',
     app: 'system',
     action: 'access.denied',
     message: 'Admin access required.',
-    meta: { path: req.originalUrl || req.url || '' },
+    meta: { path: requestPath },
   });
   res.status(403).send('Admin access required.');
 }
@@ -8570,12 +8942,23 @@ function requireAdmin(req, res, next) {
 function requireActualAdmin(req, res, next) {
   const role = getActualRole(req);
   if (role === 'admin') return next();
+  const requestPath = String(req.originalUrl || req.url || '').trim() || '/';
+  const method = String(req.method || 'GET').toUpperCase();
+  const isApiPath = requestPath.startsWith('/api/');
+  if (!role && !isApiPath && (method === 'GET' || method === 'HEAD')) {
+    try {
+      if (req.session) req.session.postLoginRedirect = requestPath;
+    } catch (err) {
+      /* ignore session write errors and fall back to plain login redirect */
+    }
+    return res.redirect('/login');
+  }
   pushLog({
     level: 'error',
     app: 'system',
     action: 'access.denied',
     message: 'Admin access required.',
-    meta: { path: req.originalUrl || req.url || '' },
+    meta: { path: requestPath },
   });
   res.status(403).send('Admin access required.');
 }
@@ -9206,7 +9589,20 @@ function safeMessage(err) {
 // ─── Widget Bar helpers ──────────────────────────────────────────────────────
 
 function getWidgetStatType(typeId) {
-  return WIDGET_STAT_TYPE_BY_ID.get(String(typeId || '').trim().toLowerCase()) || null;
+  const normalizedTypeId = String(typeId || '').trim().toLowerCase();
+  if (!normalizedTypeId) return null;
+  const knownType = WIDGET_STAT_TYPE_BY_ID.get(normalizedTypeId);
+  if (knownType) return knownType;
+  return {
+    typeId: normalizedTypeId,
+    name: getBaseAppTitle(normalizedTypeId),
+    icon: '/icons/app.svg',
+    metricFields: [
+      { key: 'http_status', label: 'HTTP' },
+      { key: 'latency_ms', label: 'Latency' },
+    ],
+    fallback: true,
+  };
 }
 
 function buildWidgetBarId() {
@@ -9481,10 +9877,18 @@ function resolveNextWidgetRowOrder(bar) {
 
 function resolveWidgetBarTypes(apps) {
   const appList = Array.isArray(apps) ? apps : [];
-  const activeTypeIds = new Set(
-    appList.filter((a) => !a?.removed).map((a) => getAppBaseId(a?.id)).filter(Boolean)
-  );
-  return WIDGET_STAT_TYPES.filter((t) => activeTypeIds.has(t.typeId));
+  const seenTypeIds = new Set();
+  return appList
+    .filter((a) => !a?.removed)
+    .map((a) => getAppBaseId(a?.id))
+    .filter((typeId) => {
+      if (!typeId) return false;
+      if (seenTypeIds.has(typeId)) return false;
+      seenTypeIds.add(typeId);
+      return true;
+    })
+    .map((typeId) => getWidgetStatType(typeId))
+    .filter(Boolean);
 }
 
 // ─── Route registration via context injection ───────────────────────────────
@@ -9696,6 +10100,7 @@ const _routeCtx = {
   DEVICE_NAME,
   CLIENT_ID,
   LOCAL_AUTH_MIN_PASSWORD,
+  validateLocalPasswordStrength,
   // settings — constants
   DASHBOARD_MAX_COUNT,
   DATA_DIR,

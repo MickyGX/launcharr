@@ -2,6 +2,14 @@ import crypto from 'crypto';
 
 // Rate limiting for POST /login — in-memory, resets on restart (acceptable for self-hosted)
 const loginAttempts = new Map(); // ip -> { failures: number, windowStart: ms }
+
+const PIN_MAX_AGE_MS = 15 * 60 * 1000; // Plex PIN valid for 15 minutes
+
+function isValidPlexPinId(v) {
+  const s = String(v || '').trim();
+  return /^\d+$/.test(s) && s.length > 0 && s.length <= 20;
+}
+
 const RATE_LIMIT_MAX = 10;
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 
@@ -97,6 +105,7 @@ export function registerAuth(app, ctx) {
     DEVICE_NAME,
     CLIENT_ID,
     LOCAL_AUTH_MIN_PASSWORD,
+    validateLocalPasswordStrength,
   } = ctx;
 
   app.get('/', (req, res) => {
@@ -219,11 +228,12 @@ export function registerAuth(app, ctx) {
         values,
       });
     }
-    if (!password || password.length < LOCAL_AUTH_MIN_PASSWORD) {
+    const passwordStrengthError = validateLocalPasswordStrength(password);
+    if (passwordStrengthError) {
       return res.status(400).render('setup', {
         title: 'Launcharr Setup',
         minPassword: LOCAL_AUTH_MIN_PASSWORD,
-        error: `Password must be at least ${LOCAL_AUTH_MIN_PASSWORD} characters.`,
+        error: passwordStrengthError,
         values,
       });
     }
@@ -269,7 +279,21 @@ export function registerAuth(app, ctx) {
 
   app.get('/auth/plex', async (req, res) => {
     try {
-      const authBaseUrl = resolvePublicBaseUrl(req);
+      // Always use the request's actual Host header for the callback URL so the
+      // forwardUrl matches the origin the browser is accessing from.  This keeps
+      // the session cookie in scope when Plex redirects back.  Fall back to the
+      // configured public base URL only when no Host header is present.
+      const reqProto = (String(req.headers?.['x-forwarded-proto'] || '').split(',')[0].trim()) || req.protocol || 'http';
+      const reqHost  = (String(req.headers?.['x-forwarded-host'] || '').split(',')[0].trim()) || req.get('host') || '';
+      const authBaseUrl = reqHost ? `${reqProto}://${reqHost}` : resolvePublicBaseUrl(req);
+      // Generate a per-flow nonce to protect the callback against login CSRF.
+      // Stored in session; client embeds it in forwardUrl; we verify on callback.
+      const plexState = crypto.randomBytes(20).toString('hex');
+      if (req.session) {
+        req.session.plexState = plexState;
+        req.session.pinIssuedAt = null; // reset any stale pin from a previous flow
+        req.session.pinId = null;
+      }
       pushLog({
         level: 'info',
         app: 'plex',
@@ -280,6 +304,7 @@ export function registerAuth(app, ctx) {
       return res.render('plex-auth', {
         title: 'Plex Login',
         callbackUrl: buildAppApiUrl(authBaseUrl, 'oauth/callback').toString(),
+        plexState,
         client: {
           id: CLIENT_ID,
           product: PRODUCT,
@@ -301,7 +326,7 @@ export function registerAuth(app, ctx) {
   app.post('/api/plex/pin', (req, res) => {
     try {
       const pinId = String(req.body?.pinId || '').trim();
-      if (!pinId) return res.status(400).json({ error: 'Missing pinId.' });
+      if (!isValidPlexPinId(pinId)) return res.status(400).json({ error: 'Invalid pinId.' });
       req.session.pinId = pinId;
       req.session.pinIssuedAt = Date.now();
       return res.json({ ok: true });
@@ -312,17 +337,45 @@ export function registerAuth(app, ctx) {
 
   app.get('/oauth/callback', async (req, res) => {
     try {
-      const pinId = req.session?.pinId || req.query.pinId;
-      if (!pinId) {
+      // ── Session / CSRF check ───────────────────────────────────────────────
+      // Plex's auth SPA does not forward arbitrary query params through forwardUrl,
+      // so we cannot use a state-in-URL round-trip. Instead we verify that this
+      // session legitimately started a Plex login (plexState was set by /auth/plex).
+      // Primary CSRF protection: sessionPin must match queryPin (below).
+      const sessionState = String(req.session?.plexState || '').trim();
+      if (!sessionState) {
         pushLog({
-          level: 'error',
+          level: 'warn',
           app: 'plex',
           action: 'login.callback',
-          message: 'Missing PIN session.',
+          message: 'Plex callback rejected: no active login session.',
         });
-        return res.status(400).send('Missing PIN session. Start login again.');
+        return res.status(400).send('No active login session. Please start the login again.');
       }
 
+      // ── PIN validation ─────────────────────────────────────────────────────
+      // Session is authoritative; query param must match if session has one.
+      const sessionPin = String(req.session?.pinId || '').trim();
+      const queryPin   = String(req.query?.pinId   || '').trim();
+      const pinId = sessionPin || queryPin;
+
+      if (!isValidPlexPinId(pinId)) {
+        pushLog({ level: 'error', app: 'plex', action: 'login.callback', message: 'Missing or invalid PIN.' });
+        return res.status(400).send('Missing PIN session. Start login again.');
+      }
+      if (sessionPin && queryPin && sessionPin !== queryPin) {
+        pushLog({ level: 'warn', app: 'plex', action: 'login.callback', message: 'Plex callback rejected: pinId mismatch.' });
+        return res.status(400).send('Invalid login session. Please start the login again.');
+      }
+
+      // ── PIN expiry check ───────────────────────────────────────────────────
+      const issuedAt = Number(req.session?.pinIssuedAt || 0);
+      if (!issuedAt || Date.now() - issuedAt > PIN_MAX_AGE_MS) {
+        pushLog({ level: 'warn', app: 'plex', action: 'login.callback', message: 'Plex PIN expired.' });
+        return res.status(400).send('Login session expired. Please start the login again.');
+      }
+
+      // ── Exchange PIN for token ─────────────────────────────────────────────
       const pinResult = await exchangePinWithRetry(pinId);
       const authToken = pinResult?.token || null;
       if (!authToken) {
@@ -331,7 +384,6 @@ export function registerAuth(app, ctx) {
           app: 'plex',
           action: 'login.callback',
           message: 'Plex login not completed.',
-          // DEBUG: capture pin/attempts for Plex SSO troubleshooting
           meta: {
             pinId: String(pinId || ''),
             attempts: pinResult?.attempts || 0,
@@ -344,7 +396,6 @@ export function registerAuth(app, ctx) {
       await completePlexLogin(req, authToken);
       res.redirect(consumePostLoginRedirect(req, '/dashboard'));
     } catch (err) {
-      console.error('Plex callback failed:', err);
       pushLog({
         level: 'error',
         app: 'plex',
@@ -358,8 +409,20 @@ export function registerAuth(app, ctx) {
 
   app.get('/api/plex/pin/status', async (req, res) => {
     try {
-      const pinId = String(req.query?.pinId || req.session?.pinId || '').trim();
-      if (!pinId) return res.status(400).json({ error: 'Missing pinId.' });
+      const sessionPin = String(req.session?.pinId || '').trim();
+      const queryPin   = String(req.query?.pinId   || '').trim();
+      const pinId = sessionPin || queryPin;
+
+      if (!isValidPlexPinId(pinId)) return res.status(400).json({ error: 'Missing pinId.' });
+      if (sessionPin && queryPin && sessionPin !== queryPin) {
+        return res.status(400).json({ error: 'PIN mismatch.' });
+      }
+
+      const issuedAt = Number(req.session?.pinIssuedAt || 0);
+      if (issuedAt && Date.now() - issuedAt > PIN_MAX_AGE_MS) {
+        return res.status(400).json({ error: 'PIN expired.' });
+      }
+
       const authToken = await exchangePin(pinId);
       if (!authToken) return res.json({ ok: false });
       await completePlexLogin(req, authToken);
@@ -370,7 +433,7 @@ export function registerAuth(app, ctx) {
     }
   });
 
-  app.get('/logout', (req, res) => {
+  const logoutHandler = (req, res) => {
     const user = req.session?.user || {};
     pushLog({
       level: 'info',
@@ -380,6 +443,11 @@ export function registerAuth(app, ctx) {
       meta: { user: user.username || user.email || '' },
     });
     req.session = null;
-    res.redirect('/');
+    return res.redirect('/');
+  };
+
+  app.post('/logout', logoutHandler);
+  app.get('/logout', (_req, res) => {
+    return res.status(405).send('Method Not Allowed. Use POST /logout.');
   });
 }

@@ -1,4 +1,22 @@
-# Release Notes (v0.1.0 -> v0.2.42)
+# Release Notes (v0.1.0 -> v0.2.43)
+
+## v0.2.43 (2026-03-01)
+
+- [Added]
+- Expanded built-in app catalog/category/icon coverage and aligned default categories/icons (including requesters.svg).
+- Added multi-instance defaults metadata for built-in apps (supportsInstances, maxInstances, instanceNamePlaceholder).
+- Added specialty overview/data modules for MeTube, Audiobookshelf, Tdarr, Immich, Wizarr, Uptime Kuma, Guacamole, and Traefik.
+- Added app-level behavior controls under Settings -> Apps -> General for sidebar link visibility and per-role short/long press actions.
+- [Changed]
+- Moved Add default app and Add custom app rows to the top of Settings -> Apps -> General.
+- Updated app settings/tab workflows and support docs to match expanded integrations and app-general behavior placement.
+- [Fixed]
+- Fixed custom app add regression in 0.2.42 (crypto.randomBytes is not a function, GitHub issue #22).
+- Fixed default-app add/form-layout issues across settings surfaces.
+- Fixed user-menu logout label typography inconsistencies.
+- [Security]
+- Added conditional/hop-limited trust proxy configuration, baseline headers, CSRF protections, stricter payload limits, and stronger local password rules.
+
 
 ## v0.2.42 (2026-02-27)
 

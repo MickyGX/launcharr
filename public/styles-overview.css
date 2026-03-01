@@ -1096,6 +1096,84 @@ html:not([data-theme="day"]) .plex-overview .plex-title{
   color:var(--plex-muted);
   font-weight:700;
 }
+/* status badge colours (metube / wizarr / uptime-kuma overviews) */
+.queue-status--ok{color:#2bd56f;font-weight:700}
+.queue-status--bad{color:#ff6b6b;font-weight:700}
+.queue-status--warn{color:#ffb446;font-weight:700}
+/* inline progress bar (metube overview) */
+.queue-progress-wrap{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  min-width:0;
+}
+.queue-progress-bar{
+  flex:1 1 0;
+  height:8px;
+  border-radius:4px;
+  background:#5ea2ff;
+  min-width:0;
+  transition:width .3s ease;
+}
+.queue-progress-label{
+  flex:0 0 auto;
+  font-size:11px;
+  font-weight:700;
+  color:rgba(232,238,247,.75);
+  white-space:nowrap;
+}
+/* uptime-kuma queue-table style groups */
+.uk-queue-group + .uk-queue-group{margin-top:10px}
+.uk-queue-group .queue-col-time{text-align:center}
+.uk-queue-group-label{
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  color:rgba(232,238,247,.45);
+  padding:0 2px 6px;
+}
+/* history bar (solid segmented colour bar, no gaps, clipped by container radius) */
+.uk-bar-chart{
+  display:flex;
+  align-items:stretch;
+  height:18px;
+  width:100%;
+  border-radius:3px;
+  overflow:hidden;
+  background:rgba(255,255,255,.06);
+}
+.uk-bar-chart--empty{opacity:.4}
+.uk-bar-seg{
+  flex:1 1 0;
+  min-width:1px;
+}
+.uk-bar-seg:hover{filter:brightness(1.25)}
+/* uptime percentage text */
+.uk-uptime{
+  display:block;
+  font-size:12px;
+  font-weight:700;
+  color:rgba(232,238,247,.65);
+  white-space:nowrap;
+  text-align:center;
+}
+/* status badge */
+.uk-badge{
+  display:inline-flex;
+  align-items:center;
+  padding:2px 9px;
+  border-radius:20px;
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.03em;
+  text-transform:uppercase;
+  white-space:nowrap;
+}
+.uk-badge--up{background:rgba(43,213,111,.15);color:#2bd56f;border:1px solid rgba(43,213,111,.3)}
+.uk-badge--down{background:rgba(255,107,107,.15);color:#ff6b6b;border:1px solid rgba(255,107,107,.3)}
+.uk-badge--maintenance{background:rgba(79,180,255,.15);color:#4fb4ff;border:1px solid rgba(79,180,255,.3)}
+.uk-badge--pending{background:rgba(180,180,180,.1);color:rgba(232,238,247,.55);border:1px solid rgba(255,255,255,.12)}
 /* releases mode (autobrr) */
 .queue-mode-releases .queue-row:not(.header) .queue-col-title{
   display:flex;

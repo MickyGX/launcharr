@@ -9,9 +9,9 @@ Source of truth:
 Current built-in catalog totals:
 
 - `48` app definitions.
-- `26` with overview modules plus widget stats.
-- `6` with widget stats only.
-- `16` launch/settings only.
+- `27` with overview modules plus widget stats.
+- `13` with widget stats only.
+- `8` launch/settings only.
 
 ## Overview Module Matrix
 
@@ -41,6 +41,7 @@ Current built-in catalog totals:
 | MeTube | `metube` | Download Queue |
 | Audiobookshelf | `audiobookshelf` | Recently Added |
 | Tdarr | `tdarr` | Statistics |
+| Guacamole | `guacamole` | Active Sessions, Connections |
 | Wizarr | `wizarr` | Users, Invitations |
 | Uptime Kuma | `uptime-kuma` | Status Page |
 
@@ -48,18 +49,18 @@ Current built-in catalog totals:
 
 | App | ID | Category | Support Level | Default URL |
 | --- | --- | --- | --- | --- |
-| Agregarr | `agregarr` | `Arr Suite` | Launch/settings | `http://localhost:5055` |
+| Agregarr | `agregarr` | `Arr Suite` | Widget stats | `http://localhost:5055` |
 | Autobrr | `autobrr` | `Arr Suite` | Overview + Widget stats | `http://localhost:7474` |
 | Bazarr | `bazarr` | `Arr Suite` | Overview + Widget stats | `http://localhost:6767` |
 | Cleanuparr | `cleanuparr` | `Arr Suite` | Widget stats | `http://localhost:11011` |
 | Huntarr | `huntarr` | `Arr Suite` | Launch/settings | `http://localhost:9705` |
 | Lidarr | `lidarr` | `Arr Suite` | Overview + Widget stats | `http://localhost:8686` |
 | Maintainerr | `maintainerr` | `Arr Suite` | Overview + Widget stats | `http://localhost:6246` |
-| Profilarr | `profilarr` | `Arr Suite` | Launch/settings | `http://localhost:6868` |
+| Profilarr | `profilarr` | `Arr Suite` | Widget stats | `http://localhost:6868` |
 | Radarr | `radarr` | `Arr Suite` | Overview + Widget stats | `http://localhost:7878` |
 | Readarr | `readarr` | `Arr Suite` | Overview + Widget stats | `http://localhost:8787` |
 | Sonarr | `sonarr` | `Arr Suite` | Overview + Widget stats | `http://localhost:8989` |
-| Sortarr | `sortarr` | `Arr Suite` | Launch/settings | `http://localhost:8787` |
+| Sortarr | `sortarr` | `Arr Suite` | Widget stats | `http://localhost:8787` |
 | Paperless-ngx | `paperless-ngx` | `Documents` | Widget stats | `http://localhost:8010` |
 | Deemix | `deemix` | `Downloaders` | Launch/settings | `http://localhost:6595` |
 | MeTube | `metube` | `Downloaders` | Overview + Widget stats | `http://localhost:8081` |
@@ -74,7 +75,7 @@ Current built-in catalog totals:
 | Tautulli | `tautulli` | `Manager` | Overview + Widget stats | `http://localhost:8181` |
 | Audiobookshelf | `audiobookshelf` | `Media` | Overview + Widget stats | `http://localhost:13378` |
 | Emby | `emby` | `Media` | Overview + Widget stats | `http://localhost:8096/web/index.html` |
-| ErsatzTV | `ersatztv` | `Media` | Launch/settings | `http://localhost:8409` |
+| ErsatzTV | `ersatztv` | `Media` | Widget stats | `http://localhost:8409` |
 | Jellyfin | `jellyfin` | `Media` | Overview + Widget stats | `http://localhost:8096/web/index.html` |
 | Kometa | `kometa` | `Media` | Launch/settings | `http://localhost:4242` |
 | Pikaraoke | `pikaraoke` | `Media` | Launch/settings | `http://localhost:5555` |
@@ -85,14 +86,14 @@ Current built-in catalog totals:
 | Seerr | `seerr` | `Requesters` | Overview + Widget stats | `http://localhost:5055` |
 | Glances | `glances` | `System` | Widget stats | `http://localhost:61208` |
 | Gluetun | `gluetun` | `System` | Widget stats | `http://localhost:8000` |
-| Guardian | `guardian` | `System` | Launch/settings | `http://localhost:3005` |
+| Guardian | `guardian` | `System` | Widget stats | `http://localhost:3005` |
 | Portainer | `portainer` | `System` | Widget stats | `http://localhost:9000` |
 | Speedtest Tracker | `speedtest-tracker` | `System` | Widget stats | `http://localhost:8765` |
 | Uptime Kuma | `uptime-kuma` | `System` | Overview + Widget stats | `http://localhost:3001` |
-| Apprise | `apprise` | `Tools` | Launch/settings | `http://localhost:8000` |
+| Apprise | `apprise` | `Tools` | Widget stats | `http://localhost:8000` |
 | Code Server | `code-server` | `Tools` | Launch/settings | `http://localhost:8443` |
-| Guacamole | `guacamole` | `Tools` | Launch/settings | `http://localhost:8090` |
-| Termix | `termix` | `Tools` | Launch/settings | `http://localhost:9090` |
+| Guacamole | `guacamole` | `Tools` | Overview + Widget stats | `http://localhost:8090` |
+| Termix | `termix` | `Tools` | Widget stats | `http://localhost:9090` |
 | The Lounge | `thelounge` | `Tools` | Launch/settings | `http://localhost:9001` |
 | Wizarr | `wizarr` | `Tools` | Overview + Widget stats | `http://localhost:5690` |
 | phpMyAdmin | `phpmyadmin` | `Tools` | Launch/settings | `http://localhost:1977` |

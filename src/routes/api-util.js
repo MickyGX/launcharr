@@ -64,12 +64,12 @@ export function registerApiUtil(app, ctx) {
     res.json({ ok: true });
   });
 
-  app.get('/switch-view', requireUser, (req, res) => {
+  const switchViewHandler = (req, res) => {
     const actualRole = getActualRole(req);
     if (actualRole !== 'admin') {
       return res.status(403).send('Admin access required.');
     }
-    const desired = String(req.query?.role || '').trim().toLowerCase();
+    const desired = String(req.body?.role ?? req.query?.role ?? '').trim().toLowerCase();
     const allowedViewRoles = new Set(['guest', 'user', 'co-admin', 'admin']);
     req.session.viewRole = allowedViewRoles.has(desired) && desired !== 'admin'
       ? desired
@@ -78,6 +78,11 @@ export function registerApiUtil(app, ctx) {
     const config = loadConfig();
     const targetPath = resolveRoleSwitchRedirectPath(req, targetRole, { config });
     res.redirect(targetPath);
+  };
+
+  app.post('/switch-view', requireUser, switchViewHandler);
+  app.get('/switch-view', requireUser, (_req, res) => {
+    return res.status(405).send('Method Not Allowed. Use POST /switch-view.');
   });
 
   app.get('/api/onboarding/quick-start', requireSettingsAdmin, (req, res) => {
@@ -85,14 +90,6 @@ export function registerApiUtil(app, ctx) {
     const onboarding = resolveOnboardingSettings(config);
     const hasActiveApps = hasActiveOnboardingApps(config);
     if (onboarding.quickStartPending && hasActiveApps) {
-      const source = (config && typeof config.onboarding === 'object') ? config.onboarding : {};
-      saveConfig({
-        ...config,
-        onboarding: {
-          ...source,
-          quickStartPending: false,
-        },
-      });
       return res.json({ show: false, steps: [], actions: {} });
     }
     const show = shouldShowQuickStartOnboarding(config);

@@ -138,9 +138,10 @@ describe('route guards (unauthenticated)', () => {
     assert.ok(res.headers.location?.includes('/login'), 'should redirect to /login');
   });
 
-  it('GET /settings returns 403', async () => {
+  it('GET /settings redirects to /login', async () => {
     const res = await request.get('/settings');
-    assert.equal(res.status, 403);
+    assert.equal(res.status, 302);
+    assert.ok(res.headers.location?.includes('/login'), 'should redirect to /login');
   });
 
   it('GET /apps/plex returns 302 to /login', async () => {

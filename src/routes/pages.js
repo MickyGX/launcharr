@@ -394,12 +394,26 @@ export function registerPages(app, ctx) {
     });
   
     // ── Widget bars ──────────────────────────────────────────────────────────
+    const getWidgetBarDashboardOrder = (bar) => {
+      const barId = String(bar?.id || '').trim();
+      const combinedOrderKey = `combined:widgetbar:${barId}`;
+      const storedOrder = Number(dashboardCombinedOrder?.[combinedOrderKey]);
+      if (Number.isFinite(storedOrder)) return storedOrder;
+      const barOrder = Number(bar?.order);
+      return Number.isFinite(barOrder) ? barOrder : 999;
+    };
     const visibleWidgetBars = resolveWidgetBars(config, apps, role)
-      .filter((bar) => !dashboardRemovedElements[`widget-bar:${bar.id}`]);
+      .filter((bar) => !dashboardRemovedElements[`widget-bar:${bar.id}`])
+      .sort((a, b) => {
+        const orderDelta = getWidgetBarDashboardOrder(a) - getWidgetBarDashboardOrder(b);
+        if (orderDelta !== 0) return orderDelta;
+        return String(a?.name || '').localeCompare(String(b?.name || ''));
+      });
     visibleWidgetBars.forEach((bar) => {
+      const effectiveOrder = getWidgetBarDashboardOrder(bar);
       dashboardModules.push({
-        app: { id: `widget-bar-${bar.id}`, name: bar.name || 'Widget Bar', order: bar.order || 999 },
-        element: { id: 'widget-bar', name: bar.name || 'Widget Bar', order: bar.order || 999 },
+        app: { id: `widget-bar-${bar.id}`, name: bar.name || 'Widget Bar', order: effectiveOrder },
+        element: { id: 'widget-bar', name: bar.name || 'Widget Bar', order: effectiveOrder },
         category: 'Widgets',
         arrCombined: null,
         downloaderCombined: null,

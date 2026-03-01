@@ -165,6 +165,12 @@
                             data-widget-id="<%= widget.id %>"
                             data-system-config="<%= JSON.stringify(widget.systemConfig || {}) %>">
                           </div>
+                        <% } else if (widget.systemType === 'links') { %>
+                          <div class="dashboard-links-widget"
+                            data-system-type="links"
+                            data-widget-id="<%= widget.id %>"
+                            data-system-config="<%= JSON.stringify(widget.systemConfig || {}) %>">
+                          </div>
                         <% } else if (!widget.systemType) { %>
                         <div class="dashboard-stat-card is-loading"
                           data-app-id="<%= widget.appId %>"
@@ -1711,6 +1717,414 @@
                 </div>
               </section>
             <% } %>
+
+            <%# ─── Immich ──────────────────────────────────────────────────── %>
+            <% if (resolveAppBaseId(item.app.id) === 'immich' && item.element.id === 'recent') { %>
+              <section class="plex-module plex-module--no-subtitle" id="immich-recent">
+                <div class="plex-topbar">
+                  <div class="plex-title-wrap">
+                    <div class="plex-title">
+                      <img class="plex-logo" src="<%= resolveAppIconPath(item.app) %>" alt="<%= item.app.name %>" loading="eager" onerror="this.src='/icons/app.svg'" />
+                      <span>Recently Added</span>
+                    </div>
+                    <div class="plex-subtitle"></div>
+                  </div>
+                  <div class="plex-spacer"></div>
+                  <div class="plex-controls-right">
+                    <div class="plex-select plex-icon plex-filter-media" title="Type">
+                      <select id="immichRecentTypeFilter" aria-label="Asset type">
+                        <option value="all" selected>All</option>
+                        <option value="photo">Photos</option>
+                        <option value="video">Videos</option>
+                      </select>
+                    </div>
+                    <div class="plex-select plex-xsmall" title="Limit">
+                      <select id="immichRecentLimitSelect" aria-label="Limit">
+                        <option value="10">10</option>
+                        <option value="20" selected>20</option>
+                        <option value="50">50</option>
+                      </select>
+                    </div>
+                    <button class="plex-iconbtn" id="immichRecentPrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
+                    <button class="plex-iconbtn" id="immichRecentNextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="immich-recent" data-collapse-global="true">
+                      <div class="plex-doublechev"><div class="plex-chev plex-up"></div><div class="plex-chev plex-down"></div></div>
+                    </button>
+                  </div>
+                </div>
+                <div class="plex-panel">
+                  <div id="immichRecentViewport" class="plex-carousel-viewport">
+                    <div id="immichRecentTrack" class="plex-carousel-track">
+                      <div class="plex-empty">Loading…</div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            <% } %>
+
+            <%# ─── Audiobookshelf ──────────────────────────────────────────── %>
+            <% if (resolveAppBaseId(item.app.id) === 'audiobookshelf' && item.element.id === 'recently-added') { %>
+              <section class="plex-module plex-module--no-subtitle" id="audiobookshelf-recent">
+                <div class="plex-topbar">
+                  <div class="plex-title-wrap">
+                    <div class="plex-title">
+                      <img class="plex-logo" src="<%= resolveAppIconPath(item.app) %>" alt="<%= item.app.name %>" loading="eager" onerror="this.src='/icons/app.svg'" />
+                      <span>Recently Added</span>
+                    </div>
+                    <div class="plex-subtitle"></div>
+                  </div>
+                  <div class="plex-spacer"></div>
+                  <div class="plex-controls-right">
+                    <div class="plex-select plex-icon plex-filter-media" title="Type">
+                      <select id="absRecentTypeFilter" aria-label="Media type">
+                        <option value="all" selected>All</option>
+                        <option value="book">Books</option>
+                        <option value="podcast">Podcasts</option>
+                      </select>
+                    </div>
+                    <div class="plex-select plex-xsmall" title="Limit">
+                      <select id="absRecentLimitSelect" aria-label="Limit">
+                        <option value="10">10</option>
+                        <option value="20" selected>20</option>
+                        <option value="50">50</option>
+                      </select>
+                    </div>
+                    <button class="plex-iconbtn" id="absRecentPrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
+                    <button class="plex-iconbtn" id="absRecentNextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="audiobookshelf-recent" data-collapse-global="true">
+                      <div class="plex-doublechev"><div class="plex-chev plex-up"></div><div class="plex-chev plex-down"></div></div>
+                    </button>
+                  </div>
+                </div>
+                <div class="plex-panel">
+                  <div id="absRecentViewport" class="plex-carousel-viewport">
+                    <div id="absRecentTrack" class="plex-carousel-track">
+                      <div class="plex-empty">Loading…</div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            <% } %>
+
+            <%# ─── MeTube ──────────────────────────────────────────────────── %>
+            <% if (resolveAppBaseId(item.app.id) === 'metube' && item.element.id === 'queue') { %>
+              <section class="plex-module plex-module--no-subtitle" id="<%= item.app.id %>-queue">
+                <div class="plex-topbar">
+                  <div class="plex-title-wrap">
+                    <div class="plex-title">
+                      <img class="plex-logo" src="<%= resolveAppIconPath(item.app) %>" alt="<%= item.app.name %>" loading="eager" onerror="this.src='/icons/app.svg'" />
+                      <span>Download Queue</span>
+                    </div>
+                    <div class="plex-subtitle"></div>
+                  </div>
+                  <div class="plex-spacer"></div>
+                  <div class="plex-controls-right">
+                    <div class="plex-select plex-icon plex-filter-status" title="Status">
+                      <select id="<%= item.app.id %>QueueStatusFilter" aria-label="Status">
+                        <option value="all" selected>All</option>
+                        <option value="downloading">Downloading</option>
+                        <option value="queued">Queued</option>
+                        <option value="done">Completed</option>
+                        <option value="error">Error</option>
+                      </select>
+                    </div>
+                    <div class="plex-select plex-xsmall" title="Per page">
+                      <select id="<%= item.app.id %>QueueLimitFilter" aria-label="Per page">
+                        <option value="5">5</option>
+                        <option value="10" selected>10</option>
+                        <option value="25">25</option>
+                      </select>
+                    </div>
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="<%= item.app.id %>-queue" data-collapse-global="true">
+                      <div class="plex-doublechev"><div class="plex-chev plex-up"></div><div class="plex-chev plex-down"></div></div>
+                    </button>
+                  </div>
+                </div>
+                <%
+                  const mtDashRows = item.element.queueVisibleRows || 10;
+                  const mtDashCls = ['queue-table', 'queue-hide-subdetail', 'queue-hide-size', 'queue-hide-protocol',
+                    item.element.queueShowDetail === false ? 'queue-hide-detail' : '',
+                    item.element.queueShowTimeLeft === false ? 'queue-hide-timeleft' : '',
+                    item.element.queueShowProgress === false ? 'queue-hide-progress' : '',
+                  ].filter(Boolean).join(' ');
+                %>
+                <div class="plex-panel queue-panel">
+                  <div class="<%= mtDashCls %>" data-page-size-select-id="<%= item.app.id %>QueueLimitFilter" style="--queue-visible-rows:<%= mtDashRows %>">
+                    <div class="queue-row header">
+                      <div class="queue-col-title">Title</div>
+                      <div class="queue-col-detail">Status</div>
+                      <div class="queue-col-time">ETA</div>
+                      <div class="queue-col-progress">Progress</div>
+                    </div>
+                    <div id="<%= item.app.id %>QueueBody" class="queue-body">
+                      <div class="queue-empty">Loading…</div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            <% } %>
+
+            <%# ─── Tdarr ───────────────────────────────────────────────────── %>
+            <% if (resolveAppBaseId(item.app.id) === 'tdarr' && item.element.id === 'stats') { %>
+              <section class="plex-module plex-module--no-subtitle" id="tdarr-stats">
+                <div class="plex-topbar">
+                  <div class="plex-title-wrap">
+                    <div class="plex-title">
+                      <img class="plex-logo" src="<%= resolveAppIconPath(item.app) %>" alt="<%= item.app.name %>" loading="eager" onerror="this.src='/icons/app.svg'" />
+                      <span>Statistics</span>
+                    </div>
+                    <div class="plex-subtitle"></div>
+                  </div>
+                  <div class="plex-spacer"></div>
+                  <div class="plex-controls-right">
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="tdarr-stats" data-collapse-global="true">
+                      <div class="plex-doublechev"><div class="plex-chev plex-up"></div><div class="plex-chev plex-down"></div></div>
+                    </button>
+                  </div>
+                </div>
+                <div class="plex-panel">
+                  <div id="tdarrStatsContainer" class="dashboard-widget-bar" style="padding:12px 16px; flex-wrap:wrap; gap:12px; min-height:80px; align-items:center;">
+                    <div class="plex-empty">Loading…</div>
+                  </div>
+                </div>
+              </section>
+            <% } %>
+
+            <%# ─── Uptime Kuma ─────────────────────────────────────────────── %>
+            <% if (resolveAppBaseId(item.app.id) === 'uptime-kuma' && item.element.id === 'status') { %>
+              <section class="plex-module plex-module--no-subtitle" id="uptime-kuma-status">
+                <div class="plex-topbar">
+                  <div class="plex-title-wrap">
+                    <div class="plex-title">
+                      <img class="plex-logo" src="<%= resolveAppIconPath(item.app) %>" alt="<%= item.app.name %>" loading="eager" onerror="this.src='/icons/app.svg'" />
+                      <span>Status Page</span>
+                    </div>
+                    <div class="plex-subtitle"></div>
+                  </div>
+                  <div class="plex-spacer"></div>
+                  <div class="plex-controls-right">
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="uptime-kuma-status" data-collapse-global="true">
+                      <div class="plex-doublechev"><div class="plex-chev plex-up"></div><div class="plex-chev plex-down"></div></div>
+                    </button>
+                  </div>
+                </div>
+                <div class="plex-panel">
+                  <div id="uptimeKumaStatusContainer">
+                    <div class="plex-empty">Loading…</div>
+                  </div>
+                </div>
+              </section>
+            <% } %>
+
+            <%# ─── Wizarr ──────────────────────────────────────────────────── %>
+            <% if (resolveAppBaseId(item.app.id) === 'wizarr' && (item.element.id === 'users' || item.element.id === 'invitations')) { %>
+              <%
+                const isWizDashUsers = item.element.id === 'users';
+                const wizDashPrefix = `${item.app.id}${isWizDashUsers ? 'Users' : 'Invitations'}`;
+              %>
+              <section class="plex-module plex-module--no-subtitle" id="<%= item.app.id %>-<%= item.element.id %>">
+                <div class="plex-topbar">
+                  <div class="plex-title-wrap">
+                    <div class="plex-title">
+                      <img class="plex-logo" src="<%= resolveAppIconPath(item.app) %>" alt="<%= item.app.name %>" loading="eager" onerror="this.src='/icons/app.svg'" />
+                      <span><%= isWizDashUsers ? 'Users' : 'Invitations' %></span>
+                    </div>
+                    <div class="plex-subtitle"></div>
+                  </div>
+                  <div class="plex-spacer"></div>
+                  <div class="plex-controls-right">
+                    <div class="plex-select plex-icon plex-filter-status" title="Status">
+                      <select id="<%= wizDashPrefix %>StatusFilter" aria-label="Status">
+                        <option value="all" selected>All</option>
+                        <% if (isWizDashUsers) { %>
+                          <option value="active">Active</option>
+                          <option value="expired">Expired</option>
+                          <option value="disabled">Disabled</option>
+                        <% } else { %>
+                          <option value="active">Active</option>
+                          <option value="expired">Expired</option>
+                          <option value="used">Used</option>
+                        <% } %>
+                      </select>
+                    </div>
+                    <div class="plex-select plex-xsmall" title="Per page">
+                      <select id="<%= wizDashPrefix %>LimitFilter" aria-label="Per page">
+                        <option value="5">5</option>
+                        <option value="10" selected>10</option>
+                        <option value="25">25</option>
+                      </select>
+                    </div>
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="<%= item.app.id %>-<%= item.element.id %>" data-collapse-global="true">
+                      <div class="plex-doublechev"><div class="plex-chev plex-up"></div><div class="plex-chev plex-down"></div></div>
+                    </button>
+                  </div>
+                </div>
+                <%
+                  const wizDashRows = item.element.queueVisibleRows || 10;
+                  const wizUsersCls = ['queue-table', 'queue-hide-subdetail', 'queue-hide-protocol', 'queue-hide-progress',
+                    item.element.queueShowDetail === false ? 'queue-hide-detail' : '',
+                    item.element.queueShowSize === false ? 'queue-hide-size' : '',
+                    item.element.queueShowTimeLeft === false ? 'queue-hide-timeleft' : '',
+                  ].filter(Boolean).join(' ');
+                  const wizInvCls = ['queue-table', 'queue-hide-subdetail', 'queue-hide-size', 'queue-hide-progress',
+                    item.element.queueShowDetail === false ? 'queue-hide-detail' : '',
+                    item.element.queueShowProtocol === false ? 'queue-hide-protocol' : '',
+                    item.element.queueShowTimeLeft === false ? 'queue-hide-timeleft' : '',
+                  ].filter(Boolean).join(' ');
+                %>
+                <div class="plex-panel queue-panel">
+                  <% if (isWizDashUsers) { %>
+                    <div class="<%= wizUsersCls %>" data-page-size-select-id="<%= wizDashPrefix %>LimitFilter" style="--queue-visible-rows:<%= wizDashRows %>">
+                      <div class="queue-row header">
+                        <div class="queue-col-title">Email</div>
+                        <div class="queue-col-detail">Role</div>
+                        <div class="queue-col-size">Created</div>
+                        <div class="queue-col-time">Expires</div>
+                      </div>
+                      <div id="<%= wizDashPrefix %>Body" class="queue-body">
+                        <div class="queue-empty">Loading…</div>
+                      </div>
+                    </div>
+                  <% } else { %>
+                    <div class="<%= wizInvCls %>" data-page-size-select-id="<%= wizDashPrefix %>LimitFilter" style="--queue-visible-rows:<%= wizDashRows %>">
+                      <div class="queue-row header">
+                        <div class="queue-col-title">Code</div>
+                        <div class="queue-col-detail">Uses</div>
+                        <div class="queue-col-protocol">Expires</div>
+                        <div class="queue-col-time">Created</div>
+                      </div>
+                      <div id="<%= wizDashPrefix %>Body" class="queue-body">
+                        <div class="queue-empty">Loading…</div>
+                      </div>
+                    </div>
+                  <% } %>
+                </div>
+              </section>
+            <% } %>
+
+            <%# ─── Guacamole ─────────────────────────────────────────────── %>
+            <%# ─── Guacamole ─────────────────────────────────────────────── %>
+            <% if (resolveAppBaseId(item.app.id) === 'guacamole' && (item.element.id === 'active-sessions' || item.element.id === 'connections')) { %>
+              <%
+                const isGuacActive = item.element.id === 'active-sessions';
+                const guacDashRows = item.element.queueVisibleRows || 10;
+                const guacActiveCls = ['queue-table', 'queue-hide-subdetail', 'queue-hide-size', 'queue-hide-progress',
+                  item.element.queueShowDetail === false ? 'queue-hide-detail' : '',
+                  item.element.queueShowProtocol === false ? 'queue-hide-protocol' : '',
+                  item.element.queueShowTimeLeft === false ? 'queue-hide-timeleft' : '',
+                ].filter(Boolean).join(' ');
+                const guacConnCls = ['queue-table', 'queue-hide-subdetail', 'queue-hide-protocol', 'queue-hide-timeleft', 'queue-hide-progress',
+                  item.element.queueShowDetail === false ? 'queue-hide-detail' : '',
+                  item.element.queueShowSize === false ? 'queue-hide-size' : '',
+                ].filter(Boolean).join(' ');
+              %>
+              <section class="plex-module plex-module--no-subtitle" id="<%= item.app.id %>-<%= item.element.id %>">
+                <div class="plex-topbar">
+                  <div class="plex-title-wrap">
+                    <div class="plex-title">
+                      <img class="plex-logo" src="<%= resolveAppIconPath(item.app) %>" alt="<%= item.app.name %>" loading="eager" onerror="this.src='/icons/app.svg'" />
+                      <span><%= isGuacActive ? 'Active Sessions' : 'Connections' %></span>
+                    </div>
+                    <div class="plex-subtitle"></div>
+                  </div>
+                  <div class="plex-spacer"></div>
+                  <div class="plex-controls-right">
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="<%= item.app.id %>-<%= item.element.id %>" data-collapse-global="true">
+                      <div class="plex-doublechev"><div class="plex-chev plex-up"></div><div class="plex-chev plex-down"></div></div>
+                    </button>
+                  </div>
+                </div>
+                <div class="plex-panel queue-panel">
+                  <% if (isGuacActive) { %>
+                    <div class="<%= guacActiveCls %>" style="--queue-visible-rows:<%= guacDashRows %>">
+                      <div class="queue-row header">
+                        <div class="queue-col-title">Connection</div>
+                        <div class="queue-col-detail">User</div>
+                        <div class="queue-col-protocol">Protocol</div>
+                        <div class="queue-col-time">Started</div>
+                      </div>
+                      <div id="<%= item.app.id %>ActiveSessionsBody" class="queue-body">
+                        <div class="queue-empty">Loading…</div>
+                      </div>
+                    </div>
+                  <% } else { %>
+                    <div class="<%= guacConnCls %>" style="--queue-visible-rows:<%= guacDashRows %>">
+                      <div class="queue-row header">
+                        <div class="queue-col-title">Name</div>
+                        <div class="queue-col-detail">Protocol</div>
+                        <div class="queue-col-size">Active</div>
+                      </div>
+                      <div id="<%= item.app.id %>ConnectionsBody" class="queue-body">
+                        <div class="queue-empty">Loading…</div>
+                      </div>
+                    </div>
+                  <% } %>
+                </div>
+              </section>
+            <% } %>
+
+            <%# ─── Traefik ────────────────────────────────────────────────── %>
+            <% if (resolveAppBaseId(item.app.id) === 'traefik' && (item.element.id === 'routers' || item.element.id === 'services')) { %>
+              <%
+                const isTraefikRouters = item.element.id === 'routers';
+                const traefikDashRows = item.element.queueVisibleRows || 10;
+                const traefikRoutersCls = ['queue-table', 'queue-hide-subdetail', 'queue-hide-size', 'queue-hide-progress',
+                  item.element.queueShowDetail === false ? 'queue-hide-detail' : '',
+                  item.element.queueShowProtocol === false ? 'queue-hide-protocol' : '',
+                  item.element.queueShowTimeLeft === false ? 'queue-hide-timeleft' : '',
+                ].filter(Boolean).join(' ');
+                const traefikServicesCls = ['queue-table', 'queue-hide-subdetail', 'queue-hide-timeleft', 'queue-hide-progress',
+                  item.element.queueShowDetail === false ? 'queue-hide-detail' : '',
+                  item.element.queueShowProtocol === false ? 'queue-hide-protocol' : '',
+                  item.element.queueShowSize === false ? 'queue-hide-size' : '',
+                ].filter(Boolean).join(' ');
+              %>
+              <section class="plex-module plex-module--no-subtitle" id="<%= item.app.id %>-<%= item.element.id %>">
+                <div class="plex-topbar">
+                  <div class="plex-title-wrap">
+                    <div class="plex-title">
+                      <img class="plex-logo" src="<%= resolveAppIconPath(item.app) %>" alt="<%= item.app.name %>" loading="eager" onerror="this.src='/icons/app.svg'" />
+                      <span><%= isTraefikRouters ? 'Routers' : 'Services' %></span>
+                    </div>
+                    <div class="plex-subtitle"></div>
+                  </div>
+                  <div class="plex-spacer"></div>
+                  <div class="plex-controls-right">
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="<%= item.app.id %>-<%= item.element.id %>" data-collapse-global="true">
+                      <div class="plex-doublechev"><div class="plex-chev plex-up"></div><div class="plex-chev plex-down"></div></div>
+                    </button>
+                  </div>
+                </div>
+                <div class="plex-panel queue-panel">
+                  <% if (isTraefikRouters) { %>
+                    <div class="<%= traefikRoutersCls %>" style="--queue-visible-rows:<%= traefikDashRows %>">
+                      <div class="queue-row header">
+                        <div class="queue-col-title">Name</div>
+                        <div class="queue-col-detail">Status</div>
+                        <div class="queue-col-protocol">Entrypoints</div>
+                        <div class="queue-col-time">Service</div>
+                      </div>
+                      <div id="<%= item.app.id %>RoutersBody" class="queue-body">
+                        <div class="queue-empty">Loading…</div>
+                      </div>
+                    </div>
+                  <% } else { %>
+                    <div class="<%= traefikServicesCls %>" style="--queue-visible-rows:<%= traefikDashRows %>">
+                      <div class="queue-row header">
+                        <div class="queue-col-title">Name</div>
+                        <div class="queue-col-detail">Status</div>
+                        <div class="queue-col-protocol">Type</div>
+                        <div class="queue-col-size">Servers</div>
+                      </div>
+                      <div id="<%= item.app.id %>ServicesBody" class="queue-body">
+                        <div class="queue-empty">Loading…</div>
+                      </div>
+                    </div>
+                  <% } %>
+                </div>
+              </section>
+            <% } %>
+
           <% }) %>
 
           <% if (hasPlexActive) { %>
@@ -2769,6 +3183,71 @@
   <% } %>
   <% if (dashboardModules.some((item) => item.widgetBar)) { %>
     <script src="/widgets-stat-cards.js?v=<%= assetVersion %>"></script>
+  <% } %>
+  <% if (dashboardModules.some((item) => resolveAppBaseId(item.app.id) === 'immich' && item.element.id === 'recent')) { %>
+    <%
+      const immichDashApp = dashboardModules.find((item) => resolveAppBaseId(item.app.id) === 'immich' && item.element.id === 'recent')?.app;
+    %>
+    <script>window.IMMICH_OVERVIEW_CONFIG = <%- JSON.stringify({ appId: immichDashApp.id, appName: immichDashApp.name }) %>;</script>
+    <script src="/immich-overview.js?v=<%= assetVersion %>"></script>
+  <% } %>
+  <% if (dashboardModules.some((item) => resolveAppBaseId(item.app.id) === 'audiobookshelf' && item.element.id === 'recently-added')) { %>
+    <%
+      const absDashApp = dashboardModules.find((item) => resolveAppBaseId(item.app.id) === 'audiobookshelf' && item.element.id === 'recently-added')?.app;
+    %>
+    <script>window.ABS_OVERVIEW_CONFIG = <%- JSON.stringify({ appId: absDashApp.id, appName: absDashApp.name }) %>;</script>
+    <script src="/audiobookshelf-overview.js?v=<%= assetVersion %>"></script>
+  <% } %>
+  <% if (dashboardModules.some((item) => resolveAppBaseId(item.app.id) === 'metube' && item.element.id === 'queue')) { %>
+    <%
+      const metubeDashApp = dashboardModules.find((item) => resolveAppBaseId(item.app.id) === 'metube' && item.element.id === 'queue')?.app;
+    %>
+    <script>window.METUBE_OVERVIEW_CONFIG = <%- JSON.stringify({ appId: metubeDashApp.id, appName: metubeDashApp.name }) %>;</script>
+    <script src="/metube-overview.js?v=<%= assetVersion %>"></script>
+  <% } %>
+  <% if (dashboardModules.some((item) => resolveAppBaseId(item.app.id) === 'tdarr' && item.element.id === 'stats')) { %>
+    <%
+      const tdarrDashApp = dashboardModules.find((item) => resolveAppBaseId(item.app.id) === 'tdarr' && item.element.id === 'stats')?.app;
+    %>
+    <script>window.TDARR_OVERVIEW_CONFIG = <%- JSON.stringify({ appId: tdarrDashApp.id, appName: tdarrDashApp.name }) %>;</script>
+    <script src="/tdarr-overview.js?v=<%= assetVersion %>"></script>
+  <% } %>
+  <% if (dashboardModules.some((item) => resolveAppBaseId(item.app.id) === 'uptime-kuma' && item.element.id === 'status')) { %>
+    <%
+      const ukDashItem = dashboardModules.find((item) => resolveAppBaseId(item.app.id) === 'uptime-kuma' && item.element.id === 'status');
+      const ukDashApp = ukDashItem?.app;
+      const ukDashEl = ukDashItem?.element || {};
+    %>
+    <script>window.UPTIME_KUMA_OVERVIEW_CONFIG = <%- JSON.stringify({
+      appId: ukDashApp.id,
+      appName: ukDashApp.name,
+      queueVisibleRows: ukDashEl.queueVisibleRows || 10,
+      queueShowDetail: ukDashEl.queueShowDetail !== false,
+      queueShowTimeLeft: ukDashEl.queueShowTimeLeft !== false,
+      queueShowProgress: ukDashEl.queueShowProgress !== false,
+    }) %>;</script>
+    <script src="/uptime-kuma-overview.js?v=<%= assetVersion %>"></script>
+  <% } %>
+  <% if (dashboardModules.some((item) => resolveAppBaseId(item.app.id) === 'wizarr' && (item.element.id === 'users' || item.element.id === 'invitations'))) { %>
+    <%
+      const wizDashApp = dashboardModules.find((item) => resolveAppBaseId(item.app.id) === 'wizarr')?.app;
+    %>
+    <script>window.WIZARR_OVERVIEW_CONFIG = <%- JSON.stringify({ appId: wizDashApp.id, appName: wizDashApp.name }) %>;</script>
+    <script src="/wizarr-overview.js?v=<%= assetVersion %>"></script>
+  <% } %>
+  <% if (dashboardModules.some((item) => resolveAppBaseId(item.app.id) === 'guacamole' && (item.element.id === 'active-sessions' || item.element.id === 'connections'))) { %>
+    <%
+      const guacDashApp = dashboardModules.find((item) => resolveAppBaseId(item.app.id) === 'guacamole')?.app;
+    %>
+    <script>window.GUACAMOLE_OVERVIEW_CONFIG = <%- JSON.stringify({ appId: guacDashApp.id, appName: guacDashApp.name }) %>;</script>
+    <script src="/guacamole-overview.js?v=<%= assetVersion %>"></script>
+  <% } %>
+  <% if (dashboardModules.some((item) => resolveAppBaseId(item.app.id) === 'traefik' && (item.element.id === 'routers' || item.element.id === 'services'))) { %>
+    <%
+      const traefikDashApp = dashboardModules.find((item) => resolveAppBaseId(item.app.id) === 'traefik')?.app;
+    %>
+    <script>window.TRAEFIK_OVERVIEW_CONFIG = <%- JSON.stringify({ appId: traefikDashApp.id, appName: traefikDashApp.name }) %>;</script>
+    <script src="/traefik-overview.js?v=<%= assetVersion %>"></script>
   <% } %>
   <script src="/table-pagination.js?v=<%= assetVersion %>"></script>
   <script src="/version-badge.js?v=<%= assetVersion %>"></script>

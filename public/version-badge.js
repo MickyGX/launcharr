@@ -1,32 +1,60 @@
 (() => {
   const status = document.querySelector('.main-window-status');
   if (!status) return;
+  const root = document.documentElement;
   const releaseBase = 'https://github.com/MickyGX/launcharr/releases/tag/';
   const supportUrl = 'https://buymeacoffee.com/mickygx';
   const dot = status.querySelector('.status-dot');
-  const supportLink = document.createElement('a');
-  supportLink.className = 'theme-toggle theme-toggle--support';
-  supportLink.href = supportUrl;
-  supportLink.target = '_blank';
-  supportLink.rel = 'noreferrer noopener';
-  supportLink.setAttribute('aria-label', 'Buy Me a Coffee');
-  supportLink.title = 'Buy Me a Coffee';
-  supportLink.innerHTML = ''
-    + '<svg class="theme-toggle-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">'
-    + '  <path fill="currentColor" d="M12 20.6l-1.2-1.08C5.84 15.08 3 12.52 3 9.38 3 6.82 5.02 5 7.44 5c1.37 0 2.69.65 3.56 1.68C11.87 5.65 13.19 5 14.56 5 16.98 5 19 6.82 19 9.38c0 3.14-2.84 5.7-7.8 10.14L12 20.6z"/>'
-    + '</svg>';
+  const themeStorageKey = 'launcharr-theme';
+  const getThemeMode = () => root.dataset.theme === 'day' ? 'day' : 'night';
+  const applyThemeMode = (value) => {
+    const next = value === 'day' ? 'day' : 'night';
+    root.dataset.theme = next;
+    if (document.body) document.body.dataset.theme = next;
+    try {
+      localStorage.setItem(themeStorageKey, next);
+    } catch (err) {
+      // Ignore storage failures.
+    }
+  };
+  const themeToggle = document.createElement('button');
+  themeToggle.type = 'button';
+  themeToggle.className = 'theme-toggle';
+  const themeIcon = document.createElement('img');
+  themeIcon.className = 'theme-toggle-icon';
+  themeIcon.alt = '';
+  themeIcon.setAttribute('aria-hidden', 'true');
+  themeToggle.appendChild(themeIcon);
+  const syncThemeToggle = () => {
+    const mode = getThemeMode();
+    const targetLabel = mode === 'day' ? 'Switch to Dark Mode' : 'Switch to Light Mode';
+    themeIcon.src = mode === 'day' ? '/icons/sun.svg' : '/icons/moon.svg';
+    themeToggle.setAttribute('aria-label', targetLabel);
+    themeToggle.title = targetLabel;
+  };
+  themeToggle.addEventListener('click', (event) => {
+    event.preventDefault();
+    applyThemeMode(getThemeMode() === 'day' ? 'night' : 'day');
+    syncThemeToggle();
+  });
+  syncThemeToggle();
 
-  if (dot) {
-    status.insertBefore(supportLink, dot);
-  } else {
-    status.appendChild(supportLink);
+  if (typeof MutationObserver === 'function') {
+    const observer = new MutationObserver(syncThemeToggle);
+    observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
   }
 
-  const activeRoleViewOption = document.querySelector('.user-menu-role-option.is-active[href^="/switch-view?role="]');
-  const switchViewLink = document.querySelector('.user-menu-item[href^="/switch-view?role="]');
+  if (dot) {
+    status.insertBefore(themeToggle, dot);
+  } else {
+    status.appendChild(themeToggle);
+  }
+
+  const activeRoleViewOption = document.querySelector('.user-menu-role-option.is-active[data-role-value]');
+  const displayedRole = String(document.querySelector('.user-meta .role')?.textContent || '').trim().toLowerCase();
   const inAdminView = activeRoleViewOption
-    ? /[?&]role=admin(?:&|$)/.test(activeRoleViewOption.getAttribute('href') || '')
-    : Boolean(switchViewLink && /[?&]role=user(?:&|$)/.test(switchViewLink.getAttribute('href') || ''));
+    ? String(activeRoleViewOption.getAttribute('data-role-value') || '').trim().toLowerCase() === 'admin'
+    : displayedRole === 'admin';
   const normalizeVersionTag = (value) => {
     const raw = String(value || '').trim();
     if (!raw) return '';
@@ -109,6 +137,7 @@
         '</div>' +
         '<div class="plex-modal-footer release-welcome-footer">' +
           `<a class="plex-modal-link release-welcome-nav" href="${escapeHtml(effectiveReleaseNotesUrl)}" target="_blank" rel="noreferrer noopener">Release Notes</a>` +
+          `<a class="plex-modal-link release-welcome-support" href="${escapeHtml(supportUrl)}" target="_blank" rel="noreferrer noopener">Buy Me a Coffee</a>` +
           '<a class="plex-modal-link release-welcome-settings" href="/settings?tab=custom&settingsCustomTab=dashboard">Dashboard Settings</a>' +
           '<button class="plex-modal-link release-welcome-close" type="button">Continue</button>' +
         '</div>' +
