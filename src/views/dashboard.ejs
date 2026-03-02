@@ -171,6 +171,23 @@
                             data-widget-id="<%= widget.id %>"
                             data-system-config="<%= JSON.stringify(widget.systemConfig || {}) %>">
                           </div>
+                        <% } else if (widget.systemType === 'deployment-summary') { %>
+                          <div class="dashboard-stat-card deployment-summary-stat-card is-loading"
+                            data-system-type="deployment-summary"
+                            data-widget-id="<%= widget.id %>"
+                            data-widget-metric-cols="3"
+                            data-system-config="<%= JSON.stringify(widget.systemConfig || {}) %>">
+                            <div class="stat-card-header">
+                              <img class="stat-card-icon" src="/icons/launcharr-icon.png" alt="" onerror="this.src='/icons/app.svg'" />
+                              <span class="stat-card-name">Launcharr</span>
+                              <span class="stat-card-status is-unknown">Unknown</span>
+                            </div>
+                            <div class="stat-card-metrics">
+                              <span class="stat-card-metric" data-deployment-stat="online"><span class="stat-card-metric-value">0</span><span class="stat-card-metric-label">Online</span></span>
+                              <span class="stat-card-metric" data-deployment-stat="offline"><span class="stat-card-metric-value">0</span><span class="stat-card-metric-label">Offline</span></span>
+                              <span class="stat-card-metric" data-deployment-stat="total"><span class="stat-card-metric-value">0</span><span class="stat-card-metric-label">Total</span></span>
+                            </div>
+                          </div>
                         <% } else if (!widget.systemType) { %>
                         <div class="dashboard-stat-card is-loading"
                           data-app-id="<%= widget.appId %>"

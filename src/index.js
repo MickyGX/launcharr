@@ -155,12 +155,14 @@ const WIDGET_STAT_TYPES = [
   { typeId: 'guacamole',       name: 'Guacamole',       icon: '/icons/guacamole.svg',       metricFields: [{ key: 'active', label: 'Active' }, { key: 'connections', label: 'Connections' }, { key: 'users', label: 'Users' }] },
   { typeId: 'traefik',         name: 'Traefik',         icon: '/icons/traefik.svg',         metricFields: [{ key: 'routers', label: 'Routers' }, { key: 'services', label: 'Services' }, { key: 'middlewares', label: 'Middlewares' }] },
   { typeId: 'dozzle',          name: 'Dozzle',          icon: '/icons/dozzle.svg',          metricFields: [{ key: 'running', label: 'Running' }] },
+  { typeId: 'qnap',            name: 'QNAP',            icon: '/icons/qnap.svg',            metricFields: [{ key: 'cpu', label: 'CPU' }, { key: 'memory', label: 'Memory' }, { key: 'volume', label: 'Volume' }] },
 ];
 const WIDGET_STAT_TYPE_BY_ID = new Map(WIDGET_STAT_TYPES.map((t) => [t.typeId, t]));
 
 const SYSTEM_WIDGET_TYPES = [
   { typeId: 'sys-resources', label: 'System Info', icon: '/icons/dashboard.svg', hasConfig: true, configFields: [] },
   { typeId: 'links', label: 'Links', icon: '/icons/system.svg', hasConfig: true, configFields: [] },
+  { typeId: 'deployment-summary', label: 'Launcharr', icon: '/icons/launcharr-icon.png', hasConfig: true, configFields: [] },
 ];
 const SYSTEM_WIDGET_TYPE_BY_ID = new Map(SYSTEM_WIDGET_TYPES.map((t) => [t.typeId, t]));
 const SYSTEM_WIDGET_SEARCH_PROVIDERS = [
@@ -231,6 +233,23 @@ function normalizeSystemWidget(entry) {
       title,
       showUrl: rawConfig.showUrl !== false,
       links,
+    };
+    return { id, systemType, systemConfig, icon: typeDef.icon, typeName: typeDef.label };
+  }
+  if (systemType === 'deployment-summary') {
+    const rawStats = (rawConfig.stats && typeof rawConfig.stats === 'object') ? rawConfig.stats : {};
+    const rawColumns = Number(rawConfig.columns ?? rawConfig.metricColumns ?? rawConfig.metric_columns);
+    let showOnline = rawStats.online !== false;
+    let showOffline = rawStats.offline !== false;
+    let showTotal = rawStats.total !== false;
+    if (!showOnline && !showOffline && !showTotal) showOnline = true;
+    const systemConfig = {
+      columns: Number.isFinite(rawColumns) ? Math.max(1, Math.min(4, Math.round(rawColumns))) : 3,
+      stats: {
+        online: showOnline,
+        offline: showOffline,
+        total: showTotal,
+      },
     };
     return { id, systemType, systemConfig, icon: typeDef.icon, typeName: typeDef.label };
   }
@@ -5612,13 +5631,30 @@ function normalizeMenu(appItem) {
     const sidebarActivitySource = source.sidebarActivity && typeof source.sidebarActivity === 'object'
       ? source.sidebarActivity
       : {};
-    const sidebar = normalizeMenuRoleSection(
+    let sidebar = normalizeMenuRoleSection(
       sidebarSource,
       deriveSidebarMinRole(sidebarSource, [overview.minRole, launch.minRole, settings.minRole])
     );
-    const sidebarOverview = normalizeMenuRoleSection(sidebarOverviewSource, overview.minRole);
-    const sidebarSettings = normalizeMenuRoleSection(sidebarSettingsSource, settings.minRole);
-    const sidebarActivity = normalizeMenuRoleSection(sidebarActivitySource, 'admin');
+    let sidebarOverview = normalizeMenuRoleSection(sidebarOverviewSource, overview.minRole);
+    let sidebarSettings = normalizeMenuRoleSection(sidebarSettingsSource, settings.minRole);
+    let sidebarActivity = normalizeMenuRoleSection(sidebarActivitySource, 'admin');
+    const enforceAdminSidebarSection = (section) => {
+      const sourceSection = section && typeof section === 'object' ? section : {};
+      const normalizedRoles = normalizeMenuVisibilityRoles(
+        sourceSection.visibilityRoles,
+        sourceSection.minRole || 'admin'
+      );
+      const visibilityRoles = normalizedRoles.length ? normalizedRoles : ['admin'];
+      return {
+        ...sourceSection,
+        minRole: visibilityRoles[0] || 'admin',
+        visibilityRoles,
+      };
+    };
+    sidebar = enforceAdminSidebarSection(sidebar);
+    sidebarOverview = enforceAdminSidebarSection(sidebarOverview);
+    sidebarSettings = enforceAdminSidebarSection(sidebarSettings);
+    sidebarActivity = enforceAdminSidebarSection(sidebarActivity);
     if (!Boolean(appItem?.custom)) {
       const mergedOverviewRoles = MENU_VISIBILITY_SELECTABLE_ROLES.filter((role) =>
         overview.visibilityRoles.includes(role) || sidebarOverview.visibilityRoles.includes(role)

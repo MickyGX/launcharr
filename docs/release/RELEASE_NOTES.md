@@ -1,4 +1,26 @@
-# Release Notes (v0.1.0 -> v0.2.43)
+# Release Notes (v0.1.0 -> v0.2.44)
+
+## v0.2.44 (2026-03-02)
+
+- [Added]
+- Added a new Launcharr deployment-summary system widget with online/offline/total counters and status-percentage badge.
+- Added deployment-summary widget configuration controls for metric columns and per-stat visibility.
+- Added `GET /api/widget-deployment-summary` for deployment-summary widget data.
+- Added built-in `QNAP` app support (`config/default-apps.json`, `public/icons/qnap.svg`) with widget metrics for CPU, memory, and volume.
+- Added API-key reveal/hide controls and wider API-key field layout in app settings forms.
+- [Changed]
+- Updated settings widget-canvas behavior so deployment-summary config opens on card click (no separate edit pencil).
+- Updated app-settings navigation panel generation to include all non-removed apps directly.
+- Enforced default sidebar visibility minimum of `admin` for app sidebar menu sections.
+- [Fixed]
+- Fixed Immich recently-added loading and thumbnail rendering by supporting multiple response shapes and thumbnail URL formats.
+- Fixed qBittorrent widget false-offline behavior by adding WebUI login/session-cookie flow for authenticated instances.
+- Fixed widget-stats access for widget-only apps (for example, QNAP) when app visibility is granted through widget bars.
+- Fixed deployment-summary app counting to include stat types that use fallback metadata.
+- [Security]
+- Added rate limiting for failed setup submissions (`POST /setup`).
+- Added rate limiting for Plex PIN status polling (`GET /api/plex/pin/status`).
+- Tightened Plex PIN handling so callback/status checks use session-bound PIN values only.
 
 ## v0.2.43 (2026-03-01)
 

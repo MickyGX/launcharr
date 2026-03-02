@@ -158,9 +158,14 @@
         <% } %>
       </div>
       <div class="plex-settings-fields">
-        <label class="field">
+        <label class="field field-with-action">
           <span>API Key</span>
-          <input type="password" name="apiKey" value="<%= renderedApp.apiKey || '' %>" placeholder="<%= renderedAppName %> API key" />
+          <div class="field-action-row">
+            <input id="<%= renderedFormUid %>-api-key" type="password" name="apiKey" value="<%= renderedApp.apiKey || '' %>" placeholder="<%= renderedAppName %> API key" />
+            <button class="icon-button" type="button" aria-label="Show API key" data-visibility-toggle="<%= renderedFormUid %>-api-key" data-visibility-state="hidden">
+              <img src="/icons/view-off.svg" alt="" />
+            </button>
+          </div>
         </label>
       </div>
       <div class="plex-settings-note">Tip: Keep this key private.</div>
@@ -178,7 +183,7 @@
       </div>
     </div>
   <% } %>
-  <% if (['nzbget', 'transmission', 'qbittorrent', 'sabnzbd', 'romm', 'maintainerr', 'glances', 'paperless-ngx', 'guacamole', 'traefik', 'dozzle', 'ersatztv', 'apprise'].includes(renderedAppBaseId)) { %>
+  <% if (['nzbget', 'transmission', 'qbittorrent', 'sabnzbd', 'romm', 'maintainerr', 'glances', 'paperless-ngx', 'guacamole', 'traefik', 'dozzle', 'ersatztv', 'apprise', 'qnap'].includes(renderedAppBaseId)) { %>
     <div class="settings-card plex-settings-card">
       <div class="settings-card-title"><%= renderedAppName %> Access</div>
       <div class="settings-card-sub">Credentials for local or remote access.</div>

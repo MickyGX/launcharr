@@ -188,7 +188,7 @@ export function registerApiSpecialty(app, ctx) {
           if (!appId) return;
           const baseId = getAppBaseId(appId);
           const statType = getWidgetStatType(baseId);
-          if (!statType || statType.fallback) return;
+          if (!statType) return;
           if (!appById.has(appId)) return;
           appIds.add(appId);
         });
@@ -1037,33 +1037,98 @@ export function registerApiSpecialty(app, ctx) {
       const headers = { Accept: 'application/json', 'x-api-key': apiKey };
       let lastError = '';
 
+      function extractImmichAssets(payload) {
+        if (Array.isArray(payload)) return payload;
+        if (Array.isArray(payload?.assets)) return payload.assets;
+        if (Array.isArray(payload?.assets?.items)) return payload.assets.items;
+        if (Array.isArray(payload?.items)) return payload.items;
+        if (Array.isArray(payload?.results)) return payload.results;
+        if (Array.isArray(payload?.data)) return payload.data;
+        if (Array.isArray(payload?.data?.items)) return payload.data.items;
+        return [];
+      }
+
+      function normalizeImmichItems(payload) {
+        const rawItems = extractImmichAssets(payload);
+        return rawItems
+          .map((asset) => {
+            const id = String(asset?.id || asset?.assetId || '').trim();
+            if (!id) return null;
+            const title = String(asset?.originalFileName || asset?.fileName || asset?.originalPath || id || 'Untitled').trim();
+            const typeRaw = String(asset?.type || asset?.assetType || '').trim().toUpperCase();
+            const mimeTypeRaw = String(asset?.originalMimeType || asset?.mimeType || '').trim().toLowerCase();
+            const isVideo = typeRaw === 'VIDEO' || mimeTypeRaw.startsWith('video/');
+            const date = asset?.fileCreatedAt || asset?.localDateTime || asset?.createdAt || asset?.updatedAt || '';
+            return {
+              id,
+              title,
+              type: isVideo ? 'video' : 'photo',
+              date,
+              thumbUrl: `/api/immich/thumbnail/${encodeURIComponent(id)}`,
+            };
+          })
+          .filter(Boolean);
+      }
+
       for (const baseUrl of candidates) {
         try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 10000);
-          let response;
-          try {
-            response = await fetch(
-              buildAppApiUrl(baseUrl, 'api/assets').toString() + `?order=desc&size=${size}&withExif=false`,
-              { headers, signal: controller.signal },
-            );
-          } finally {
-            clearTimeout(timeoutId);
+          const requestPlans = [
+            {
+              method: 'GET',
+              url: buildAppApiUrl(baseUrl, 'api/assets').toString() + `?order=desc&size=${size}&withExif=false`,
+              headers,
+            },
+            {
+              method: 'GET',
+              url: buildAppApiUrl(baseUrl, 'api/assets').toString() + `?size=${size}&page=1&withExif=false`,
+              headers,
+            },
+            {
+              method: 'GET',
+              url: buildAppApiUrl(baseUrl, 'api/assets').toString() + `?take=${size}&skip=0&withExif=false`,
+              headers,
+            },
+            {
+              method: 'POST',
+              url: buildAppApiUrl(baseUrl, 'api/search/metadata').toString(),
+              headers: { ...headers, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                page: 1,
+                size,
+                withExif: false,
+                order: 'desc',
+              }),
+            },
+          ];
+          let hasOkEmptyResponse = false;
+          for (const plan of requestPlans) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+            let response;
+            try {
+              response = await fetch(plan.url, {
+                method: plan.method,
+                headers: plan.headers,
+                body: plan.body,
+                signal: controller.signal,
+              });
+            } finally {
+              clearTimeout(timeoutId);
+            }
+            if (!response.ok) {
+              lastError = `Immich responded with status ${response.status}`;
+              continue;
+            }
+            const json = await response.json().catch(() => ({}));
+            const items = normalizeImmichItems(json);
+            if (items.length) {
+              return res.json({ items });
+            }
+            hasOkEmptyResponse = true;
           }
-          if (!response.ok) {
-            lastError = `Immich responded with status ${response.status}`;
-            continue;
+          if (hasOkEmptyResponse) {
+            return res.json({ items: [] });
           }
-          const json = await response.json().catch(() => []);
-          const rawItems = Array.isArray(json) ? json : (Array.isArray(json?.assets) ? json.assets : []);
-          const items = rawItems.map((asset) => {
-            const id = String(asset?.id || '').trim();
-            const title = String(asset?.originalFileName || asset?.fileName || id || 'Untitled').trim();
-            const type = String(asset?.type || '').toUpperCase() === 'VIDEO' ? 'video' : 'photo';
-            const date = asset?.fileCreatedAt || asset?.localDateTime || asset?.createdAt || '';
-            return { id, title, type, date, thumbUrl: id ? `/api/immich/thumbnail/${encodeURIComponent(id)}` : '' };
-          }).filter((item) => Boolean(item.id));
-          return res.json({ items });
         } catch (err) {
           lastError = safeMessage(err) || `Failed to reach Immich via ${baseUrl}.`;
         }
@@ -1099,23 +1164,28 @@ export function registerApiSpecialty(app, ctx) {
 
       for (const baseUrl of candidates) {
         try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 15000);
-          let response;
-          try {
-            response = await fetch(
-              buildAppApiUrl(baseUrl, `api/assets/${encodeURIComponent(assetId)}/thumbnail`).toString() + `?size=${thumbSize}`,
-              { headers: fetchHeaders, signal: controller.signal },
-            );
-          } finally {
-            clearTimeout(timeoutId);
+          const format = thumbSize === 'thumbnail' ? 'JPEG' : 'WEBP';
+          const thumbUrls = [
+            buildAppApiUrl(baseUrl, `api/assets/${encodeURIComponent(assetId)}/thumbnail`).toString() + `?size=${thumbSize}`,
+            buildAppApiUrl(baseUrl, `api/assets/${encodeURIComponent(assetId)}/thumbnail`).toString() + `?format=${format}`,
+            buildAppApiUrl(baseUrl, `api/assets/${encodeURIComponent(assetId)}/thumbnail`).toString(),
+          ];
+          for (const thumbUrl of thumbUrls) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000);
+            let response;
+            try {
+              response = await fetch(thumbUrl, { headers: fetchHeaders, signal: controller.signal });
+            } finally {
+              clearTimeout(timeoutId);
+            }
+            if (!response.ok) continue;
+            const contentType = response.headers.get('content-type') || 'image/jpeg';
+            res.set('Content-Type', contentType);
+            res.set('Cache-Control', 'public, max-age=86400');
+            const buffer = await response.arrayBuffer();
+            return res.send(Buffer.from(buffer));
           }
-          if (!response.ok) continue;
-          const contentType = response.headers.get('content-type') || 'image/jpeg';
-          res.set('Content-Type', contentType);
-          res.set('Cache-Control', 'public, max-age=86400');
-          const buffer = await response.arrayBuffer();
-          return res.send(Buffer.from(buffer));
         } catch (_err) {
           // try next candidate
         }
@@ -1910,6 +1980,64 @@ export function registerApiSpecialty(app, ctx) {
 
   // ─── System Widget APIs ────────────────────────────────────────────────────
 
+  app.get('/api/widget-deployment-summary', requireWidgetStatsAccess, async (req, res) => {
+    try {
+      const config = loadConfig();
+      const targets = resolveWidgetMonitorTargets(config);
+      const totalWidgets = targets.length;
+
+      if (!totalWidgets) {
+        return res.json({
+          ok: true,
+          online: 0,
+          offline: 0,
+          unknown: 0,
+          total: 0,
+          onlineWidgets: 0,
+          offlineWidgets: 0,
+          unknownWidgets: 0,
+          totalWidgets: 0,
+          appUpPercent: 0,
+        });
+      }
+
+      const notificationSettings = resolveNotificationSettings(config);
+      const runtimeSettings = resolveWidgetMonitorRuntimeSettings(notificationSettings);
+      const states = await mapWithConcurrency(targets, runtimeSettings.maxConcurrency, async (target) => {
+        const result = await fetchWidgetMonitorState(target.appId, runtimeSettings.requestTimeoutMs);
+        return normalizeWidgetMonitorState(result?.state);
+      });
+
+      let onlineWidgets = 0;
+      let offlineWidgets = 0;
+      let unknownWidgets = 0;
+      states.forEach((state) => {
+        if (state === 'online') onlineWidgets += 1;
+        else if (state === 'offline') offlineWidgets += 1;
+        else unknownWidgets += 1;
+      });
+
+      const appUpPercent = totalWidgets > 0
+        ? Math.round((onlineWidgets / totalWidgets) * 1000) / 10
+        : 0;
+
+      return res.json({
+        ok: true,
+        online: onlineWidgets,
+        offline: offlineWidgets,
+        unknown: unknownWidgets,
+        total: totalWidgets,
+        onlineWidgets,
+        offlineWidgets,
+        unknownWidgets,
+        totalWidgets,
+        appUpPercent,
+      });
+    } catch (err) {
+      return res.status(500).json({ error: safeMessage(err) || 'Failed to fetch deployment summary.' });
+    }
+  });
+
   // CPU, RAM, Disk stats for system widgets
   app.get('/api/system-info', requireUser, async (req, res) => {
     try {
@@ -2125,8 +2253,21 @@ export function registerApiSpecialty(app, ctx) {
       if (!appItem) return res.status(404).json({ error: 'App not configured.' });
 
       const isInternalWidgetRequest = req.__launcharrInternalWidgetStats === true;
-      if (!isInternalWidgetRequest && !canAccessDashboardApp(config, appItem, getEffectiveRole(req))) {
-        return res.status(403).json({ error: 'Access denied.' });
+      const effectiveRole = getEffectiveRole(req);
+      if (!isInternalWidgetRequest && !canAccessDashboardApp(config, appItem, effectiveRole)) {
+        // Also allow access if the app is in a widget bar visible to this role.
+        // canAccessDashboardApp only covers arr/downloader/media/overview apps,
+        // so apps like QNAP that live only in widget bars would otherwise always get 403.
+        const normalizedId = normalizeAppId(appItem.id);
+        const bars = resolveWidgetBars(config, apps, effectiveRole, { includeHidden: false });
+        const inVisibleWidgetBar = bars.some((bar) =>
+          (bar.rows || []).some((row) =>
+            (row.widgets || []).some((w) => w.appId && normalizeAppId(w.appId) === normalizedId)
+          )
+        );
+        if (!inVisibleWidgetBar) {
+          return res.status(403).json({ error: 'Access denied.' });
+        }
       }
 
       const typeId = getAppBaseId(appItem.id);
@@ -2823,21 +2964,61 @@ export function registerApiSpecialty(app, ctx) {
 
       // ── qbittorrent ──────────────────────────────────────────────────────
       } else if (typeId === 'qbittorrent') {
-        // qBittorrent may allow unauthenticated access or use session cookies.
-        // Try to fetch transfer info; a 403 means auth is required (mark down for now).
-        const baseUrl = candidates[0];
-        const transferResult = await doFetch(
-          buildAppApiUrl(baseUrl, 'api/v2/transfer/info').toString(),
-          { Accept: 'application/json' },
-        ).catch(() => null);
-        if (transferResult?.ok && transferResult.json) {
+        const qbUsername = String(appItem.username || '').trim();
+        const qbPassword = String(appItem.password || '').trim();
+        const allowAuth = Boolean(qbUsername || qbPassword);
+        let found = false;
+
+        for (const baseUrl of candidates) {
+          let cookieHeader = '';
+          let transferResult = await doFetch(
+            buildAppApiUrl(baseUrl, 'api/v2/transfer/info').toString(),
+            { Accept: 'application/json' },
+          ).catch(() => null);
+
+          // If direct access failed and credentials exist, authenticate to qBittorrent WebUI.
+          if ((!transferResult || !transferResult.ok) && allowAuth) {
+            const loginPayload = new URLSearchParams({
+              username: qbUsername,
+              password: qbPassword,
+            }).toString();
+            const loginHeaders = {
+              Accept: 'text/plain',
+              'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+              Origin: String(baseUrl || '').trim(),
+              Referer: String(baseUrl || '').trim().replace(/\/+$/, '/'),
+            };
+            const loginResult = await doFetch(
+              buildAppApiUrl(baseUrl, 'api/v2/auth/login').toString(),
+              loginHeaders,
+              { method: 'POST', body: loginPayload },
+            ).catch(() => null);
+            const loginText = String(loginResult?.text || '').trim();
+            if (loginResult?.ok && /^ok\.?$/i.test(loginText)) {
+              const setCookie = String(loginResult?.headers?.get('set-cookie') || '').trim();
+              const firstCookie = setCookie.split(';')[0].trim();
+              if (firstCookie) {
+                cookieHeader = firstCookie;
+                transferResult = await doFetch(
+                  buildAppApiUrl(baseUrl, 'api/v2/transfer/info').toString(),
+                  { Accept: 'application/json', Cookie: cookieHeader },
+                ).catch(() => null);
+              }
+            }
+          }
+
+          if (!(transferResult?.ok && transferResult.json)) continue;
+
+          found = true;
           status = 'up';
           const info = transferResult.json;
           const dlSpeed = Number(info.dl_info_speed) || 0;
           const upSpeed = Number(info.up_info_speed) || 0;
+          const torrentHeaders = { Accept: 'application/json' };
+          if (cookieHeader) torrentHeaders.Cookie = cookieHeader;
           const torrentsResult = await doFetch(
             buildAppApiUrl(baseUrl, 'api/v2/torrents/info').toString(),
-            { Accept: 'application/json' },
+            torrentHeaders,
           ).catch(() => null);
           const torrents = Array.isArray(torrentsResult?.json) ? torrentsResult.json : [];
           const downloading = torrents.filter((t) => ['downloading', 'stalledDL', 'forcedDL'].includes(t.state)).length;
@@ -2848,9 +3029,10 @@ export function registerApiSpecialty(app, ctx) {
             { key: 'dlspeed', label: 'DL Speed', value: dlSpeed >= 1048576 ? `${(dlSpeed / 1048576).toFixed(1)} MB/s` : `${Math.round(dlSpeed / 1024)} KB/s` },
             { key: 'upspeed', label: 'UL Speed', value: upSpeed >= 1048576 ? `${(upSpeed / 1048576).toFixed(1)} MB/s` : `${Math.round(upSpeed / 1024)} KB/s` },
           ];
-        } else {
-          status = 'down';
+          break;
         }
+
+        if (!found) status = 'down';
 
       // ── sabnzbd ──────────────────────────────────────────────────────────
       } else if (typeId === 'sabnzbd') {
@@ -3836,6 +4018,89 @@ export function registerApiSpecialty(app, ctx) {
         }
 
         if (!dozzleDone) status = 'down';
+
+      // ── qnap ─────────────────────────────────────────────────────────────
+      } else if (typeId === 'qnap') {
+        // QNAP uses a CGI XML API with session-based auth.
+        // Step 1: POST /cgi-bin/authLogin.cgi with base64-encoded password to get a session ID.
+        // Step 2: Use the session ID to fetch sysinfo (CPU/memory) and volume stats in parallel.
+        const extractXmlCdata = (xml, tag) => {
+          const m = xml.match(new RegExp(`<${tag}><!\\[CDATA\\[([^\\]]*?)\\]\\]><\\/${tag}>`))
+            || xml.match(new RegExp(`<${tag}>([^<]*)<\\/${tag}>`));
+          return m?.[1]?.trim() ?? null;
+        };
+        const qnapUser = String(appItem.username || '').trim();
+        const b64pw = Buffer.from(String(appItem.password || '')).toString('base64');
+        let qnapDone = false;
+
+        for (const baseUrl of candidates) {
+          if (qnapDone) break;
+          try {
+            // Authenticate
+            const authRes = await fetch(buildAppApiUrl(baseUrl, 'cgi-bin/authLogin.cgi').toString(), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: `user=${encodeURIComponent(qnapUser)}&pwd=${encodeURIComponent(b64pw)}`,
+              signal: AbortSignal.timeout(4000),
+            });
+            if (!authRes.ok) continue;
+            const authXml = await authRes.text();
+            const authSid = extractXmlCdata(authXml, 'authSid');
+            const authPassed = extractXmlCdata(authXml, 'authPassed');
+            if (!authSid || authPassed !== '1') continue;
+
+            // Fetch sysinfo and volume stats in parallel
+            const sysinfoUrl = buildAppApiUrl(baseUrl, 'cgi-bin/management/manaRequest.cgi');
+            sysinfoUrl.searchParams.set('subfunc', 'sysinfo');
+            sysinfoUrl.searchParams.set('hd', 'no');
+            sysinfoUrl.searchParams.set('multicpu', '1');
+            sysinfoUrl.searchParams.set('sid', authSid);
+
+            const volumeUrl = buildAppApiUrl(baseUrl, 'cgi-bin/management/chartReq.cgi');
+            volumeUrl.searchParams.set('chart_func', 'disk_usage');
+            volumeUrl.searchParams.set('disk_select', 'all');
+            volumeUrl.searchParams.set('include', 'all');
+            volumeUrl.searchParams.set('sid', authSid);
+
+            const [sysinfoRes, volumeRes] = await Promise.all([
+              fetch(sysinfoUrl.toString(), { signal: AbortSignal.timeout(4000) }),
+              fetch(volumeUrl.toString(), { signal: AbortSignal.timeout(4000) }),
+            ]);
+            if (!sysinfoRes.ok) continue;
+            const sysinfoXml = await sysinfoRes.text();
+            const volumeXml = volumeRes.ok ? await volumeRes.text() : '';
+
+            // Parse CPU (returned as "85.8 %")
+            const cpuRaw = extractXmlCdata(sysinfoXml, 'cpu_usage') || '';
+            const cpuPct = parseFloat(cpuRaw.replace('%', '').trim());
+
+            // Parse memory — QNAP returns MB for total_memory / free_memory
+            const totalMemMb = parseFloat(extractXmlCdata(sysinfoXml, 'total_memory') || '0');
+            const freeMemMb = parseFloat(extractXmlCdata(sysinfoXml, 'free_memory') || '0');
+            const memPct = totalMemMb > 0 ? (totalMemMb - freeMemMb) / totalMemMb * 100 : 0;
+
+            // Parse volume usage (bytes) — aggregate across all volumeUse blocks
+            let volTotalBytes = 0;
+            let volFreeBytes = 0;
+            for (const m of volumeXml.matchAll(/<volumeUse>([\s\S]*?)<\/volumeUse>/g)) {
+              const total = Number(extractXmlCdata(m[1], 'total_size'));
+              const free = Number(extractXmlCdata(m[1], 'free_size'));
+              if (Number.isFinite(total) && total > 0) volTotalBytes += total;
+              if (Number.isFinite(free) && free >= 0) volFreeBytes += free;
+            }
+            const volPct = volTotalBytes > 0 ? (volTotalBytes - volFreeBytes) / volTotalBytes * 100 : 0;
+
+            status = 'up';
+            metrics = [
+              { key: 'cpu',    label: 'CPU',    value: Number.isFinite(cpuPct)  ? `${cpuPct.toFixed(1)}%`  : '—' },
+              { key: 'memory', label: 'Memory', value: totalMemMb > 0           ? `${memPct.toFixed(1)}%`  : '—' },
+              { key: 'volume', label: 'Volume', value: volTotalBytes > 0        ? `${volPct.toFixed(1)}%`  : '—' },
+            ];
+            qnapDone = true;
+          } catch {}
+        }
+
+        if (!qnapDone) status = 'down';
 
       // ── wizarr ───────────────────────────────────────────────────────────
       } else if (typeId === 'wizarr') {

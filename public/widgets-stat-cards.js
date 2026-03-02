@@ -514,6 +514,74 @@
     }
   }
 
+  function buildDeploymentSummaryBar(containerEl) {
+    var cfg = parseSystemConfigAttr(containerEl.getAttribute('data-system-config') || '{}');
+    var rawStats = (cfg.stats && typeof cfg.stats === 'object') ? cfg.stats : {};
+    var onlineVisible = rawStats.online !== false;
+    var offlineVisible = rawStats.offline !== false;
+    var totalVisible = rawStats.total !== false;
+    if (!onlineVisible && !offlineVisible && !totalVisible) onlineVisible = true;
+    var visibleStats = [];
+    if (onlineVisible) visibleStats.push({ key: 'online', label: 'Online' });
+    if (offlineVisible) visibleStats.push({ key: 'offline', label: 'Offline' });
+    if (totalVisible) visibleStats.push({ key: 'total', label: 'Total' });
+    var configuredCols = Number(cfg.columns);
+    var columnCount = Number.isFinite(configuredCols) ? Math.max(1, Math.min(4, Math.round(configuredCols))) : 3;
+    columnCount = Math.min(columnCount, Math.max(1, visibleStats.length));
+    var metricsHtml = visibleStats.map(function (stat) {
+      return '<span class="stat-card-metric" data-deployment-stat="' + stat.key + '">' +
+        '<span class="stat-card-metric-value">0</span>' +
+        '<span class="stat-card-metric-label">' + escapeHtml(stat.label) + '</span>' +
+      '</span>';
+    }).join('');
+    containerEl.classList.remove('dashboard-system-bar');
+    containerEl.classList.add('dashboard-stat-card', 'deployment-summary-stat-card');
+    containerEl.classList.add('is-loading');
+    containerEl.setAttribute('data-widget-metric-cols', String(columnCount));
+    containerEl.innerHTML =
+      '<div class="stat-card-header">' +
+        '<img class="stat-card-icon" src="/icons/launcharr-icon.png" alt="" onerror="this.src=\'/icons/app.svg\'" />' +
+        '<span class="stat-card-name">Launcharr</span>' +
+        '<span class="stat-card-status is-down">0.0%</span>' +
+      '</div>' +
+      '<div class="stat-card-metrics">' + metricsHtml + '</div>';
+  }
+
+  function updateDeploymentChip(containerEl, chipType, value) {
+    var metricKey = String(chipType || '').replace(/^deployment-/, '');
+    var chip = containerEl.querySelector('[data-deployment-stat="' + metricKey + '"]');
+    if (!chip) return;
+    var valueEl = chip.querySelector('.stat-card-metric-value');
+    if (valueEl) valueEl.textContent = String(Math.max(0, Math.round(Number(value) || 0)));
+  }
+
+  function refreshDeploymentSummaryWithData(containerEl, data) {
+    var onlineRaw = (data && data.onlineWidgets != null) ? data.onlineWidgets : (data && data.online);
+    var offlineRaw = (data && data.offlineWidgets != null) ? data.offlineWidgets : (data && data.offline);
+    var unknownRaw = (data && data.unknownWidgets != null) ? data.unknownWidgets : (data && data.unknown);
+    var totalRaw = (data && data.totalWidgets != null) ? data.totalWidgets : (data && data.total);
+    var online = Number(onlineRaw) || 0;
+    var offline = Number(offlineRaw) || 0;
+    var unknown = Number(unknownRaw) || 0;
+    var total = Number(totalRaw) || 0;
+    var offlineDisplay = offline + unknown;
+    var totalDisplay = Math.max(total, online + offlineDisplay);
+    updateDeploymentChip(containerEl, 'deployment-online', online);
+    updateDeploymentChip(containerEl, 'deployment-offline', offlineDisplay);
+    updateDeploymentChip(containerEl, 'deployment-total', totalDisplay);
+    var statusEl = containerEl.querySelector('.stat-card-status');
+    if (statusEl) {
+      statusEl.classList.remove('is-up', 'is-warn', 'is-down', 'is-unknown');
+      var pct = totalDisplay > 0 ? (online / totalDisplay) * 100 : 0;
+      if (!Number.isFinite(pct)) pct = 0;
+      pct = Math.max(0, Math.min(100, pct));
+      var statusClass = pct >= 90 ? 'is-up' : (pct >= 50 ? 'is-warn' : 'is-down');
+      statusEl.classList.add(statusClass);
+      statusEl.textContent = pct.toFixed(1) + '%';
+    }
+    containerEl.classList.remove('is-loading');
+  }
+
   async function fetchSystemInfo(diskPaths) {
     var pathsParam = (diskPaths && diskPaths.length) ? diskPaths.join(',') : '/';
     var resp = await fetch('/api/system-info?paths=' + encodeURIComponent(pathsParam), { credentials: 'same-origin' });
@@ -533,6 +601,12 @@
     return resp.json();
   }
 
+  async function fetchDeploymentSummary() {
+    var resp = await fetch('/api/widget-deployment-summary', { credentials: 'same-origin' });
+    if (!resp.ok) throw new Error('Deployment summary request failed');
+    return resp.json();
+  }
+
   // ─── Bar loader ────────────────────────────────────────────────────────────
 
   function loadBar(barEl) {
@@ -544,12 +618,14 @@
     var cards = Array.from(barEl.querySelectorAll('.dashboard-stat-card[data-app-id]'));
     var sysResourceContainers = Array.from(barEl.querySelectorAll('.dashboard-system-bar[data-system-type="sys-resources"]'));
     var linksContainers = Array.from(barEl.querySelectorAll('.dashboard-links-widget[data-system-type="links"]'));
+    var deploymentContainers = Array.from(barEl.querySelectorAll('[data-system-type="deployment-summary"]'));
 
-    if (!cards.length && !sysResourceContainers.length && !linksContainers.length) return;
+    if (!cards.length && !sysResourceContainers.length && !linksContainers.length && !deploymentContainers.length) return;
 
     // Build sys-resources child DOM from config
     linksContainers.forEach(function (c) { buildLinksWidget(c); });
     sysResourceContainers.forEach(function (c) { buildSystemBar(c); });
+    deploymentContainers.forEach(function (c) { buildDeploymentSummaryBar(c); });
     if (barEl._bindSearchForms) barEl._bindSearchForms();
 
     function refreshCard(card) {
@@ -594,6 +670,23 @@
       });
     }
 
+    function refreshDeploymentContainers() {
+      deploymentContainers.forEach(function (containerEl) {
+        if (containerEl.dataset.systemLoading === '1') return;
+        containerEl.dataset.systemLoading = '1';
+        fetchDeploymentSummary()
+          .then(function (data) {
+            refreshDeploymentSummaryWithData(containerEl, data || {});
+          })
+          .catch(function () {
+            refreshDeploymentSummaryWithData(containerEl, {});
+          })
+          .finally(function () {
+            containerEl.dataset.systemLoading = '0';
+          });
+      });
+    }
+
     function refreshAll() {
       if (!document.body.contains(barEl)) {
         if (timer) clearInterval(timer);
@@ -602,6 +695,7 @@
       if (barEl.classList.contains('is-collapsed')) return;
       cards.forEach(refreshCard);
       refreshSysContainers();
+      refreshDeploymentContainers();
     }
 
     // Initial load

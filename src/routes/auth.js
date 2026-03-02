@@ -49,6 +49,69 @@ function clearLoginFailures(ip) {
   loginAttempts.delete(ip);
 }
 
+// Rate limiting for POST /setup — 5 failures per 15 min per IP
+const setupAttempts = new Map();
+const SETUP_RATE_LIMIT_MAX = 5;
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of setupAttempts) {
+    if (now - entry.windowStart > RATE_LIMIT_WINDOW_MS) setupAttempts.delete(ip);
+  }
+}, 30 * 60 * 1000).unref();
+
+function checkSetupRateLimit(ip) {
+  const now = Date.now();
+  const entry = setupAttempts.get(ip);
+  if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW_MS) return null;
+  if (entry.failures >= SETUP_RATE_LIMIT_MAX) {
+    return Math.max(1, Math.ceil((RATE_LIMIT_WINDOW_MS - (now - entry.windowStart)) / 60000));
+  }
+  return null;
+}
+
+function recordSetupFailure(ip) {
+  const now = Date.now();
+  const entry = setupAttempts.get(ip);
+  if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
+    setupAttempts.set(ip, { failures: 1, windowStart: now });
+  } else {
+    entry.failures += 1;
+  }
+}
+
+// Rate limiting for GET /api/plex/pin/status — 120 requests per 5 min per IP
+const plexPinStatusAttempts = new Map();
+const PLEX_PIN_STATUS_RATE_MAX = 120;
+const PLEX_PIN_STATUS_WINDOW_MS = 5 * 60 * 1000;
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of plexPinStatusAttempts) {
+    if (now - entry.windowStart > PLEX_PIN_STATUS_WINDOW_MS) plexPinStatusAttempts.delete(ip);
+  }
+}, 10 * 60 * 1000).unref();
+
+function checkPlexPinStatusRateLimit(ip) {
+  const now = Date.now();
+  const entry = plexPinStatusAttempts.get(ip);
+  if (!entry || now - entry.windowStart > PLEX_PIN_STATUS_WINDOW_MS) return null;
+  if (entry.count >= PLEX_PIN_STATUS_RATE_MAX) {
+    return Math.max(1, Math.ceil((PLEX_PIN_STATUS_WINDOW_MS - (now - entry.windowStart)) / 60000));
+  }
+  return null;
+}
+
+function recordPlexPinStatusRequest(ip) {
+  const now = Date.now();
+  const entry = plexPinStatusAttempts.get(ip);
+  if (!entry || now - entry.windowStart > PLEX_PIN_STATUS_WINDOW_MS) {
+    plexPinStatusAttempts.set(ip, { count: 1, windowStart: now });
+  } else {
+    entry.count += 1;
+  }
+}
+
 // Exported for testing only
 export function resetLoginAttempts() { loginAttempts.clear(); }
 export { checkLoginRateLimit, recordLoginFailure, clearLoginFailures };
@@ -206,6 +269,17 @@ export function registerAuth(app, ctx) {
     const config = loadConfig();
     if (hasLocalAdmin(config)) return res.redirect('/login');
 
+    const ip = getClientIp(req);
+    const setupBlocked = checkSetupRateLimit(ip);
+    if (setupBlocked !== null) {
+      return res.status(429).render('setup', {
+        title: 'Launcharr Setup',
+        minPassword: LOCAL_AUTH_MIN_PASSWORD,
+        error: `Too many failed attempts. Try again in ${setupBlocked} minute${setupBlocked === 1 ? '' : 's'}.`,
+        values: { username: '', email: '' },
+      });
+    }
+
     const username = String(req.body?.username || '').trim();
     const email = String(req.body?.email || '').trim();
     const password = String(req.body?.password || '');
@@ -213,6 +287,7 @@ export function registerAuth(app, ctx) {
     const values = { username, email };
 
     if (!username) {
+      recordSetupFailure(ip);
       return res.status(400).render('setup', {
         title: 'Launcharr Setup',
         minPassword: LOCAL_AUTH_MIN_PASSWORD,
@@ -221,6 +296,7 @@ export function registerAuth(app, ctx) {
       });
     }
     if (!email || !email.includes('@')) {
+      recordSetupFailure(ip);
       return res.status(400).render('setup', {
         title: 'Launcharr Setup',
         minPassword: LOCAL_AUTH_MIN_PASSWORD,
@@ -230,6 +306,7 @@ export function registerAuth(app, ctx) {
     }
     const passwordStrengthError = validateLocalPasswordStrength(password);
     if (passwordStrengthError) {
+      recordSetupFailure(ip);
       return res.status(400).render('setup', {
         title: 'Launcharr Setup',
         minPassword: LOCAL_AUTH_MIN_PASSWORD,
@@ -238,6 +315,7 @@ export function registerAuth(app, ctx) {
       });
     }
     if (password !== confirm) {
+      recordSetupFailure(ip);
       return res.status(400).render('setup', {
         title: 'Launcharr Setup',
         minPassword: LOCAL_AUTH_MIN_PASSWORD,
@@ -249,6 +327,7 @@ export function registerAuth(app, ctx) {
     const users = resolveLocalUsers(config);
     const exists = users.find((entry) => String(entry.username || '').toLowerCase() === username.toLowerCase());
     if (exists) {
+      recordSetupFailure(ip);
       return res.status(400).render('setup', {
         title: 'Launcharr Setup',
         minPassword: LOCAL_AUTH_MIN_PASSWORD,
@@ -354,18 +433,12 @@ export function registerAuth(app, ctx) {
       }
 
       // ── PIN validation ─────────────────────────────────────────────────────
-      // Session is authoritative; query param must match if session has one.
-      const sessionPin = String(req.session?.pinId || '').trim();
-      const queryPin   = String(req.query?.pinId   || '').trim();
-      const pinId = sessionPin || queryPin;
+      // Session is authoritative; query-string pinId is not accepted.
+      const pinId = String(req.session?.pinId || '').trim();
 
       if (!isValidPlexPinId(pinId)) {
         pushLog({ level: 'error', app: 'plex', action: 'login.callback', message: 'Missing or invalid PIN.' });
         return res.status(400).send('Missing PIN session. Start login again.');
-      }
-      if (sessionPin && queryPin && sessionPin !== queryPin) {
-        pushLog({ level: 'warn', app: 'plex', action: 'login.callback', message: 'Plex callback rejected: pinId mismatch.' });
-        return res.status(400).send('Invalid login session. Please start the login again.');
       }
 
       // ── PIN expiry check ───────────────────────────────────────────────────
@@ -409,14 +482,15 @@ export function registerAuth(app, ctx) {
 
   app.get('/api/plex/pin/status', async (req, res) => {
     try {
-      const sessionPin = String(req.session?.pinId || '').trim();
-      const queryPin   = String(req.query?.pinId   || '').trim();
-      const pinId = sessionPin || queryPin;
-
-      if (!isValidPlexPinId(pinId)) return res.status(400).json({ error: 'Missing pinId.' });
-      if (sessionPin && queryPin && sessionPin !== queryPin) {
-        return res.status(400).json({ error: 'PIN mismatch.' });
+      const ip = getClientIp(req);
+      const plexPinBlocked = checkPlexPinStatusRateLimit(ip);
+      if (plexPinBlocked !== null) {
+        return res.status(429).json({ error: `Too many requests. Try again in ${plexPinBlocked} minute${plexPinBlocked === 1 ? '' : 's'}.` });
       }
+      recordPlexPinStatusRequest(ip);
+
+      const pinId = String(req.session?.pinId || '').trim();
+      if (!isValidPlexPinId(pinId)) return res.status(400).json({ error: 'Missing pinId.' });
 
       const issuedAt = Number(req.session?.pinIssuedAt || 0);
       if (issuedAt && Date.now() - issuedAt > PIN_MAX_AGE_MS) {

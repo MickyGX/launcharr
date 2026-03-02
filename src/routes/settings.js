@@ -261,6 +261,27 @@ export function registerSettings(app, ctx) {
     return next;
   };
 
+  const ensureAdminMenuSection = (currentSection, { includeLegacyFlags = false } = {}) => {
+    const source = currentSection && typeof currentSection === 'object' ? currentSection : {};
+    const normalizedRoles = normalizeAppVisibilityRoles(
+      source.visibilityRoles,
+      normalizeVisibilityRole(source.minRole, 'admin')
+    );
+    const nextRoles = normalizedRoles.length ? normalizedRoles : ['admin'];
+    return buildMenuRoleSection(source, nextRoles, { fallbackMinRole: 'admin', includeLegacyFlags });
+  };
+
+  const enforceSidebarAdminDefaults = (menuValue) => {
+    const menu = menuValue && typeof menuValue === 'object' ? menuValue : {};
+    return {
+      ...menu,
+      sidebar: ensureAdminMenuSection(menu.sidebar),
+      sidebarOverview: ensureAdminMenuSection(menu.sidebarOverview),
+      sidebarSettings: ensureAdminMenuSection(menu.sidebarSettings),
+      sidebarActivity: ensureAdminMenuSection(menu.sidebarActivity),
+    };
+  };
+
   app.get('/settings', requireSettingsAdmin, (req, res) => {
   const config = loadConfig();
   const dashboardSettingsSelection = resolveDashboardSelection(config, resolveRequestedDashboardId(req), 'admin', { includeHidden: true });
@@ -349,6 +370,7 @@ export function registerSettings(app, ctx) {
   const defaultAppIdSet = buildDefaultAppIdSet();
   const settingsAppsWithIcons = settingsApps.map((appItem) => ({
     ...appItem,
+    menu: enforceSidebarAdminDefaults(normalizeMenu(appItem)),
     icon: resolvePersistedAppIconPath(appItem),
     canRemoveDefaultApp: canManageWithDefaultAppManager(appItem),
     isCustomApp: isCustomAppRecord(appItem, defaultAppIdSet),
@@ -366,6 +388,7 @@ export function registerSettings(app, ctx) {
     })
     .map((appItem) => ({
       ...appItem,
+      menu: enforceSidebarAdminDefaults(normalizeMenu(appItem)),
       icon: resolvePersistedAppIconPath(appItem),
       canRemoveDefaultApp: canManageWithDefaultAppManager(appItem),
     }))
@@ -2612,6 +2635,7 @@ app.post('/settings/apps', requireSettingsAdmin, (req, res) => {
       launch: launchMinRole,
       settings: settingsMinRole,
     });
+    const normalizedMenu = enforceSidebarAdminDefaults(menu);
 
     return {
       ...appItem,
@@ -2621,7 +2645,7 @@ app.post('/settings/apps', requireSettingsAdmin, (req, res) => {
         : (categoryKeys.has(String(appItem.category || '').trim().toLowerCase()) ? appItem.category : fallbackCategory),
       order: Number.isFinite(parsedOrder) ? parsedOrder : appItem.order,
       launchMode,
-      menu,
+      menu: normalizedMenu,
     };
   });
   const arrDashboardCombine = resolveArrDashboardCombineSettings(config, apps);
@@ -2942,7 +2966,7 @@ app.post('/settings/default-apps/add', requireSettingsAdmin, (req, res) => {
     removed: false,
     favourite: recoveredFavourite,
     launchMode: recoveredLaunchMode,
-    menu: recoveredMenu,
+    menu: enforceSidebarAdminDefaults(recoveredMenu),
     overviewElements: Array.isArray(recoveredOverviewElements) && recoveredOverviewElements.length
       ? recoveredOverviewElements
       : buildDisabledOverviewElements(nextAppSeed),

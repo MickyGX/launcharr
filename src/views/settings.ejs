@@ -1839,26 +1839,39 @@
                                           (Array.isArray(_sysCfg.links) && _sysCfg.links.length > 0) ? (_sysCfg.links.length + ' Link' + (_sysCfg.links.length === 1 ? '' : 's')) : '',
                                           _sysCfg.showUrl === false ? 'Names only' : '',
                                         ].filter(Boolean).join(' · ')
+                                      : widget.systemType === 'deployment-summary'
+                                        ? (function () {
+                                          const _stats = (_sysCfg.stats && typeof _sysCfg.stats === 'object') ? _sysCfg.stats : {};
+                                          const _showOnline = _stats.online !== false;
+                                          const _showOffline = _stats.offline !== false;
+                                          const _showTotal = _stats.total !== false;
+                                          const _visible = [_showOnline ? 'Online' : '', _showOffline ? 'Offline' : '', _showTotal ? 'Total' : ''].filter(Boolean);
+                                          const _colsRaw = Number(_sysCfg.columns);
+                                          const _cols = Number.isFinite(_colsRaw) ? Math.max(1, Math.min(4, Math.round(_colsRaw))) : 3;
+                                          return [`${_cols} Col${_cols === 1 ? '' : 's'}`, (_visible.length ? _visible.join(' · ') : 'Online')].filter(Boolean).join(' · ');
+                                        })()
                                       : '';
                                   %>
                                   <span class="system-chip-canvas-label">
                                     <%= widget.typeName %>
                                     <% if (_sysSummary) { %><small class="muted-hint"> <%= _sysSummary %></small><% } %>
                                   </span>
-                                  <% if (widget.systemType === 'sys-resources' || widget.systemType === 'links') { %>
-                                    <div class="widget-canvas-system-preview <%= widget.systemType === 'links' ? 'dashboard-links-widget' : 'dashboard-system-bar' %>"
+                                  <% if (widget.systemType === 'sys-resources' || widget.systemType === 'links' || widget.systemType === 'deployment-summary') { %>
+                                    <div class="widget-canvas-system-preview <%= widget.systemType === 'links' ? 'dashboard-links-widget' : (widget.systemType === 'deployment-summary' ? 'deployment-summary-preview' : 'dashboard-system-bar') %>"
                                       data-system-preview
                                       data-system-type="<%= widget.systemType %>"
                                       data-system-config="<%= JSON.stringify(widget.systemConfig || {}) %>"></div>
                                   <% } %>
-                                  <button class="widget-canvas-system-chip-edit" type="button"
-                                    data-sys-widget-edit
-                                    data-widget-id="<%= widget.id %>"
-                                    data-bar-id="<%= bar.id %>"
-                                    data-row-id="<%= row.id %>"
-                                    data-system-type="<%= widget.systemType %>"
-                                    data-system-config="<%= JSON.stringify(widget.systemConfig || {}) %>"
-                                    title="Edit config" aria-label="Edit <%= widget.typeName %> config">✎</button>
+                                  <% if (widget.systemType !== 'deployment-summary') { %>
+                                    <button class="widget-canvas-system-chip-edit" type="button"
+                                      data-sys-widget-edit
+                                      data-widget-id="<%= widget.id %>"
+                                      data-bar-id="<%= bar.id %>"
+                                      data-row-id="<%= row.id %>"
+                                      data-system-type="<%= widget.systemType %>"
+                                      data-system-config="<%= JSON.stringify(widget.systemConfig || {}) %>"
+                                      title="Edit config" aria-label="Edit <%= widget.typeName %> config">✎</button>
+                                  <% } %>
                                   <button class="widget-canvas-card-remove" type="button"
                                     data-widget-remove-bar="<%= bar.id %>"
                                     data-widget-remove-row="<%= row.id %>"
@@ -2525,13 +2538,11 @@
         <%
           const appSettingsNav = [];
           const appSettingsSeen = new Set();
-          (Array.isArray(navCategories) ? navCategories : []).forEach((category) => {
-            (Array.isArray(category?.apps) ? category.apps : []).forEach((appItem) => {
-              const id = String(appItem?.id || '').trim();
-              if (!id || appSettingsSeen.has(id)) return;
-              appSettingsSeen.add(id);
-              appSettingsNav.push(appItem);
-            });
+          (Array.isArray(apps) ? apps : []).forEach((appItem) => {
+            const id = String(appItem?.id || '').trim();
+            if (!id || appSettingsSeen.has(id) || Boolean(appItem?.removed)) return;
+            appSettingsSeen.add(id);
+            appSettingsNav.push(appItem);
           });
           const appSettingsPanels = [];
           const appSettingsPanelSeen = new Set();
@@ -4724,6 +4735,16 @@
           const linkCount = Array.isArray(cfg.links) ? cfg.links.length : 0;
           if (linkCount > 0) parts.push(`${linkCount} Link${linkCount === 1 ? '' : 's'}`);
           if (cfg.showUrl === false) parts.push('Names only');
+        } else if (systemTypeKey === 'deployment-summary') {
+          const stats = (cfg.stats && typeof cfg.stats === 'object') ? cfg.stats : {};
+          const showOnline = stats.online !== false;
+          const showOffline = stats.offline !== false;
+          const showTotal = stats.total !== false;
+          const visibleStats = [showOnline ? 'Online' : '', showOffline ? 'Offline' : '', showTotal ? 'Total' : ''].filter(Boolean);
+          const columnsRaw = Number(cfg.columns);
+          const columns = Number.isFinite(columnsRaw) ? Math.max(1, Math.min(4, Math.round(columnsRaw))) : 3;
+          parts.push(`${columns} Col${columns === 1 ? '' : 's'}`);
+          parts.push(visibleStats.length ? visibleStats.join(' · ') : 'Online');
         }
         return parts.join(' · ');
       };
@@ -4744,12 +4765,17 @@
           previewHtml = `<div class="widget-canvas-system-preview dashboard-system-bar" data-system-preview data-system-type="sys-resources" data-system-config="${cfgEsc}"></div>`;
         } else if (sysTypeKey === 'links') {
           previewHtml = `<div class="widget-canvas-system-preview dashboard-links-widget" data-system-preview data-system-type="links" data-system-config="${cfgEsc}"></div>`;
+        } else if (sysTypeKey === 'deployment-summary') {
+          previewHtml = `<div class="widget-canvas-system-preview deployment-summary-preview" data-system-preview data-system-type="deployment-summary" data-system-config="${cfgEsc}"></div>`;
         }
+        const editButtonHtml = sysTypeKey === 'deployment-summary'
+          ? ''
+          : `<button class="widget-canvas-system-chip-edit" type="button" data-sys-widget-edit data-widget-id="${wId}" data-bar-id="${bId}" data-row-id="${rId}" data-system-type="${sysType}" data-system-config="${cfgEsc}" title="Edit config" aria-label="Edit ${typeName} config">✎</button>`;
         return `<div class="widget-canvas-card widget-canvas-system-chip" draggable="true" data-widget-id="${wId}" data-system-type="${sysType}" data-system-config="${cfgEsc}">` +
           `<img class="system-chip-icon" src="${icon}" alt="" onerror="this.src='/icons/app.svg'" />` +
           `<span class="system-chip-canvas-label">${typeName}${summary ? ` <small class="muted-hint"> ${escHtml(summary)}</small>` : ''}</span>` +
           previewHtml +
-          `<button class="widget-canvas-system-chip-edit" type="button" data-sys-widget-edit data-widget-id="${wId}" data-bar-id="${bId}" data-row-id="${rId}" data-system-type="${sysType}" data-system-config="${cfgEsc}" title="Edit config" aria-label="Edit ${typeName} config">✎</button>` +
+          editButtonHtml +
           `<button class="widget-canvas-card-remove" type="button" data-widget-remove-bar="${bId}" data-widget-remove-row="${rId}" data-widget-remove-id="${wId}" title="Remove" aria-label="Remove ${typeName}">&times;</button>` +
           `</div>`;
       };
@@ -4968,6 +4994,21 @@
             let existingConfig = {};
             try { existingConfig = JSON.parse(sysEditBtn.dataset.systemConfig || '{}'); } catch (_e) {}
             openSysWidgetConfigModal(barId, rowId, systemType, existingConfig, widgetId);
+            return;
+          }
+          const deploymentSummaryCard = e.target.closest('.widget-canvas-system-chip[data-widget-id][data-system-type="deployment-summary"]');
+          if (deploymentSummaryCard
+              && canvas.contains(deploymentSummaryCard)
+              && !e.target.closest('.widget-canvas-card-remove')
+              && !e.target.closest('[data-sys-widget-edit]')) {
+            const rowEl = deploymentSummaryCard.closest('.widget-bar-row[data-row-id][data-bar-id]');
+            const barId = String((rowEl && rowEl.dataset.barId) || '').trim();
+            const rowId = String((rowEl && rowEl.dataset.rowId) || '').trim();
+            const widgetId = String(deploymentSummaryCard.dataset.widgetId || '').trim();
+            if (!barId || !rowId || !widgetId) return;
+            let existingConfig = {};
+            try { existingConfig = JSON.parse(deploymentSummaryCard.dataset.systemConfig || '{}'); } catch (_err) { /* ignore */ }
+            openSysWidgetConfigModal(barId, rowId, 'deployment-summary', existingConfig, widgetId);
             return;
           }
           // Pick app from menu
@@ -5287,6 +5328,24 @@
         };
       };
 
+      const normalizeDeploymentSummaryConfigForForm = (cfgRaw) => {
+        const cfg = (cfgRaw && typeof cfgRaw === 'object') ? cfgRaw : {};
+        const stats = (cfg.stats && typeof cfg.stats === 'object') ? cfg.stats : {};
+        let showOnline = stats.online !== false;
+        let showOffline = stats.offline !== false;
+        let showTotal = stats.total !== false;
+        if (!showOnline && !showOffline && !showTotal) showOnline = true;
+        const columnsRaw = Number(cfg.columns);
+        return {
+          columns: Number.isFinite(columnsRaw) ? Math.max(1, Math.min(4, Math.round(columnsRaw))) : 3,
+          stats: {
+            online: showOnline,
+            offline: showOffline,
+            total: showTotal,
+          },
+        };
+      };
+
       const buildSysDiskRowHtml = (disk) => {
         const safeDisk = (disk && typeof disk === 'object') ? disk : {};
         return `<div class="sys-widget-disk-row" data-sys-disk-row>` +
@@ -5366,6 +5425,24 @@
               `<button class="secondary-button sys-widget-link-add-global" type="button" data-sys-link-add>+ Add Link</button>` +
             `</div>`;
         }
+        if (systemType === 'deployment-summary') {
+          const merged = normalizeDeploymentSummaryConfigForForm(cfg);
+          return `<div class="sys-widget-group">` +
+              `<label class="sys-widget-field"><span>Stat Columns (Wrap)</span><select class="settings-select" name="deployment_columns">` +
+                `<option value="1"${merged.columns === 1 ? ' selected' : ''}>1</option>` +
+                `<option value="2"${merged.columns === 2 ? ' selected' : ''}>2</option>` +
+                `<option value="3"${merged.columns === 3 ? ' selected' : ''}>3</option>` +
+                `<option value="4"${merged.columns === 4 ? ' selected' : ''}>4</option>` +
+              `</select></label>` +
+            `</div>` +
+            `<div class="sys-widget-group">` +
+              `<div class="sys-widget-group-title">Visible Stats</div>` +
+              `<label class="sys-widget-check"><input type="checkbox" name="deployment_show_online"${merged.stats.online ? ' checked' : ''} /><span>Online</span></label>` +
+              `<label class="sys-widget-check"><input type="checkbox" name="deployment_show_offline"${merged.stats.offline ? ' checked' : ''} /><span>Offline</span></label>` +
+              `<label class="sys-widget-check"><input type="checkbox" name="deployment_show_total"${merged.stats.total ? ' checked' : ''} /><span>Total</span></label>` +
+              `<div class="settings-users-note">At least one stat remains visible.</div>` +
+            `</div>`;
+        }
         return '';
       };
 
@@ -5423,6 +5500,21 @@
             title: String(get('links_title') || '').trim() || 'Links',
             showUrl: checked('links_show_url'),
             links,
+          };
+        }
+        if (systemType === 'deployment-summary') {
+          const columnsRaw = Number(get('deployment_columns'));
+          let showOnline = checked('deployment_show_online');
+          let showOffline = checked('deployment_show_offline');
+          let showTotal = checked('deployment_show_total');
+          if (!showOnline && !showOffline && !showTotal) showOnline = true;
+          return {
+            columns: Number.isFinite(columnsRaw) ? Math.max(1, Math.min(4, Math.round(columnsRaw))) : 3,
+            stats: {
+              online: showOnline,
+              offline: showOffline,
+              total: showTotal,
+            },
           };
         }
         return {};
@@ -6113,6 +6205,72 @@
         bindLinksPreviewFavicons(previewEl);
       };
 
+      const buildDeploymentSummaryPreviewWidget = (previewEl) => {
+        const raw = previewEl.getAttribute('data-system-config') || '{}';
+        const cfg = parseSystemConfigValue(raw);
+        const stats = (cfg.stats && typeof cfg.stats === 'object') ? cfg.stats : {};
+        let showOnline = stats.online !== false;
+        let showOffline = stats.offline !== false;
+        let showTotal = stats.total !== false;
+        if (!showOnline && !showOffline && !showTotal) showOnline = true;
+        const visibleStats = [];
+        if (showOnline) visibleStats.push({ key: 'online', label: 'Online' });
+        if (showOffline) visibleStats.push({ key: 'offline', label: 'Offline' });
+        if (showTotal) visibleStats.push({ key: 'total', label: 'Total' });
+        const rawColumns = Number(cfg.columns);
+        let columns = Number.isFinite(rawColumns) ? Math.max(1, Math.min(4, Math.round(rawColumns))) : 3;
+        columns = Math.min(columns, Math.max(1, visibleStats.length));
+        previewEl.classList.add('deployment-summary-preview');
+        previewEl.classList.remove('dashboard-system-bar', 'dashboard-stat-card', 'deployment-summary-stat-card');
+        previewEl.setAttribute('data-widget-metric-cols', String(columns));
+        previewEl.classList.add('is-loading');
+        const metricsHtml = visibleStats
+          .map((stat) => `<span class="stat-card-metric" data-deployment-stat="${escHtml(stat.key)}">` +
+            `<span class="stat-card-metric-value">0</span>` +
+            `<span class="stat-card-metric-label">${escHtml(stat.label)}</span></span>`)
+          .join('');
+        previewEl.innerHTML =
+          `<div class="stat-card-header">` +
+            `<img class="stat-card-icon" src="/icons/launcharr-icon.png" alt="" onerror="this.src='/icons/app.svg'" />` +
+            `<span class="stat-card-name">Launcharr</span>` +
+            `<span class="stat-card-status is-down">0.0%</span>` +
+          `</div>` +
+          `<div class="stat-card-metrics">${metricsHtml}</div>`;
+      };
+
+      const renderDeploymentSummaryPreviewWithData = (previewEl, data) => {
+        const onlineRaw = (data && data.onlineWidgets != null) ? data.onlineWidgets : (data && data.online);
+        const offlineRaw = (data && data.offlineWidgets != null) ? data.offlineWidgets : (data && data.offline);
+        const unknownRaw = (data && data.unknownWidgets != null) ? data.unknownWidgets : (data && data.unknown);
+        const totalRaw = (data && data.totalWidgets != null) ? data.totalWidgets : (data && data.total);
+        const online = Number(onlineRaw) || 0;
+        const offline = Number(offlineRaw) || 0;
+        const unknown = Number(unknownRaw) || 0;
+        const total = Number(totalRaw) || 0;
+        const values = {
+          online,
+          offline: offline + unknown,
+          total: Math.max(total, online + offline + unknown),
+        };
+        ['online', 'offline', 'total'].forEach((key) => {
+          const metricEl = previewEl.querySelector(`[data-deployment-stat="${CSS.escape(key)}"]`);
+          if (!metricEl) return;
+          const valEl = metricEl.querySelector('.stat-card-metric-value');
+          if (valEl) valEl.textContent = String(Math.max(0, Math.round(values[key] || 0)));
+        });
+        const statusEl = previewEl.querySelector('.stat-card-status');
+        if (statusEl) {
+          statusEl.classList.remove('is-up', 'is-warn', 'is-down', 'is-unknown');
+          let pct = values.total > 0 ? (values.online / values.total) * 100 : 0;
+          if (!Number.isFinite(pct)) pct = 0;
+          pct = Math.max(0, Math.min(100, pct));
+          const statusClass = pct >= 90 ? 'is-up' : (pct >= 50 ? 'is-warn' : 'is-down');
+          statusEl.classList.add(statusClass);
+          statusEl.textContent = `${pct.toFixed(1)}%`;
+        }
+        previewEl.classList.remove('is-loading');
+      };
+
       const renderSystemPreviewWithData = (previewEl, sysData, wxData) => {
         const showTotalSpace = previewEl.dataset.systemShowTotalSpace === '1';
         const cpuChip = previewEl.querySelector('[data-chip-type="cpu"]');
@@ -6197,6 +6355,88 @@
         return resp.json();
       };
 
+      const normalizeDeploymentPreviewStatus = (value) => {
+        const raw = String(value || '').trim().toLowerCase();
+        if (raw === 'up' || raw === 'online') return 'online';
+        if (raw === 'down' || raw === 'offline') return 'offline';
+        return 'unknown';
+      };
+
+      const fetchDeploymentSummaryPreviewFromBars = async () => {
+        const barsResp = await fetch('/api/widget-bars', { credentials: 'same-origin' });
+        if (!barsResp.ok) throw new Error('Widget bars request failed');
+        const barsData = await barsResp.json().catch(() => ({}));
+        const bars = Array.isArray(barsData?.items) ? barsData.items : [];
+        const appIds = [];
+        const seen = new Set();
+        bars.forEach((bar) => {
+          const rows = Array.isArray(bar?.rows) ? bar.rows : [];
+          rows.forEach((row) => {
+            const widgets = Array.isArray(row?.widgets) ? row.widgets : [];
+            widgets.forEach((widget) => {
+              if (!widget || widget.systemType || widget.available === false) return;
+              const appId = String(widget.appId || '').trim();
+              if (!appId || seen.has(appId)) return;
+              seen.add(appId);
+              appIds.push(appId);
+            });
+          });
+        });
+        if (!appIds.length) {
+          return {
+            ok: true,
+            online: 0,
+            offline: 0,
+            unknown: 0,
+            total: 0,
+            onlineWidgets: 0,
+            offlineWidgets: 0,
+            unknownWidgets: 0,
+            totalWidgets: 0,
+          };
+        }
+        const statuses = await Promise.all(appIds.map(async (appId) => {
+          try {
+            const resp = await fetch(`/api/widget-stats/${encodeURIComponent(appId)}`, { credentials: 'same-origin' });
+            if (!resp.ok) return 'unknown';
+            const payload = await resp.json().catch(() => ({}));
+            return normalizeDeploymentPreviewStatus(payload?.status);
+          } catch (_err) {
+            return 'unknown';
+          }
+        }));
+        let online = 0;
+        let offline = 0;
+        let unknown = 0;
+        statuses.forEach((state) => {
+          if (state === 'online') online += 1;
+          else if (state === 'offline') offline += 1;
+          else unknown += 1;
+        });
+        const total = appIds.length;
+        return {
+          ok: true,
+          online,
+          offline,
+          unknown,
+          total,
+          onlineWidgets: online,
+          offlineWidgets: offline,
+          unknownWidgets: unknown,
+          totalWidgets: total,
+        };
+      };
+
+      const fetchDeploymentSummaryPreview = async () => {
+        try {
+          const resp = await fetch('/api/widget-deployment-summary', { credentials: 'same-origin' });
+          if (!resp.ok) throw new Error('Deployment summary request failed');
+          return await resp.json();
+        } catch (_err) {
+          return fetchDeploymentSummaryPreviewFromBars();
+        }
+      };
+
       const refreshSystemPreviewCard = async (previewEl) => {
         if (!previewEl || !document.body.contains(previewEl)) return;
         const rawConfig = String(previewEl.getAttribute('data-system-config') || '{}');
@@ -6205,6 +6445,19 @@
           if (previewEl.dataset.renderedConfig !== rawConfig) {
             buildLinksPreviewWidget(previewEl);
             previewEl.dataset.renderedConfig = rawConfig;
+          }
+          return;
+        }
+        if (previewType === 'deployment-summary') {
+          if (previewEl.dataset.renderedConfig !== rawConfig) {
+            buildDeploymentSummaryPreviewWidget(previewEl);
+            previewEl.dataset.renderedConfig = rawConfig;
+          }
+          try {
+            const data = await fetchDeploymentSummaryPreview();
+            renderDeploymentSummaryPreviewWithData(previewEl, data);
+          } catch (_err) {
+            renderDeploymentSummaryPreviewWithData(previewEl, {});
           }
           return;
         }

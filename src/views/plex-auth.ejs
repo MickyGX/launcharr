@@ -78,7 +78,6 @@
         params.set("clientID", client.id);
         params.set("code", data.code);
         const callbackUrl = new URL(callbackBase);
-        if (data.id) callbackUrl.searchParams.set("pinId", String(data.id));
         params.set("forwardUrl", callbackUrl.toString());
         params.set("context[device][product]", client.product);
         params.set("context[device][platform]", client.platform);

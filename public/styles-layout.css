@@ -3120,6 +3120,10 @@ body.mobile-nav-open .launch-frame-overlay{
   background: rgba(76, 175, 80, 0.15);
   color: #4caf50;
 }
+.stat-card-status.is-warn {
+  background: rgba(255, 152, 0, 0.15);
+  color: #ff9800;
+}
 .stat-card-status.is-down {
   background: rgba(244, 67, 54, 0.15);
   color: #f44336;
