@@ -7,7 +7,7 @@ services:
     environment:
       - CONFIG_PATH=/app/config/config.json
       - DATA_DIR=/app/data
-      - BASE_URL=http://192.168.0.2:3333
+      - BASE_URL=http://localhost:3333
       - TRUST_PROXY=true
       - TRUST_PROXY_HOPS=1
       # optional but recommended if you only use HTTPS on domain:
