@@ -445,7 +445,7 @@
       viewport.addEventListener('pointerdown', function (event) {
         if (event.pointerType === 'touch') return;
         onStart(event.clientX, event.target);
-        if (dragging && viewport.setPointerCapture) viewport.setPointerCapture(event.pointerId);
+        if (dragging && event.pointerType === 'mouse' && viewport.setPointerCapture) viewport.setPointerCapture(event.pointerId);
       });
       viewport.addEventListener('pointermove', function (event) {
         if (event.pointerType === 'touch') return;
@@ -483,7 +483,7 @@
     };
     viewport.addEventListener('pointerdown', function (event) {
       onSwipeStart(event.clientX, event.target);
-      if (tracking && viewport.setPointerCapture) viewport.setPointerCapture(event.pointerId);
+      if (tracking && event.pointerType === 'mouse' && viewport.setPointerCapture) viewport.setPointerCapture(event.pointerId);
     });
     viewport.addEventListener('pointermove', function (event) {
       onSwipeMove(event.clientX);

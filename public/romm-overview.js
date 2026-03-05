@@ -430,7 +430,7 @@
 
     viewport.addEventListener('pointerdown', function (event) {
       onStart(event.clientX, event.clientY, event.target);
-      if (tracking && viewport.setPointerCapture) viewport.setPointerCapture(event.pointerId);
+      if (tracking && event.pointerType === 'mouse' && viewport.setPointerCapture) viewport.setPointerCapture(event.pointerId);
     });
     viewport.addEventListener('pointermove', function (event) {
       onMove(event.clientX, event.clientY);

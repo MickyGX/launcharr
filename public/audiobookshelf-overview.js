@@ -206,7 +206,7 @@
       tracking = true;
       startX = event.clientX;
       deltaX = 0;
-      if (viewport.setPointerCapture) viewport.setPointerCapture(event.pointerId);
+      if (event.pointerType === 'mouse' && viewport.setPointerCapture) viewport.setPointerCapture(event.pointerId);
     });
     viewport.addEventListener('pointermove', (event) => {
       if (!tracking) return;

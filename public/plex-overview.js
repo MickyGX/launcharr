@@ -556,7 +556,7 @@
       viewport.addEventListener('pointerdown', (e) => {
         if (isInteractive(e.target)) return;
         onDown(e.clientX, e.clientY);
-        if (viewport.setPointerCapture) viewport.setPointerCapture(e.pointerId);
+        if (e.pointerType === 'mouse' && viewport.setPointerCapture) viewport.setPointerCapture(e.pointerId);
       });
 
       viewport.addEventListener('pointermove', (e) => {

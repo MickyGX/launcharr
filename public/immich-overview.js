@@ -126,11 +126,15 @@
         viewport.style.overflowX = '';
         viewport.style.overflowY = '';
         viewport.style.scrollBehavior = '';
+        viewport.style.webkitOverflowScrolling = '';
+        viewport.style.touchAction = 'pan-y';
         return;
       }
       viewport.style.overflowX = 'auto';
       viewport.style.overflowY = 'hidden';
       viewport.style.scrollBehavior = 'smooth';
+      viewport.style.webkitOverflowScrolling = 'touch';
+      viewport.style.touchAction = 'pan-x pan-y';
     }
 
     function computeLayout() {
@@ -219,34 +223,70 @@
       updateButtons();
     }
 
-    let startX = 0, deltaX = 0, tracking = false;
-    const swipeThreshold = 42;
-    const isInteractive = (target) => !!(target && target.closest && target.closest('button, input, select, a'));
+    function addSwipe() {
+      if (carouselFreeScroll) return;
+      let startX = 0;
+      let startY = 0;
+      let movedX = 0;
+      let movedY = 0;
+      let tracking = false;
+      const swipeThreshold = 42;
+      const isInteractive = (target) => !!(target && target.closest && target.closest('button, input, select, textarea, a, [data-action="view"]'));
 
-    viewport.addEventListener('pointerdown', (event) => {
-      if (carouselFreeScroll || isInteractive(event.target)) { tracking = false; return; }
-      tracking = true;
-      startX = event.clientX;
-      deltaX = 0;
-      if (viewport.setPointerCapture) viewport.setPointerCapture(event.pointerId);
-    });
-    viewport.addEventListener('pointermove', (event) => {
-      if (!tracking) return;
-      deltaX = event.clientX - startX;
-    });
-    const onPointerEnd = () => {
-      if (!tracking) return;
-      if (Math.abs(deltaX) > swipeThreshold) {
-        if (deltaX > 0) slidePrev();
-        else slideNext();
-      }
-      tracking = false;
-    };
-    viewport.addEventListener('pointerup', onPointerEnd);
-    viewport.addEventListener('pointercancel', onPointerEnd);
+      const onStart = (x, y, target) => {
+        if (isInteractive(target)) {
+          tracking = false;
+          return;
+        }
+        tracking = true;
+        startX = x;
+        startY = y;
+        movedX = 0;
+        movedY = 0;
+      };
+
+      const onMove = (x, y) => {
+        if (!tracking) return;
+        movedX = x - startX;
+        movedY = y - startY;
+      };
+
+      const onEnd = () => {
+        if (!tracking) return;
+        if (Math.abs(movedX) > swipeThreshold && Math.abs(movedX) > Math.abs(movedY) * 1.2) {
+          if (movedX > 0) slidePrev();
+          else slideNext();
+        }
+        tracking = false;
+      };
+
+      viewport.addEventListener('pointerdown', (event) => {
+        onStart(event.clientX, event.clientY, event.target);
+        if (tracking && event.pointerType === 'mouse' && viewport.setPointerCapture) viewport.setPointerCapture(event.pointerId);
+      });
+      viewport.addEventListener('pointermove', (event) => {
+        onMove(event.clientX, event.clientY);
+      });
+      viewport.addEventListener('pointerup', onEnd);
+      viewport.addEventListener('pointercancel', () => { tracking = false; });
+
+      viewport.addEventListener('touchstart', (event) => {
+        const touch = event.touches && event.touches[0];
+        if (!touch) return;
+        onStart(touch.clientX, touch.clientY, event.target);
+      }, { passive: true });
+      viewport.addEventListener('touchmove', (event) => {
+        const touch = event.touches && event.touches[0];
+        if (!touch) return;
+        onMove(touch.clientX, touch.clientY);
+      }, { passive: true });
+      viewport.addEventListener('touchend', onEnd);
+      viewport.addEventListener('touchcancel', () => { tracking = false; });
+    }
 
     prevBtn?.addEventListener('click', slidePrev);
     nextBtn?.addEventListener('click', slideNext);
+    addSwipe();
     if (carouselFreeScroll) {
       viewport.addEventListener('scroll', updateButtons, { passive: true });
     }

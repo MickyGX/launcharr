@@ -4010,7 +4010,7 @@ html[data-square-corners="1"] .widget-card-customize-panel {
   overflow-y: hidden;
   overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
-  touch-action: pan-x;
+  touch-action: pan-x pan-y;
   padding-bottom: 8px;
   scrollbar-width: thin;
   scrollbar-color: var(--border-color, rgba(255,255,255,0.2)) transparent;

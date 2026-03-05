@@ -2969,7 +2969,7 @@ body.mobile-nav-open .launch-frame-overlay{
   overflow-y: hidden;
   overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
-  touch-action: pan-x;
+  touch-action: pan-x pan-y;
   padding-bottom: 8px;
   scrollbar-width: thin;
   scrollbar-color: var(--border-color, rgba(255,255,255,0.2)) transparent;
@@ -3006,6 +3006,30 @@ body.mobile-nav-open .launch-frame-overlay{
   flex: 0 0 calc((100% - ((var(--row-max-cols) - 1) * 10px)) / var(--row-max-cols));
   max-width: calc((100% - ((var(--row-max-cols) - 1) * 10px)) / var(--row-max-cols));
   min-width: 0;
+}
+
+/* Desktop touch devices in mobile layout need an internal vertical scroller;
+   body-level scroll chaining from horizontal gesture areas is inconsistent. */
+@media (max-width: 980px) and (hover: hover) and (pointer: fine){
+  .dash-body{
+    overflow-y: hidden;
+  }
+  .dash-frame{
+    height: 100vh;
+    height: 100svh;
+    height: 100dvh;
+    min-height: 100vh;
+    min-height: 100svh;
+    min-height: 100dvh;
+  }
+  .dash-main{
+    max-height: 100vh;
+    max-height: 100svh;
+    max-height: 100dvh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
 }
 
 /* Stat Card */

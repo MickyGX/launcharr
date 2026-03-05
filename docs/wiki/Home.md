@@ -28,9 +28,13 @@ Use this wiki as the operational source of truth for setup, roles, and rollout.
 
 ![Mobile preview](../media/mobile-preview.png)
 
-### Launch Flow (GIF)
+### Launch Flow (Desktop GIF)
 
 ![Launch flow demo](../media/launch-flow.gif)
+
+### Launch Flow (Mobile GIF)
+
+![Launch flow mobile demo](../media/launch-flow-mobile.gif)
 
 ## Start Here
 

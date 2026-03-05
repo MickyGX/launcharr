@@ -14,10 +14,12 @@ Current published assets:
 - `settings-preview.png`
 - `mobile-preview.png`
 - `launch-flow.gif`
+- `launch-flow-mobile.gif`
 
 Current optimization status:
 
 - `launch-flow.gif` optimized for docs delivery (960px wide, 8fps, reduced palette).
+- `launch-flow-mobile.gif` optimized for docs delivery (280px wide, 5fps, reduced palette).
 
 Source capture location (ignored by git):
 

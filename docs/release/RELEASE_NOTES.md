@@ -1,4 +1,16 @@
-# Release Notes (v0.1.0 -> v0.2.44)
+# Release Notes (v0.1.0 -> v0.2.45)
+
+## v0.2.45 (2026-03-05)
+
+- [Added]
+- Added mobile launch-flow documentation media (`docs/media/launch-flow-mobile.gif`) and linked it from docs/wiki pages.
+- [Changed]
+- Updated overview carousel swipe handling so pointer capture is only used for mouse drags.
+- Updated horizontal widget-row gesture behavior to `touch-action: pan-x pan-y` so vertical panning remains available.
+- Updated mobile-width layout behavior for desktop touch devices to use `.dash-main` as the vertical scroll surface.
+- [Fixed]
+- Fixed Immich recently-added swipe reliability by adding touch fallback handlers and horizontal-intent gesture detection.
+- Fixed vertical page scrolling being blocked in mobile-width view on desktop touchscreen devices while preserving horizontal carousel swipe behavior.
 
 ## v0.2.44 (2026-03-02)
 

@@ -644,7 +644,7 @@
 
       viewport.addEventListener('pointerdown', (event) => {
         onStart(event.clientX, event.target);
-        if (tracking && viewport.setPointerCapture) viewport.setPointerCapture(event.pointerId);
+        if (tracking && event.pointerType === 'mouse' && viewport.setPointerCapture) viewport.setPointerCapture(event.pointerId);
       });
       viewport.addEventListener('pointermove', (event) => onMove(event.clientX));
       viewport.addEventListener('pointerup', onEnd);
@@ -824,7 +824,7 @@
 
       wheelViewport.addEventListener('pointerdown', (event) => {
         onStart(event.clientX, event.target);
-        if (tracking && wheelViewport.setPointerCapture) wheelViewport.setPointerCapture(event.pointerId);
+        if (tracking && event.pointerType === 'mouse' && wheelViewport.setPointerCapture) wheelViewport.setPointerCapture(event.pointerId);
       });
       wheelViewport.addEventListener('pointermove', (event) => onMove(event.clientX));
       wheelViewport.addEventListener('pointerup', onEnd);
