@@ -47,6 +47,8 @@ export function registerPages(app, ctx) {
     resolveRoleAwareLaunchUrl,
     resolveEffectiveLaunchMode,
     resolveIframeLaunchUrl,
+    resolveAppSubmenuLink,
+    resolveAppSubmenuLaunchUrl,
     hasEmbeddedUrlCredentials,
     stripUrlEmbeddedCredentials,
     buildRommCookiePrimingPlan,
@@ -574,6 +576,25 @@ export function registerPages(app, ctx) {
       return res.status(403).send('Launch access denied.');
     }
     const appWithIcon = { ...appItem, icon: resolvePersistedAppIconPath(appItem) };
+    const navApps = getNavApps(apps, role, req, categoryOrder);
+    const navCategories = buildNavCategories(navApps, categoryEntries, role);
+    const sidebarApp = navApps.find((item) => item.id === appItem.id) || appWithIcon;
+    const sidebarLinks = Array.isArray(sidebarApp.submenuLinks) ? sidebarApp.submenuLinks : [];
+    const requestedSubpageId = String(req.query?.page || '').trim().toLowerCase();
+    const defaultSubpageId = String(
+      sidebarApp.defaultSidebarLinkId
+      || appWithIcon.defaultSidebarLinkId
+      || sidebarLinks[0]?.id
+      || ''
+    ).trim().toLowerCase();
+    if ((!requestedSubpageId || (requestedSubpageId && !resolveAppSubmenuLink(sidebarApp, role, requestedSubpageId)))
+      && appWithIcon.hideDefaultLaunchLink
+      && defaultSubpageId) {
+      const targetUrl = new URL(`/apps/${encodeURIComponent(appItem.id)}/launch`, 'http://launcharr.local');
+      targetUrl.searchParams.set('page', defaultSubpageId);
+      return res.redirect(targetUrl.pathname + targetUrl.search);
+    }
+    const activeSubmenuLink = resolveAppSubmenuLink(sidebarApp, role, requestedSubpageId);
   
     const deepQuery = String(req.query?.q || req.query?.query || '').trim();
     if (deepQuery) {
@@ -590,7 +611,10 @@ export function registerPages(app, ctx) {
       }
     }
   
-    const launchUrl = resolveRoleAwareLaunchUrl(appWithIcon, req, resolveLaunchUrl(appWithIcon, req), role);
+    const launchTarget = activeSubmenuLink
+      ? resolveAppSubmenuLaunchUrl(appWithIcon, req, activeSubmenuLink)
+      : resolveLaunchUrl(appWithIcon, req);
+    const launchUrl = resolveRoleAwareLaunchUrl(appWithIcon, req, launchTarget, role);
     if (!launchUrl) return res.status(400).send('Launch URL not configured.');
   
     const launchMode = resolveEffectiveLaunchMode(appWithIcon, req, normalizeMenu(appWithIcon));
@@ -657,8 +681,9 @@ export function registerPages(app, ctx) {
           return res.redirect(launchUrl);
         }
       }
-      const navApps = getNavApps(apps, role, req, categoryOrder);
-      const navCategories = buildNavCategories(navApps, categoryEntries, role);
+      if (appWithIcon.id === 'curatorr') {
+        deferIframeNavigation = true;
+      }
       const dashboardSelection = resolveDashboardSelection(config, resolveRequestedDashboardId(req), role);
       const activeDashboard = dashboardSelection.activeDashboard || resolveDashboardDefinitions(config)[0] || {
         id: DASHBOARD_MAIN_ID,
@@ -676,6 +701,8 @@ export function registerPages(app, ctx) {
         dashboardDefinitions: dashboardSelection.visibleDashboards,
         activeDashboard,
         app: appWithIcon,
+        navActiveSubpageId: activeSubmenuLink?.id || '',
+        launchSectionLabel: activeSubmenuLink?.label || 'Launch',
         launchUrl: iframeLaunchUrl || iframeLaunchTarget,
         deferIframeNavigation,
       });

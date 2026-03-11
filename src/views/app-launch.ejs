@@ -1,4 +1,4 @@
-<%- include('partials/head', { pageTitle: 'Launcharr · ' + (app.name || 'App') + ' Launch', extraCss: ['/styles-layout.css'] }) %>
+<%- include('partials/head', { pageTitle: 'Launcharr · ' + (app.name || 'App') + ' ' + (launchSectionLabel || 'Launch'), extraCss: ['/styles-layout.css'] }) %>
 <body class="dash-body launch-page">
   <%
     const dashboardNavEntries = (Array.isArray(dashboardDefinitions) ? dashboardDefinitions : [])
@@ -47,7 +47,7 @@
             <% }) %>
           <% } %>
         <% } %>
-        <%- include('partials/nav-categories', { navDashHasEntries: dashboardNavEntries.length > 0, navActiveAppId: app.id, navActivePage: 'launch' }) %>
+        <%- include('partials/nav-categories', { navDashHasEntries: dashboardNavEntries.length > 0, navActiveAppId: app.id, navActivePage: 'launch', navActiveSubpageId: navActiveSubpageId || '' }) %>
       </div>
 
       <%- include('partials/user-menu') %>
@@ -61,7 +61,7 @@
         <div class="main-window-title">
           <img class="main-window-icon" src="<%= app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'jellyfin', 'emby'].includes(app.id) ? '/icons/' + app.id + '.png' : '/icons/' + app.id + '.svg') %>" alt="" onerror="this.src='/icons/app.svg'" />
           <span class="main-window-app"><%= app.name %></span>
-          <span class="main-window-rest">| Launch</span>
+          <span class="main-window-rest">| <%= launchSectionLabel || 'Launch' %></span>
         </div>
         <div class="main-window-spacer"></div>
         <div class="main-window-status">
@@ -78,7 +78,7 @@
           <% } else { %>
             src="<%= launchUrl %>"
           <% } %>
-          title="Launch <%= app.name %>"
+          title="<%= (launchSectionLabel || 'Launch') + ' · ' + (app.name || 'App') %>"
           loading="eager"
         ></iframe>
         <div class="launch-frame-overlay" aria-hidden="true"></div>
@@ -95,6 +95,7 @@
     const sidebar = document.querySelector('.dash-sidebar');
     const dashNav = document.querySelector('.dash-nav');
     const launchFrame = document.querySelector('.launch-frame');
+    const currentAppId = String('<%= app.id || "" %>').trim().toLowerCase();
     const safeStorage = {
       get(key) {
         try {
@@ -112,6 +113,44 @@
       },
     };
 
+    const getLauncharrThemeMode = () => {
+      const rootMode = String(document.documentElement?.dataset?.theme || '').trim().toLowerCase();
+      if (rootMode === 'day' || rootMode === 'night') return rootMode;
+      const storedMode = String(safeStorage.get('launcharr-theme') || '').trim().toLowerCase();
+      return storedMode === 'day' || storedMode === 'night' ? storedMode : '';
+    };
+
+    const getLauncharrSquareCorners = () => {
+      const rootValue = String(document.documentElement?.dataset?.squareCorners || '').trim();
+      if (rootValue === '1' || rootValue === '0') return rootValue;
+      const storedValue = String(safeStorage.get('launcharr-square-corners') || '').trim().toLowerCase();
+      return storedValue === '1' || storedValue === 'true' ? '1' : '0';
+    };
+
+    const applyEmbeddedThemeParams = (rawUrl) => {
+      const input = String(rawUrl || '').trim();
+      if (!input || currentAppId !== 'curatorr') return input;
+      try {
+        const parsed = new URL(input, window.location.href);
+        const mode = getLauncharrThemeMode();
+        if (mode === 'day' || mode === 'night') {
+          parsed.searchParams.set('launcharr_theme', mode);
+        }
+        parsed.searchParams.set('launcharr_square_corners', getLauncharrSquareCorners());
+        return parsed.toString();
+      } catch (_err) {
+        return input;
+      }
+    };
+
+    const syncEmbeddedThemeToFrame = () => {
+      if (!launchFrame || currentAppId !== 'curatorr' || !launchFrame.contentWindow) return;
+      const mode = getLauncharrThemeMode();
+      const squareCorners = getLauncharrSquareCorners();
+      if (mode !== 'day' && mode !== 'night' && squareCorners !== '1' && squareCorners !== '0') return;
+      launchFrame.contentWindow.postMessage({ type: 'launcharr-theme-sync', theme: mode, squareCorners }, '*');
+    };
+
     (function primeIframeLaunchAfterCookieSet() {
       if (!launchFrame) return;
       const deferredUrl = String(launchFrame.getAttribute('data-launch-url') || '').trim();
@@ -119,8 +158,9 @@
       // Romm cookie priming happens on the HTML response that renders this page.
       // Deferring iframe navigation avoids a first request racing ahead of Set-Cookie.
       const start = () => {
-        if (!launchFrame || launchFrame.src === deferredUrl) return;
-        launchFrame.src = deferredUrl;
+        const themedUrl = applyEmbeddedThemeParams(deferredUrl);
+        if (!launchFrame || launchFrame.src === themedUrl) return;
+        launchFrame.src = themedUrl;
       };
       if (document.readyState === 'complete' || document.readyState === 'interactive') {
         setTimeout(start, 75);
@@ -130,6 +170,22 @@
         setTimeout(start, 75);
       }, { once: true });
     })();
+
+    if (launchFrame && currentAppId === 'curatorr') {
+      launchFrame.addEventListener('load', () => {
+        syncEmbeddedThemeToFrame();
+      });
+      const rootObserver = new MutationObserver(() => {
+        syncEmbeddedThemeToFrame();
+      });
+      rootObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['data-theme', 'data-square-corners'],
+      });
+      window.addEventListener('pagehide', () => {
+        rootObserver.disconnect();
+      }, { once: true });
+    }
 
     function setToggleIcon() {
       if (!toggleIcon) return;

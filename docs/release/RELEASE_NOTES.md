@@ -1,4 +1,17 @@
-# Release Notes (v0.1.0 -> v0.2.45)
+# Release Notes (v0.1.0 -> v0.2.46)
+
+## v0.2.46 (2026-03-11)
+
+- [Added]
+- Added built-in `Curatorr` app support with dedicated icon assets plus default launch subpages for Dashboard, History, Artists, Discover, Tracks, Playlists, and admin Settings.
+- Added role-aware submenu link normalization so apps can expose custom launch destinations directly from the Launcharr sidebar.
+- [Changed]
+- Updated app launch routing so apps that hide the default Launch link can redirect `/apps/:id/launch` to their configured default submenu page.
+- Updated launch-page chrome to show the active submenu label in the window title and keep submenu navigation highlighted.
+- Updated embedded Curatorr launches to pass Launcharr theme and square-corner preferences into the iframe and resync them after appearance changes.
+- [Fixed]
+- Fixed invalid or unauthorized app `?page=` launch targets so they fall back to the configured default submenu instead of leaving hidden routes stranded.
+- Fixed embedded Curatorr theme drift after Launcharr day/night or square-corner preference changes.
 
 ## v0.2.45 (2026-03-05)
 

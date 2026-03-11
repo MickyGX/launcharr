@@ -1,6 +1,7 @@
 <%
   const _navActiveAppId = locals.navActiveAppId || null;
   const _navActivePage = locals.navActivePage || null;
+  const _navActiveSubpageId = String(locals.navActiveSubpageId || '').trim().toLowerCase();
   const _navDashHasEntries = Boolean(locals.navDashHasEntries);
   const _navMultiInstanceBaseIdsList = (Array.isArray(locals.multiInstanceBaseIds) ? locals.multiInstanceBaseIds : [])
     .map((item) => String(item || '').trim().toLowerCase())
@@ -43,19 +44,26 @@
             <div class="nav-accordion nav-accordion--nested">
               <% category.apps.forEach((appItem) => { %>
                 <% const _navAppOpen = _navActiveAppId ? (appItem.id === _navActiveAppId && (!((appItem.favourite || appItem.favorite)) || appItem.navFavourite)) : false; %>
+                <% const _navSubmenuLinks = Array.isArray(appItem.submenuLinks) ? appItem.submenuLinks : []; %>
                 <div class="nav-accordion-item<%= _navAppOpen ? ' open' : '' %>">
                   <button class="nav-accordion-trigger" type="button">
                     <img class="nav-icon app-icon" src="<%= _navResolveAppIconPath(appItem) %>" alt="" onerror="this.src='/icons/app.svg'" />
                     <span class="nav-label"><%= appItem.name %></span>
                   </button>
                   <div class="nav-accordion-panel">
-                    <% if (appItem.menuAccess.overview) { %>
+                    <% _navSubmenuLinks.forEach((submenuItem) => { %>
+                      <a class="nav-subitem<%= _navActiveAppId && appItem.id === _navActiveAppId && _navActivePage === 'launch' && _navActiveSubpageId === submenuItem.id ? ' active' : '' %>" href="/apps/<%= appItem.id %>/launch?page=<%= encodeURIComponent(submenuItem.id) %>" data-launch-mode="<%= appItem.effectiveLaunchMode %>" <%= appItem.effectiveLaunchMode === 'new-tab' ? 'target=\"_blank\" rel=\"noreferrer\"' : '' %>>
+                        <img class="nav-subicon" src="<%= submenuItem.icon || '/icons/launch.svg' %>" alt="" onerror="this.src='/icons/launch.svg'" />
+                        <span><%= submenuItem.label %></span>
+                      </a>
+                    <% }) %>
+                    <% if (appItem.menuAccess.overview && !appItem.hideDefaultOverviewLink) { %>
                       <a class="nav-subitem<%= _navActiveAppId && appItem.id === _navActiveAppId && _navActivePage === 'overview' ? ' active' : '' %>" href="/apps/<%= appItem.id %>">
                         <img class="nav-subicon" src="/icons/overview.svg" alt="" />
                         <span>Overview</span>
                       </a>
                     <% } %>
-                    <% if (appItem.menuAccess.launch) { %>
+                    <% if (appItem.menuAccess.launch && !appItem.hideDefaultLaunchLink) { %>
                       <a class="nav-subitem<%= _navActiveAppId && appItem.id === _navActiveAppId && _navActivePage === 'launch' ? ' active' : '' %>" href="/apps/<%= appItem.id %>/launch" data-launch-mode="<%= appItem.effectiveLaunchMode %>" <%= appItem.effectiveLaunchMode === 'new-tab' ? 'target="_blank" rel="noreferrer"' : '' %>>
                         <img class="nav-subicon" src="/icons/launch.svg" alt="" />
                         <span>Launch</span>
@@ -82,19 +90,26 @@
       <% } else { %>
         <% category.apps.forEach((appItem) => { %>
           <% const _navAppOpen = _navActiveAppId ? (appItem.id === _navActiveAppId && (!((appItem.favourite || appItem.favorite)) || appItem.navFavourite)) : false; %>
+          <% const _navSubmenuLinks = Array.isArray(appItem.submenuLinks) ? appItem.submenuLinks : []; %>
           <div class="nav-accordion-item<%= _navAppOpen ? ' open' : '' %>">
             <button class="nav-accordion-trigger" type="button">
               <img class="nav-icon app-icon" src="<%= _navResolveAppIconPath(appItem) %>" alt="" onerror="this.src='/icons/app.svg'" />
               <span class="nav-label"><%= appItem.name %></span>
             </button>
             <div class="nav-accordion-panel">
-              <% if (appItem.menuAccess.overview) { %>
+              <% _navSubmenuLinks.forEach((submenuItem) => { %>
+                <a class="nav-subitem<%= _navActiveAppId && appItem.id === _navActiveAppId && _navActivePage === 'launch' && _navActiveSubpageId === submenuItem.id ? ' active' : '' %>" href="/apps/<%= appItem.id %>/launch?page=<%= encodeURIComponent(submenuItem.id) %>" data-launch-mode="<%= appItem.effectiveLaunchMode %>" <%= appItem.effectiveLaunchMode === 'new-tab' ? 'target=\"_blank\" rel=\"noreferrer\"' : '' %>>
+                  <img class="nav-subicon" src="<%= submenuItem.icon || '/icons/launch.svg' %>" alt="" onerror="this.src='/icons/launch.svg'" />
+                  <span><%= submenuItem.label %></span>
+                </a>
+              <% }) %>
+              <% if (appItem.menuAccess.overview && !appItem.hideDefaultOverviewLink) { %>
                 <a class="nav-subitem<%= _navActiveAppId && appItem.id === _navActiveAppId && _navActivePage === 'overview' ? ' active' : '' %>" href="/apps/<%= appItem.id %>">
                   <img class="nav-subicon" src="/icons/overview.svg" alt="" />
                   <span>Overview</span>
                 </a>
               <% } %>
-              <% if (appItem.menuAccess.launch) { %>
+              <% if (appItem.menuAccess.launch && !appItem.hideDefaultLaunchLink) { %>
                 <a class="nav-subitem<%= _navActiveAppId && appItem.id === _navActiveAppId && _navActivePage === 'launch' ? ' active' : '' %>" href="/apps/<%= appItem.id %>/launch" data-launch-mode="<%= appItem.effectiveLaunchMode %>" <%= appItem.effectiveLaunchMode === 'new-tab' ? 'target="_blank" rel="noreferrer"' : '' %>>
                   <img class="nav-subicon" src="/icons/launch.svg" alt="" />
                   <span>Launch</span>

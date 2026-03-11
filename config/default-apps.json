@@ -317,6 +317,96 @@
     "instanceNamePlaceholder": "..."
   },
   {
+    "id": "curatorr",
+    "name": "Curatorr",
+    "icon": "/icons/curatorr-icon.svg",
+    "url": "http://localhost:7676",
+    "description": "Music discovery and playlist curation",
+    "category": "Manager",
+    "roles": [
+      "admin",
+      "user"
+    ],
+    "apiKey": "",
+    "username": "",
+    "password": "",
+    "localUrl": "http://localhost:7676",
+    "remoteUrl": "",
+    "menu": {
+      "overview": {
+        "user": false,
+        "admin": false
+      },
+      "launch": {
+        "user": true,
+        "admin": true
+      },
+      "settings": {
+        "user": false,
+        "admin": true
+      }
+    },
+    "order": 2,
+    "favourite": false,
+    "launchMode": "iframe",
+    "hideDefaultOverviewLink": true,
+    "hideDefaultLaunchLink": true,
+    "defaultSidebarLinkId": "dashboard",
+    "submenuLinks": [
+      {
+        "id": "dashboard",
+        "label": "Dashboard",
+        "icon": "/icons/dashboard.svg",
+        "path": "/dashboard?embed=launcharr",
+        "order": 1
+      },
+      {
+        "id": "history",
+        "label": "History",
+        "icon": "/icons/activity-queue.svg",
+        "path": "/history?embed=launcharr",
+        "order": 2
+      },
+      {
+        "id": "artists",
+        "label": "Artists",
+        "icon": "/icons/user-profile.svg",
+        "path": "/artists?embed=launcharr",
+        "order": 3
+      },
+      {
+        "id": "discover",
+        "label": "Discover",
+        "icon": "/icons/search.svg",
+        "path": "/discover?embed=launcharr",
+        "order": 4
+      },
+      {
+        "id": "tracks",
+        "label": "Tracks",
+        "icon": "/icons/vinyl-record.svg",
+        "path": "/tracks?embed=launcharr",
+        "order": 5
+      },
+      {
+        "id": "playlists",
+        "label": "Playlists",
+        "icon": "/icons/category.svg",
+        "path": "/playlists?embed=launcharr",
+        "order": 6
+      },
+      {
+        "id": "settings",
+        "label": "Settings",
+        "icon": "/icons/settings.svg",
+        "path": "/settings?embed=launcharr",
+        "minRole": "admin",
+        "order": 7
+      }
+    ],
+    "removed": true
+  },
+  {
     "id": "radarr",
     "name": "Radarr",
     "supportsInstances": true,
