@@ -1,4 +1,15 @@
-# Release Notes (v0.1.0 -> v0.2.46)
+# Release Notes (v0.1.0 -> v0.2.47)
+
+## v0.2.47 (2026-03-12)
+
+- [Added]
+- Added Plex settings token-resolution helpers plus automated tests for primary and secondary Plex instance selection.
+- [Changed]
+- Updated Plex-specific settings, dashboard, and deep-launch handling to recognize Plex multi-instance app IDs via base-app detection.
+- Updated `Get Plex Token` and `Get Plex Machine` settings actions to target the selected Plex app instance instead of always using the primary `plex` app.
+- [Fixed]
+- Fixed secondary Plex instances resolving the wrong server token from the primary Plex session context.
+- Fixed Plex-specific dashboard/settings behavior that only activated for the literal `plex` app ID, which caused gaps for instance IDs such as `plex-2`.
 
 ## v0.2.46 (2026-03-11)
 

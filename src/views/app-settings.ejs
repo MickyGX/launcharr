@@ -1,5 +1,5 @@
 <%- include('partials/head', { pageTitle: 'Launcharr · ' + (app.name || 'App') + ' Settings', extraCss: ['/styles-layout.css', '/styles-settings.css'] }) %>
-<body class="dash-body <%= app.id === 'plex' ? 'plex-settings-body' : '' %>">
+<body class="dash-body <%= (String(app.id || '').trim().toLowerCase() === 'plex' || /^plex-\d+$/.test(String(app.id || '').trim().toLowerCase())) ? 'plex-settings-body' : '' %>">
   <%
     const dashboardNavEntries = (Array.isArray(dashboardDefinitions) ? dashboardDefinitions : [])
       .map((entry) => ({
@@ -153,7 +153,7 @@
         </div>
       </div>
 
-      <div class="dash-panel<%= app.id === 'plex' ? ' plex-settings-panel' : '' %>">
+      <div class="dash-panel<%= appBaseId === 'plex' ? ' plex-settings-panel' : '' %>">
         <div class="panel-header">
           <h2>Connection</h2>
           <span class="panel-sub">URLs and access tokens</span>
@@ -580,30 +580,32 @@
       const plexButtons = Array.from(document.querySelectorAll('[data-plex-action]'));
       if (!plexButtons.length) return;
 
-      const runPlexAction = async (button) => {
-        const action = String(button?.dataset?.plexAction || '').trim().toLowerCase();
-        if (action !== 'token' && action !== 'machine') return;
-        const form = button.closest('form');
-        if (!form) return;
-        const targetInput = form.querySelector(`[data-plex-field="${action}"]`);
-        if (!targetInput) return;
+        const runPlexAction = async (button) => {
+          const action = String(button?.dataset?.plexAction || '').trim().toLowerCase();
+          if (action !== 'token' && action !== 'machine') return;
+          const form = button.closest('form');
+          if (!form) return;
+          const appId = String(button?.dataset?.plexAppId || form?.dataset?.plexAppId || '').trim();
+          const targetInput = form.querySelector(`[data-plex-field="${action}"]`);
+          if (!targetInput) return;
 
-        try {
-          button.disabled = true;
-          const endpoint = action === 'token' ? '/api/plex/token' : '/api/plex/machine';
-          const response = await fetch(endpoint);
-          const data = await response.json().catch(() => ({}));
-          if (action === 'token') {
-            if (!response.ok || data?.error) throw new Error(data?.error || 'Failed to fetch Plex token.');
-            const nextToken = String(data.token || '').trim();
-            if (nextToken.split('.').length >= 3) {
-              throw new Error('Resolved token looks like a Plex auth JWT. Please set Plex Machine/URL and try again.');
+          try {
+            button.disabled = true;
+            const endpoint = new URL(action === 'token' ? '/api/plex/token' : '/api/plex/machine', window.location.origin);
+            if (appId) endpoint.searchParams.set('appId', appId);
+            const response = await fetch(endpoint.toString());
+            const data = await response.json().catch(() => ({}));
+            if (action === 'token') {
+              if (!response.ok || data?.error) throw new Error(data?.error || 'Failed to fetch Plex token.');
+              const nextToken = String(data.token || '').trim();
+              if (nextToken.split('.').length >= 3) {
+                throw new Error('Resolved token looks like a Plex auth JWT. Please set Plex Machine/URL and try again.');
+              }
+              targetInput.value = nextToken;
+            } else {
+              if (!response.ok) throw new Error(data?.error || 'Failed to fetch Plex machine.');
+              targetInput.value = data.machineId || '';
             }
-            targetInput.value = nextToken;
-          } else {
-            if (!response.ok) throw new Error(data?.error || 'Failed to fetch Plex machine.');
-            targetInput.value = data.machineId || '';
-          }
         } catch (err) {
           console.error(`[Launcharr] Plex ${action} fetch failed`, err);
         } finally {

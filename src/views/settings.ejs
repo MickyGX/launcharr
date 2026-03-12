@@ -4006,13 +4006,15 @@
         if (action !== 'token' && action !== 'machine') return;
         const form = button.closest('form');
         if (!form) return;
+        const appId = String(button?.dataset?.plexAppId || form?.dataset?.plexAppId || '').trim();
         const targetInput = form.querySelector(`[data-plex-field="${action}"]`);
         if (!targetInput) return;
 
         try {
           button.disabled = true;
-          const endpoint = action === 'token' ? '/api/plex/token' : '/api/plex/machine';
-          const response = await fetch(endpoint);
+          const endpoint = new URL(action === 'token' ? '/api/plex/token' : '/api/plex/machine', window.location.origin);
+          if (appId) endpoint.searchParams.set('appId', appId);
+          const response = await fetch(endpoint.toString());
           const data = await response.json().catch(() => ({}));
           if (action === 'token') {
             if (!response.ok || data?.error) throw new Error(data?.error || 'Failed to fetch Plex token.');

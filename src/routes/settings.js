@@ -3779,7 +3779,7 @@ app.post('/apps/:id/settings', requireAdmin, (req, res) => {
       plexToken: (() => {
         if (isDisplayOnlyUpdate) return appItem.plexToken || '';
         const nextToken = req.body.plexToken !== undefined ? req.body.plexToken : (appItem.plexToken || '');
-        if (appItem.id === 'plex' && shouldIgnoreJwtToken(nextToken)) {
+        if (getAppBaseId(appItem.id) === 'plex' && shouldIgnoreJwtToken(nextToken)) {
           pushLog({
             level: 'error',
             app: 'plex',

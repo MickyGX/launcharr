@@ -1,8 +1,49 @@
+export function resolveRequestedPlexApp(apps, getAppBaseId, requestedAppId = '') {
+  const plexApps = (Array.isArray(apps) ? apps : [])
+    .filter((appItem) => String(getAppBaseId(appItem?.id) || '').trim().toLowerCase() === 'plex');
+  const requestedId = String(requestedAppId || '').trim().toLowerCase();
+  if (!requestedId) return plexApps[0] || null;
+  return plexApps.find((appItem) => String(appItem?.id || '').trim().toLowerCase() === requestedId) || null;
+}
+
+export async function resolvePlexSettingsToken({
+  plexApp,
+  sessionToken = '',
+  sessionServerToken = '',
+  fetchPlexResources,
+  resolvePlexServerToken,
+}) {
+  const fallbackToken = String(plexApp?.plexToken || '').trim();
+  const isPrimaryPlexApp = String(plexApp?.id || '').trim().toLowerCase() === 'plex';
+  let lookupError = null;
+
+  if (sessionToken) {
+    try {
+      const resources = await fetchPlexResources(sessionToken);
+      const resolvedToken = String(resolvePlexServerToken(resources, {
+        machineId: String(plexApp?.plexMachine || '').trim(),
+        localUrl: plexApp?.localUrl,
+        remoteUrl: plexApp?.remoteUrl,
+        plexHost: plexApp?.plexHost,
+      }) || '').trim();
+      if (resolvedToken) return resolvedToken;
+    } catch (err) {
+      lookupError = err;
+    }
+  }
+
+  if (fallbackToken) return fallbackToken;
+  if (isPrimaryPlexApp && sessionServerToken) return String(sessionServerToken || '').trim();
+  if (lookupError) throw lookupError;
+  return '';
+}
+
 export function registerApiPlex(app, ctx) {
   const {
     requireUser,
     requireAdmin,
     loadConfig,
+    getAppBaseId,
     canAccessDashboardApp,
     getEffectiveRole,
     pushLog,
@@ -25,31 +66,36 @@ export function registerApiPlex(app, ctx) {
   app.get('/api/plex/token', requireAdmin, (req, res) => {
     const config = loadConfig();
     const apps = config.apps || [];
-    const plexApp = apps.find((appItem) => appItem.id === 'plex');
+    const requestedAppId = String(req.query?.appId || '').trim();
+    const plexApp = resolveRequestedPlexApp(apps, getAppBaseId, requestedAppId);
+    if (!plexApp) {
+      return res.status(404).json({ error: requestedAppId ? 'Requested Plex app is not configured.' : 'Plex app is not configured.' });
+    }
     const sessionToken = String(req.session?.authToken || '').trim();
     const sessionServerToken = String(req.session?.plexServerToken || '').trim();
-    const fallbackToken = String(plexApp?.plexToken || '').trim();
-    const token = sessionServerToken || fallbackToken || sessionToken;
-    if (!token) return res.status(400).json({ error: 'Missing Plex token.' });
+    const fallbackToken = String(plexApp.plexToken || '').trim();
+    const isPrimaryPlexApp = String(plexApp.id || '').trim().toLowerCase() === 'plex';
+    if (!sessionToken && !fallbackToken && !(isPrimaryPlexApp && sessionServerToken)) {
+      return res.status(400).json({ error: 'Missing Plex token.' });
+    }
 
     (async () => {
-      if (sessionServerToken) return { token: sessionServerToken };
-      if (!sessionToken) return { token };
       try {
-        const resources = await fetchPlexResources(sessionToken);
-        const serverToken = resolvePlexServerToken(resources, {
-          machineId: String(plexApp?.plexMachine || '').trim(),
-          localUrl: plexApp?.localUrl,
-          remoteUrl: plexApp?.remoteUrl,
-          plexHost: plexApp?.plexHost,
+        const token = await resolvePlexSettingsToken({
+          plexApp,
+          sessionToken,
+          sessionServerToken,
+          fetchPlexResources,
+          resolvePlexServerToken,
         });
-        if (serverToken) return { token: serverToken };
+        if (token) return { token };
         pushLog({
           level: 'error',
           app: 'plex',
           action: 'token.resolve',
           message: 'Plex server token could not be resolved.',
           meta: {
+            appId: String(plexApp.id || '').trim(),
             machineId: String(plexApp?.plexMachine || '').trim(),
             localUrl: plexApp?.localUrl || '',
             remoteUrl: plexApp?.remoteUrl || '',
@@ -73,8 +119,11 @@ export function registerApiPlex(app, ctx) {
   app.get('/api/plex/machine', requireAdmin, async (req, res) => {
     const config = loadConfig();
     const apps = config.apps || [];
-    const plexApp = apps.find((appItem) => appItem.id === 'plex');
-    if (!plexApp) return res.status(404).json({ error: 'Plex app is not configured.' });
+    const requestedAppId = String(req.query?.appId || '').trim();
+    const plexApp = resolveRequestedPlexApp(apps, getAppBaseId, requestedAppId);
+    if (!plexApp) {
+      return res.status(404).json({ error: requestedAppId ? 'Requested Plex app is not configured.' : 'Plex app is not configured.' });
+    }
     const token = String(req.session?.authToken || plexApp.plexToken || '').trim();
     if (!token) return res.status(400).json({ error: 'Missing Plex token.' });
 

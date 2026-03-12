@@ -64,7 +64,7 @@
   const appSettingsVisibilityRolesFiltered = appSettingsVisibilityRoles.filter((role) => restrictedSidebarRoles.has(role));
   const activityVisibilityRolesFiltered = activityVisibilityRoles.filter((role) => restrictedSidebarRoles.has(role));
 %>
-<form method="post" action="<%= renderedFormAction %>" class="settings-form <%= renderedAppBaseId === 'plex' ? 'plex-settings-form' : '' %>">
+<form method="post" action="<%= renderedFormAction %>" class="settings-form <%= renderedAppBaseId === 'plex' ? 'plex-settings-form' : '' %>"<%- renderedAppBaseId === 'plex' ? ` data-plex-app-id="${renderedAppId}"` : '' %>>
   <% if (renderedSupportsInstances) { %>
     <label class="field">
       <span>Instance Name</span>
@@ -72,7 +72,7 @@
     </label>
   <% } %>
   <div class="settings-card">
-    <% if (renderedAppId === 'plex') { %>
+    <% if (renderedAppBaseId === 'plex') { %>
       <div class="settings-card-title">App URLs</div>
       <div class="settings-card-sub">Base URLs and credentials for local or remote access.</div>
     <% } %>
@@ -85,7 +85,7 @@
       <input type="text" name="remoteUrl" value="<%= renderedApp.remoteUrl || '' %>" placeholder="https://app.example.com" />
     </label>
   </div>
-  <% if (renderedAppId === 'plex') { %>
+  <% if (renderedAppBaseId === 'plex') { %>
     <% const adminOwner = renderedAdmins.length ? renderedAdmins[0] : ''; %>
     <div class="settings-card plex-settings-card">
       <div class="settings-card-title">Plex Access</div>
@@ -114,8 +114,8 @@
           <input type="text" name="plexAdminUser" value="<%= adminOwner %>" placeholder="admin@plex.tv" />
         </label>
         <div class="plex-settings-actions">
-          <button class="ghost-button" type="button" data-plex-action="token">Get Plex Token</button>
-          <button class="ghost-button" type="button" data-plex-action="machine">Get Plex Machine</button>
+          <button class="ghost-button" type="button" data-plex-action="token" data-plex-app-id="<%= renderedAppId %>">Get Plex Token</button>
+          <button class="ghost-button" type="button" data-plex-action="machine" data-plex-app-id="<%= renderedAppId %>">Get Plex Machine</button>
         </div>
       </div>
       <div class="plex-settings-note">Tip: Local URL is preferred when set.</div>

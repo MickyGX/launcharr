@@ -7024,7 +7024,7 @@ async function resolveDeepLaunchUrl(appItem, req, options = {}) {
     return base.replace(/\/+$/, '') + '/search?query=' + encodeURIComponent(effectiveQuery);
   }
 
-  if (appItem?.id === 'plex') {
+  if (getAppBaseId(appItem?.id) === 'plex') {
     let url = launchUrl;
     if (!/^https?:\/\//i.test(url)) url = 'http://' + url;
     try {

@@ -101,9 +101,9 @@
 
       <% if (hasDashboardContent) { %>
         <%
-          const hasPlexActive = dashboardModules.some((item) => item.app.id === 'plex' && item.element.id === 'active' && !item.mediaCombined);
-          const hasPlexRecent = dashboardModules.some((item) => item.app.id === 'plex' && item.element.id === 'recent' && !item.mediaCombined);
-          const hasPlexWatchlisted = dashboardModules.some((item) => item.app.id === 'plex' && item.element.id === 'watchlisted');
+          const hasPlexActive = dashboardModules.some((item) => resolveAppBaseId(item.app.id) === 'plex' && item.element.id === 'active' && !item.mediaCombined);
+          const hasPlexRecent = dashboardModules.some((item) => resolveAppBaseId(item.app.id) === 'plex' && item.element.id === 'recent' && !item.mediaCombined);
+          const hasPlexWatchlisted = dashboardModules.some((item) => resolveAppBaseId(item.app.id) === 'plex' && item.element.id === 'watchlisted');
           const hasTautulliStats = dashboardModules.some((item) => item.app.id === 'tautulli' && item.element.id === 'watch-stats');
           const hasMediaCombinedModules = dashboardModules.some((item) => item.mediaCombined && ['active', 'recent'].includes(item.element.id));
           const hasRequestModules = dashboardModules.some((item) => ['pulsarr', 'seerr'].includes(item.app.id) && (item.element.id === 'recent-requests' || item.element.id === 'most-watchlisted'));
@@ -351,7 +351,7 @@
                 </div>
               </section>
             <% } %>
-            <% if (item.app.id === 'plex' && item.element.id === 'active' && !item.mediaCombined) { %>
+            <% if (resolveAppBaseId(item.app.id) === 'plex' && item.element.id === 'active' && !item.mediaCombined) { %>
               <section class="plex-module plex-module--no-subtitle" id="plex-active">
                 <div class="plex-topbar">
                   <div class="plex-title-wrap">
@@ -384,7 +384,7 @@
                 </div>
               </section>
             <% } %>
-            <% if (item.app.id === 'plex' && item.element.id === 'recent' && !item.mediaCombined) { %>
+            <% if (resolveAppBaseId(item.app.id) === 'plex' && item.element.id === 'recent' && !item.mediaCombined) { %>
               <section class="plex-module plex-module--no-subtitle" id="plex-recent">
                 <div class="plex-topbar">
                   <div class="plex-title-wrap">
@@ -433,7 +433,7 @@
                 </div>
               </section>
             <% } %>
-            <% if (item.app.id === 'plex' && item.element.id === 'watchlisted') { %>
+            <% if (resolveAppBaseId(item.app.id) === 'plex' && item.element.id === 'watchlisted') { %>
               <section class="plex-module plex-module--no-subtitle" id="plex-watchlisted">
                 <div class="plex-topbar">
                   <div class="plex-title-wrap">
@@ -2792,8 +2792,8 @@
       });
     });
   </script>
-  <% if (dashboardModules.some((item) => item.app.id === 'plex' && !item.mediaCombined)) { %>
-    <% const plexApp = dashboardModules.find((item) => item.app.id === 'plex' && !item.mediaCombined)?.app; %>
+  <% if (dashboardModules.some((item) => resolveAppBaseId(item.app.id) === 'plex' && !item.mediaCombined)) { %>
+    <% const plexApp = dashboardModules.find((item) => resolveAppBaseId(item.app.id) === 'plex' && !item.mediaCombined)?.app; %>
     <% if (plexApp) { %>
       <script>
         window.PLEX_OVERVIEW_CONFIG = <%- JSON.stringify({
@@ -2801,7 +2801,7 @@
           host: plexApp.plexHost || '',
           token: plexApp.plexToken || '',
           displaySettings: dashboardModules
-            .filter((item) => item.app.id === 'plex' && !item.mediaCombined)
+            .filter((item) => resolveAppBaseId(item.app.id) === 'plex' && !item.mediaCombined)
             .reduce((acc, item) => {
               if (!item?.element?.id) return acc;
               acc[item.element.id] = {
@@ -2851,7 +2851,7 @@
     <% const tautulliApp = dashboardModules.find((item) => item.app.id === 'tautulli')?.app; %>
     <% const tautulliStatsModule = dashboardModules.find((item) => item.app.id === 'tautulli' && item.element.id === 'watch-stats'); %>
     <% const tautulliStatsView = tautulliStatsModule?.element?.tautulliStatsView === 'wheel' ? 'wheel' : 'list'; %>
-    <% const plexAppForTautulli = dashboardModules.find((item) => item.app.id === 'plex')?.app || apps.find((appItem) => appItem.id === 'plex'); %>
+    <% const plexAppForTautulli = dashboardModules.find((item) => resolveAppBaseId(item.app.id) === 'plex')?.app || apps.find((appItem) => resolveAppBaseId(appItem.id) === 'plex'); %>
     <% const activeTautulliCards = (Array.isArray(tautulliCards) ? tautulliCards : []).filter((item) => item.enable).sort((a, b) => (a.order || 0) - (b.order || 0)).map((item) => item.id); %>
     <% if (tautulliApp) { %>
       <script>
@@ -3020,11 +3020,11 @@
                 .map((appItem) => ({
                   appId: appItem.id,
                   appName: appItem.name,
-                  type: appItem.id === 'plex'
+                  type: resolveAppBaseId(appItem.id) === 'plex'
                     ? 'plex'
-                    : (appItem.id === 'jellyfin'
+                    : (resolveAppBaseId(appItem.id) === 'jellyfin'
                       ? 'jellyfin'
-                      : (appItem.id === 'emby' ? 'emby' : appItem.id)),
+                      : (resolveAppBaseId(appItem.id) === 'emby' ? 'emby' : resolveAppBaseId(appItem.id))),
                   baseUrl: (appBaseUrls && appBaseUrls[appItem.id]) || appItem.localUrl || appItem.remoteUrl || appItem.url || '',
                   token: appItem.plexToken || '',
                 })),
