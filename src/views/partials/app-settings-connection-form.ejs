@@ -153,6 +153,8 @@
           Use an API key from Wizarr Settings -> API Keys.
         <% } else if (renderedAppBaseId === 'profilarr') { %>
           Use the API key from Profilarr Settings -> General.
+        <% } else if (renderedAppBaseId === 'unraid') { %>
+          Use an API key from Unraid Settings -> Management Access -> API Keys.
         <% } else { %>
           Use the API key from <%= renderedAppName %> settings.
         <% } %>

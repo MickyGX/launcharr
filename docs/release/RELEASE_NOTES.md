@@ -1,4 +1,13 @@
-# Release Notes (v0.1.0 -> v0.2.47)
+# Release Notes (v0.1.0 -> v0.2.48)
+
+## v0.2.48 (2026-03-16)
+
+- [Added]
+- Added built-in `unRAID` app support with default metadata, dedicated icon asset, and multi-instance placeholder text for server-style deployments.
+- Added an `unraid` widget integration that polls the Unraid GraphQL API with an API key and exposes CPU, memory, array, and alert metrics for widget bars.
+- [Fixed]
+- Fixed `Settings -> Apps` so unRAID shows the same API-key access form as the per-app settings page instead of omitting the credential field on that surface.
+- Improved unRAID widget compatibility by probing multiple GraphQL memory-field shapes before marking the widget offline.
 
 ## v0.2.47 (2026-03-12)
 

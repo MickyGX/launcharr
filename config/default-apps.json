@@ -2386,5 +2386,41 @@
     "supportsInstances": true,
     "maxInstances": 5,
     "instanceNamePlaceholder": "NAS (e.g. Main)"
+  },
+  {
+    "id": "unraid",
+    "name": "unRAID",
+    "url": "http://localhost",
+    "description": "unRAID server management",
+    "category": "System",
+    "roles": [
+      "hidden"
+    ],
+    "apiKey": "",
+    "username": "",
+    "password": "",
+    "menu": {
+      "overview": {
+        "user": false,
+        "admin": true
+      },
+      "launch": {
+        "user": false,
+        "admin": true
+      },
+      "settings": {
+        "user": false,
+        "admin": true
+      }
+    },
+    "order": 11,
+    "favourite": false,
+    "launchMode": "newTab",
+    "localUrl": "http://localhost",
+    "remoteUrl": "",
+    "removed": true,
+    "supportsInstances": true,
+    "maxInstances": 5,
+    "instanceNamePlaceholder": "Server (e.g. Main)"
   }
 ]

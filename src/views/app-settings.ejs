@@ -106,6 +106,7 @@
           'tdarr',
           'wizarr',
           'profilarr',
+          'unraid',
         ]);
         const requiresApiKey = isArrSuite || apiKeyAppBaseIds.has(appBaseId);
         const hasToken = appBaseId === 'plex'
@@ -132,6 +133,7 @@
           huntarr: 'Instance (e.g. Hunting)',
           romm: 'Instance (e.g. Retro)',
           qnap: 'NAS (e.g. Main)',
+          unraid: 'Server (e.g. Main)',
         };
         const instancePlaceholderMap = (multiInstancePlaceholderMap && typeof multiInstancePlaceholderMap === 'object')
           ? multiInstancePlaceholderMap

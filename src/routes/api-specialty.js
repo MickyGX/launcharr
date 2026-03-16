@@ -4102,6 +4102,178 @@ export function registerApiSpecialty(app, ctx) {
 
         if (!qnapDone) status = 'down';
 
+      // ── unraid ───────────────────────────────────────────────────────────
+      } else if (typeId === 'unraid') {
+        const unraidHeaders = {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        };
+        if (apiKey) unraidHeaders['X-API-Key'] = apiKey;
+
+        const unraidQueries = [
+          `
+            query LauncharrUnraidWidget {
+              info {
+                cpu {
+                  usage
+                }
+                memory {
+                  free
+                  total
+                }
+              }
+              notifications
+              array {
+                state
+                capacity
+                disks {
+                  free
+                  size
+                }
+              }
+            }
+          `,
+          `
+            query LauncharrUnraidWidget {
+              info {
+                cpu {
+                  usage
+                }
+                memory {
+                  percentage
+                }
+              }
+              notifications
+              array {
+                state
+                capacity
+                disks {
+                  free
+                  size
+                }
+              }
+            }
+          `,
+          `
+            query LauncharrUnraidWidget {
+              info {
+                cpu {
+                  usage
+                }
+                memory {
+                  usedPercentage
+                }
+              }
+              notifications
+              array {
+                state
+                capacity
+                disks {
+                  free
+                  size
+                }
+              }
+            }
+          `,
+          `
+            query LauncharrUnraidWidget {
+              info {
+                cpu {
+                  usage
+                }
+                memory {
+                  usage
+                }
+              }
+              notifications
+              array {
+                state
+                capacity
+                disks {
+                  free
+                  size
+                }
+              }
+            }
+          `,
+        ];
+
+        const normalizePercentValue = (value) => {
+          const parsed = parseMetricNumber(value);
+          if (!Number.isFinite(parsed)) return null;
+          const raw = String(value ?? '').trim();
+          if (!raw.includes('%') && parsed > 0 && parsed <= 1) return parsed * 100;
+          return parsed;
+        };
+
+        const countNotifications = (value) => {
+          const numeric = parseMetricNumber(value);
+          if (Number.isFinite(numeric)) return Math.max(0, Math.round(numeric));
+          if (Array.isArray(value)) return value.length;
+          if (value && typeof value === 'object') {
+            const nested = pickFiniteFromObject(value, ['count', 'total', 'unread', 'pending']);
+            if (nested !== null) return Math.max(0, Math.round(nested));
+            const nestedList = value.items || value.results || value.notifications;
+            if (Array.isArray(nestedList)) return nestedList.length;
+          }
+          return null;
+        };
+
+        let payload = null;
+        for (const query of unraidQueries) {
+          const result = await tryAllCandidates(async (baseUrl) =>
+            doFetch(buildAppApiUrl(baseUrl, 'graphql').toString(), unraidHeaders, {
+              method: 'POST',
+              body: JSON.stringify({ query }),
+            })
+          );
+          payload = (result?.ok && result.json && typeof result.json === 'object')
+            ? result.json.data
+            : null;
+          if (payload && typeof payload === 'object') break;
+        }
+        if (payload && typeof payload === 'object') {
+          const cpuPct = normalizePercentValue(pickValueFromPath(payload, 'info.cpu.usage'));
+          const totalMemory = pickFiniteFromPaths(payload, ['info.memory.total']);
+          const freeMemory = pickFiniteFromPaths(payload, ['info.memory.free']);
+          const memoryPctDirect = normalizePercentValue(
+            pickValueFromPath(payload, 'info.memory.percentage')
+            ?? pickValueFromPath(payload, 'info.memory.usedPercentage')
+            ?? pickValueFromPath(payload, 'info.memory.usage')
+          );
+          const memoryPct = memoryPctDirect !== null
+            ? Math.max(0, Math.min(100, memoryPctDirect))
+            : ((Number.isFinite(totalMemory) && totalMemory > 0 && Number.isFinite(freeMemory) && freeMemory >= 0)
+              ? Math.max(0, Math.min(100, ((totalMemory - freeMemory) / totalMemory) * 100))
+              : null);
+          const notificationCount = countNotifications(payload.notifications);
+
+          let arrayPct = normalizePercentValue(pickValueFromPath(payload, 'array.capacity'));
+          if (arrayPct === null) {
+            const disks = Array.isArray(payload?.array?.disks) ? payload.array.disks : [];
+            const totals = disks.reduce((acc, disk) => {
+              const size = parseMetricNumber(disk?.size);
+              const free = parseMetricNumber(disk?.free);
+              if (Number.isFinite(size) && size > 0) acc.total += size;
+              if (Number.isFinite(free) && free >= 0) acc.free += free;
+              return acc;
+            }, { total: 0, free: 0 });
+            if (totals.total > 0) {
+              arrayPct = Math.max(0, Math.min(100, ((totals.total - totals.free) / totals.total) * 100));
+            }
+          }
+
+          status = 'up';
+          metrics = [
+            { key: 'cpu', label: 'CPU', value: Number.isFinite(cpuPct) ? `${cpuPct.toFixed(1)}%` : '—' },
+            { key: 'memory', label: 'Memory', value: Number.isFinite(memoryPct) ? `${memoryPct.toFixed(1)}%` : '—' },
+            { key: 'array', label: 'Array', value: Number.isFinite(arrayPct) ? `${arrayPct.toFixed(1)}%` : '—' },
+            { key: 'notifications', label: 'Alerts', value: notificationCount !== null ? notificationCount : '—' },
+          ];
+        } else {
+          status = 'down';
+        }
+
       // ── wizarr ───────────────────────────────────────────────────────────
       } else if (typeId === 'wizarr') {
         const wzHeaders = { Accept: 'application/json' };

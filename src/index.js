@@ -156,6 +156,7 @@ const WIDGET_STAT_TYPES = [
   { typeId: 'traefik',         name: 'Traefik',         icon: '/icons/traefik.svg',         metricFields: [{ key: 'routers', label: 'Routers' }, { key: 'services', label: 'Services' }, { key: 'middlewares', label: 'Middlewares' }] },
   { typeId: 'dozzle',          name: 'Dozzle',          icon: '/icons/dozzle.svg',          metricFields: [{ key: 'running', label: 'Running' }] },
   { typeId: 'qnap',            name: 'QNAP',            icon: '/icons/qnap.svg',            metricFields: [{ key: 'cpu', label: 'CPU' }, { key: 'memory', label: 'Memory' }, { key: 'volume', label: 'Volume' }] },
+  { typeId: 'unraid',          name: 'unRAID',          icon: '/icons/unraid.png',          metricFields: [{ key: 'cpu', label: 'CPU' }, { key: 'memory', label: 'Memory' }, { key: 'array', label: 'Array' }, { key: 'notifications', label: 'Alerts' }] },
 ];
 const WIDGET_STAT_TYPE_BY_ID = new Map(WIDGET_STAT_TYPES.map((t) => [t.typeId, t]));
 
