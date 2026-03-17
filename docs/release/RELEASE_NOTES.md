@@ -1,4 +1,12 @@
-# Release Notes (v0.1.0 -> v0.2.48)
+# Release Notes (v0.1.0 -> v0.2.49)
+
+## v0.2.49 (2026-03-17)
+
+- [Added]
+- Added a legacy `launcharr-icon-old.png` asset to preserve the previous Launcharr icon artwork for reuse in docs and release materials.
+- [Changed]
+- Updated day-theme dashboard system chips so labels, values, bars, and icons use higher-contrast colors against light backgrounds.
+- Updated day-theme dashboard search and links widgets with brighter surfaces and darker text for better readability.
 
 ## v0.2.48 (2026-03-16)
 
