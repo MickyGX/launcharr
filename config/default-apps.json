@@ -361,24 +361,24 @@
         "order": 1
       },
       {
+        "id": "discover",
+        "label": "Discover",
+        "icon": "/icons/search.svg",
+        "path": "/discover?embed=launcharr",
+        "order": 2
+      },
+      {
         "id": "history",
         "label": "History",
         "icon": "/icons/activity-queue.svg",
         "path": "/history?embed=launcharr",
-        "order": 2
+        "order": 3
       },
       {
         "id": "artists",
         "label": "Artists",
         "icon": "/icons/user-profile.svg",
         "path": "/artists?embed=launcharr",
-        "order": 3
-      },
-      {
-        "id": "discover",
-        "label": "Discover",
-        "icon": "/icons/search.svg",
-        "path": "/discover?embed=launcharr",
         "order": 4
       },
       {
@@ -396,12 +396,20 @@
         "order": 6
       },
       {
+        "id": "users",
+        "label": "Users",
+        "icon": "/icons/user-profile.svg",
+        "path": "/admin/users?embed=launcharr",
+        "minRole": "admin",
+        "order": 7
+      },
+      {
         "id": "settings",
         "label": "Settings",
         "icon": "/icons/settings.svg",
         "path": "/settings?embed=launcharr",
         "minRole": "admin",
-        "order": 7
+        "order": 8
       }
     ],
     "removed": true

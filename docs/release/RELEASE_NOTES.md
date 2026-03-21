@@ -1,4 +1,16 @@
-# Release Notes (v0.1.0 -> v0.2.49)
+# Release Notes (v0.1.0 -> v0.2.50)
+
+## v0.2.50 (2026-03-21)
+
+- [Added]
+- Added a `Curatorr` widget integration that reads the Curatorr admin summary and exposes all-time `Plex Users`, `Active Users`, and `Plays` metrics in Launcharr widget bars.
+- Added focused parser coverage for Curatorr admin-summary widget extraction.
+- [Changed]
+- Updated built-in `Curatorr` sidebar metadata to match the current upstream navigation order (`Dashboard`, `Discover`, `History`, `Artists`, `Tracks`, `Playlists`) and added the admin-only `Users` destination.
+- Updated built-in `Curatorr` metadata so the admin-only `Users` link opens `/admin/users` directly from Launcharr.
+- [Fixed]
+- Fixed Curatorr settings forms so the main `Username` and `Password` fields are available on both app-settings surfaces.
+- Fixed the Curatorr widget setup gap where Launcharr could require Curatorr admin credentials without exposing anywhere to save them.
 
 ## v0.2.49 (2026-03-17)
 

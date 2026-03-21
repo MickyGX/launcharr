@@ -1,3 +1,75 @@
+function escapeRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function decodeHtmlEntities(value) {
+  return String(value || '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, '\'')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>');
+}
+
+function stripHtml(value) {
+  return decodeHtmlEntities(String(value || '').replace(/<[^>]*>/g, ' '))
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractHiddenInputValue(html, inputName) {
+  const pattern = new RegExp(
+    `<input[^>]+name=["']${escapeRegExp(inputName)}["'][^>]+value=["']([^"']*)["']`,
+    'i',
+  );
+  const match = String(html || '').match(pattern);
+  return match ? decodeHtmlEntities(match[1]) : '';
+}
+
+function parseSlashSeparatedAllTimeCount(value) {
+  const parts = String(value || '')
+    .split('/')
+    .map((part) => {
+      const normalized = String(part || '').replace(/[^\d.-]/g, '').trim();
+      if (!normalized) return null;
+      return Number(normalized);
+    })
+    .filter((part) => Number.isFinite(part));
+  if (!parts.length) return null;
+  return Math.max(0, Math.round(parts[parts.length - 1]));
+}
+
+function parseCountValue(value) {
+  const normalized = String(value || '').replace(/[^\d.-]/g, '').trim();
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : null;
+}
+
+function extractCuratorrAdminCardValue(html, label) {
+  const pattern = new RegExp(
+    `<div\\s+class=["']cur-stat-label["']>\\s*${escapeRegExp(label)}\\s*<\\/div>[\\s\\S]*?<div\\s+class=["']cur-stat-value(?:\\s+[^"']*)?["']>([\\s\\S]*?)<\\/div>`,
+    'i',
+  );
+  const match = String(html || '').match(pattern);
+  return match ? stripHtml(match[1]) : '';
+}
+
+export function extractCuratorrAdminSummaryMetrics(html) {
+  const plexUsersRaw = extractCuratorrAdminCardValue(html, 'Plex users');
+  const activeUsersRaw = extractCuratorrAdminCardValue(html, 'Active users');
+  const playsRaw = extractCuratorrAdminCardValue(html, 'Plays');
+  const plexUsers = parseCountValue(plexUsersRaw);
+  const activeUsers = parseSlashSeparatedAllTimeCount(activeUsersRaw);
+  const plays = parseSlashSeparatedAllTimeCount(playsRaw);
+  return {
+    plexUsers,
+    activeUsers,
+    plays,
+  };
+}
+
 export function registerApiSpecialty(app, ctx) {
   const {
     requireUser,
@@ -3180,6 +3252,155 @@ export function registerApiSpecialty(app, ctx) {
         } else {
           status = 'down';
         }
+
+      // ── curatorr ────────────────────────────────────────────────────────
+      } else if (typeId === 'curatorr') {
+        const curatorrUsername = String(appItem.username || '').trim();
+        const curatorrPassword = String(appItem.password || '').trim();
+
+        function getResponseSetCookies(response) {
+          if (!response?.headers) return [];
+          if (typeof response.headers.getSetCookie === 'function') {
+            const values = response.headers.getSetCookie();
+            return Array.isArray(values) ? values.map((item) => String(item || '').trim()).filter(Boolean) : [];
+          }
+          return String(response.headers.get('set-cookie') || '')
+            .split(/,(?=\s*[!#$%&'*+\-.^_`|~0-9A-Za-z]+=)/g)
+            .map((item) => String(item || '').trim())
+            .filter(Boolean);
+        }
+
+        function mergeCookieHeaders(existing, setCookies) {
+          const jar = new Map();
+          String(existing || '')
+            .split(';')
+            .map((part) => String(part || '').trim())
+            .filter(Boolean)
+            .forEach((entry) => {
+              const eqIndex = entry.indexOf('=');
+              if (eqIndex <= 0) return;
+              jar.set(entry.slice(0, eqIndex).trim(), entry.slice(eqIndex + 1).trim());
+            });
+          (Array.isArray(setCookies) ? setCookies : []).forEach((cookie) => {
+            const first = String(cookie || '').split(';')[0].trim();
+            const eqIndex = first.indexOf('=');
+            if (eqIndex <= 0) return;
+            jar.set(first.slice(0, eqIndex).trim(), first.slice(eqIndex + 1).trim());
+          });
+          return Array.from(jar.entries()).map(([name, value]) => `${name}=${value}`).join('; ');
+        }
+
+        async function fetchCuratorrPage(baseUrl, pagePath, options = {}) {
+          const headers = {
+            Accept: String(options.accept || 'text/html,application/xhtml+xml'),
+            ...(options.headers && typeof options.headers === 'object' ? options.headers : {}),
+          };
+          if (options.cookieHeader) headers.Cookie = options.cookieHeader;
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 8000);
+          try {
+            const response = await fetch(buildAppApiUrl(baseUrl, pagePath).toString(), {
+              method: String(options.method || 'GET').toUpperCase(),
+              headers,
+              ...(options.body !== undefined ? { body: options.body } : {}),
+              redirect: 'manual',
+              signal: controller.signal,
+            });
+            const text = await response.text().catch(() => '');
+            return {
+              ok: response.ok,
+              status: response.status,
+              text,
+              headers: response.headers,
+              location: String(response.headers.get('location') || '').trim(),
+              setCookies: getResponseSetCookies(response),
+            };
+          } finally {
+            clearTimeout(timeout);
+          }
+        }
+
+        let found = false;
+        for (const baseUrl of candidates) {
+          let cookieHeader = '';
+          let usersPage = await fetchCuratorrPage(baseUrl, 'admin/users').catch(() => null);
+          if (usersPage?.setCookies?.length) cookieHeader = mergeCookieHeaders(cookieHeader, usersPage.setCookies);
+
+          const requiresLogin = usersPage && (
+            usersPage.status === 302
+            || usersPage.status === 303
+            || /\/login(?:[/?#]|$)/i.test(usersPage.location || '')
+            || /<title>\s*Curatorr\s*[·-]\s*Sign in\s*<\/title>/i.test(usersPage.text || '')
+          );
+
+          if (requiresLogin) {
+            if (!curatorrUsername || !curatorrPassword) {
+              status = 'down';
+              continue;
+            }
+            const loginPage = usersPage?.text && /name=["']_csrf["']/i.test(usersPage.text || '')
+              ? usersPage
+              : await fetchCuratorrPage(baseUrl, 'login', { cookieHeader }).catch(() => null);
+            if (!loginPage) {
+              status = 'down';
+              continue;
+            }
+            if (loginPage.setCookies?.length) cookieHeader = mergeCookieHeaders(cookieHeader, loginPage.setCookies);
+            const csrfToken = extractHiddenInputValue(loginPage.text, '_csrf');
+            if (!csrfToken) {
+              status = 'down';
+              continue;
+            }
+
+            const loginBody = new URLSearchParams({
+              _csrf: csrfToken,
+              username: curatorrUsername,
+              password: curatorrPassword,
+            }).toString();
+
+            const loginResult = await fetchCuratorrPage(baseUrl, 'login', {
+              method: 'POST',
+              body: loginBody,
+              cookieHeader,
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+              accept: 'text/html,application/xhtml+xml',
+            }).catch(() => null);
+            if (!loginResult) {
+              status = 'down';
+              continue;
+            }
+            if (loginResult.setCookies?.length) cookieHeader = mergeCookieHeaders(cookieHeader, loginResult.setCookies);
+            const loginFailed = loginResult.status >= 400 || /Invalid username\/email or password|This account is disabled/i.test(loginResult.text || '');
+            if (loginFailed) {
+              status = 'down';
+              continue;
+            }
+
+            usersPage = await fetchCuratorrPage(baseUrl, 'admin/users', { cookieHeader }).catch(() => null);
+          }
+
+          if (!(usersPage?.ok && usersPage.text)) {
+            status = usersPage?.status ? 'down' : 'unknown';
+            continue;
+          }
+
+          const summary = extractCuratorrAdminSummaryMetrics(usersPage.text);
+          if (summary.plexUsers === null && summary.activeUsers === null && summary.plays === null) {
+            status = 'down';
+            continue;
+          }
+
+          found = true;
+          status = 'up';
+          metrics = [
+            { key: 'plex_users', label: 'Plex Users', value: summary.plexUsers === null ? '—' : Number(summary.plexUsers).toLocaleString() },
+            { key: 'active_users', label: 'Active Users', value: summary.activeUsers === null ? '—' : Number(summary.activeUsers).toLocaleString() },
+            { key: 'plays', label: 'Plays', value: summary.plays === null ? '—' : Number(summary.plays).toLocaleString() },
+          ];
+          break;
+        }
+
+        if (!found && status === 'unknown') status = 'down';
 
       // ── cleanuparr ───────────────────────────────────────────────────────
       } else if (typeId === 'cleanuparr') {
