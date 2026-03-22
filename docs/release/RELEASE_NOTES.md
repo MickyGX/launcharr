@@ -1,4 +1,14 @@
-# Release Notes (v0.1.0 -> v0.2.50)
+# Release Notes (v0.1.0 -> v0.2.51)
+
+## v0.2.51 (2026-03-22)
+
+- [Changed]
+- Reduced background widget load for Arr apps by switching Launcharr's internal status monitor to lightweight system-status checks for Radarr, Sonarr, Lidarr, and Readarr.
+- Added cached Arr summary metrics so Launcharr can preserve useful widget numbers without repeatedly pulling full library datasets during routine monitor ticks.
+- Tightened local packaging hygiene so local-only development modules and temporary compose/dev files stay out of git history and Docker build context.
+- [Fixed]
+- Fixed Docker image drift where local-only development content could be shipped in public images.
+- Improved Launcharr widget responsiveness for Arr-backed services under heavier library sizes by avoiding unnecessary full-library fetches in the internal monitor path.
 
 ## v0.2.50 (2026-03-21)
 
