@@ -22,8 +22,12 @@ config/config.json
 reference/config.json
 docker-compose.override.yml
 docker-compose.local.yml
+docker-compose.temp.yml
 public/icons/custom
 seekarr
+local-modules/sweeparr
+private/local-modules
 private
 .claude
 .Claude
+dev.md

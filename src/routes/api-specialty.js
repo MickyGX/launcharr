@@ -145,7 +145,10 @@ export function registerApiSpecialty(app, ctx) {
   const widgetStatusInternalToken = String(widgetStatsInternalToken || '').trim();
   const widgetStatusMonitorBaseUrl = `http://127.0.0.1:${Number(process.env.PORT) || 3333}`;
   const widgetStatusMonitorState = new Map();
+  const arrWidgetSummaryCache = new Map();
   let widgetStatusMonitorTickRunning = false;
+  const ARR_WIDGET_SUMMARY_CACHE_MS = 5 * 60 * 1000;
+  const ARR_WIDGET_INTERNAL_SUMMARY_TTL_MS = 30 * 60 * 1000;
 
   function resolveWidgetMonitorRuntimeSettings(notificationSettings = {}) {
     const rawPollSeconds = Number(notificationSettings?.widgetStatusPollSeconds);
@@ -187,6 +190,56 @@ export function registerApiSpecialty(app, ctx) {
       return next();
     }
     return requireUser(req, res, next);
+  }
+
+  function getArrWidgetSummaryCache(appId, maxAgeMs) {
+    const cacheKey = String(appId || '').trim().toLowerCase();
+    if (!cacheKey) return null;
+    const record = arrWidgetSummaryCache.get(cacheKey);
+    const now = Date.now();
+    if (!record || !Number.isFinite(record.ts) || (record.ts + maxAgeMs) < now) return null;
+    return record.summary && typeof record.summary === 'object' ? record.summary : null;
+  }
+
+  function setArrWidgetSummaryCache(appId, summary) {
+    const cacheKey = String(appId || '').trim().toLowerCase();
+    if (!cacheKey || !summary || typeof summary !== 'object') return;
+    arrWidgetSummaryCache.set(cacheKey, { ts: Date.now(), summary });
+  }
+
+  function buildArrWidgetMetrics(typeId, summary = null) {
+    const data = summary && typeof summary === 'object' ? summary : {};
+    if (typeId === 'radarr') {
+      return [
+        { key: 'movies', label: 'Movies', value: data.movies ?? '—' },
+        { key: 'movie_files', label: 'Movie Files', value: data.movieFiles ?? '—' },
+        { key: 'monitored', label: 'Monitored', value: data.monitored ?? '—' },
+        { key: 'unmonitored', label: 'Unmonitored', value: data.unmonitored ?? '—' },
+      ];
+    }
+    if (typeId === 'sonarr') {
+      return [
+        { key: 'series', label: 'Series', value: data.series ?? '—' },
+        { key: 'ended', label: 'Ended', value: data.ended ?? '—' },
+        { key: 'continuing', label: 'Continuing', value: data.continuing ?? '—' },
+        { key: 'monitored', label: 'Monitored', value: data.monitored ?? '—' },
+        { key: 'unmonitored', label: 'Unmonitored', value: data.unmonitored ?? '—' },
+        { key: 'episodes', label: 'Episodes', value: data.episodes ?? '—' },
+      ];
+    }
+    if (typeId === 'lidarr') {
+      return [
+        { key: 'artists', label: 'Artists', value: data.artists ?? '—' },
+        { key: 'albums', label: 'Albums', value: data.albums ?? '—' },
+      ];
+    }
+    if (typeId === 'readarr') {
+      return [
+        { key: 'books', label: 'Books', value: data.books ?? '—' },
+        { key: 'authors', label: 'Authors', value: data.authors ?? '—' },
+      ];
+    }
+    return [];
   }
 
   function buildWidgetStatusMonitorSnapshot() {
@@ -2832,19 +2885,24 @@ export function registerApiSpecialty(app, ctx) {
       } else if (typeId === 'radarr') {
         const headers = { Accept: 'application/json' };
         if (apiKey) headers['X-Api-Key'] = apiKey;
-        const result = await tryAllCandidates(async (baseUrl) => doFetch(buildAppApiUrl(baseUrl, 'api/v3/movie').toString(), headers));
-        if (result?.ok && Array.isArray(result.json)) {
+        const statusResult = await tryCandidatePaths(['api/v3/system/status'], headers, { timeoutMs: 2500 });
+        const cachedSummary = getArrWidgetSummaryCache(rawAppId, isInternalWidgetRequest ? ARR_WIDGET_INTERNAL_SUMMARY_TTL_MS : ARR_WIDGET_SUMMARY_CACHE_MS);
+        let summary = cachedSummary;
+        if (!isInternalWidgetRequest) {
+          const result = await tryAllCandidates(async (baseUrl) => doFetch(buildAppApiUrl(baseUrl, 'api/v3/movie').toString(), headers));
+          if (result?.ok && Array.isArray(result.json)) {
+            summary = {
+              movies: result.json.length,
+              movieFiles: result.json.filter((m) => m.hasFile).length,
+              monitored: result.json.filter((m) => m.monitored).length,
+              unmonitored: result.json.filter((m) => !m.monitored).length,
+            };
+            setArrWidgetSummaryCache(rawAppId, summary);
+          }
+        }
+        if (statusResult?.ok || summary) {
           status = 'up';
-          const total = result.json.length;
-          const movieFiles = result.json.filter((m) => m.hasFile).length;
-          const monitored = result.json.filter((m) => m.monitored).length;
-          const unmonitored = result.json.filter((m) => !m.monitored).length;
-          metrics = [
-            { key: 'movies',      label: 'Movies',      value: total },
-            { key: 'movie_files', label: 'Movie Files', value: movieFiles },
-            { key: 'monitored',   label: 'Monitored',   value: monitored },
-            { key: 'unmonitored', label: 'Unmonitored', value: unmonitored },
-          ];
+          metrics = buildArrWidgetMetrics(typeId, summary);
         } else {
           status = 'down';
         }
@@ -2853,23 +2911,28 @@ export function registerApiSpecialty(app, ctx) {
       } else if (typeId === 'sonarr') {
         const headers = { Accept: 'application/json' };
         if (apiKey) headers['X-Api-Key'] = apiKey;
-        const result = await tryAllCandidates(async (baseUrl) => doFetch(buildAppApiUrl(baseUrl, 'api/v3/series').toString(), headers));
-        if (result?.ok && Array.isArray(result.json)) {
+        const statusResult = await tryCandidatePaths(['api/v3/system/status'], headers, { timeoutMs: 2500 });
+        const cachedSummary = getArrWidgetSummaryCache(rawAppId, isInternalWidgetRequest ? ARR_WIDGET_INTERNAL_SUMMARY_TTL_MS : ARR_WIDGET_SUMMARY_CACHE_MS);
+        let summary = cachedSummary;
+        if (!isInternalWidgetRequest) {
+          const result = await tryAllCandidates(async (baseUrl) => doFetch(buildAppApiUrl(baseUrl, 'api/v3/series').toString(), headers));
+          if (result?.ok && Array.isArray(result.json)) {
+            const total = result.json.length;
+            const ended = result.json.filter((s) => String(s.status || '').toLowerCase() === 'ended').length;
+            summary = {
+              series: total,
+              ended,
+              continuing: total - ended,
+              monitored: result.json.filter((s) => s.monitored).length,
+              unmonitored: result.json.filter((s) => !s.monitored).length,
+              episodes: result.json.reduce((sum, s) => sum + (Number(s.statistics?.episodeCount) || 0), 0),
+            };
+            setArrWidgetSummaryCache(rawAppId, summary);
+          }
+        }
+        if (statusResult?.ok || summary) {
           status = 'up';
-          const total = result.json.length;
-          const ended = result.json.filter((s) => String(s.status || '').toLowerCase() === 'ended').length;
-          const continuing = total - ended;
-          const monitored = result.json.filter((s) => s.monitored).length;
-          const unmonitored = result.json.filter((s) => !s.monitored).length;
-          const episodes = result.json.reduce((sum, s) => sum + (Number(s.statistics?.episodeCount) || 0), 0);
-          metrics = [
-            { key: 'series',      label: 'Series',      value: total },
-            { key: 'ended',       label: 'Ended',       value: ended },
-            { key: 'continuing',  label: 'Continuing',  value: continuing },
-            { key: 'monitored',   label: 'Monitored',   value: monitored },
-            { key: 'unmonitored', label: 'Unmonitored', value: unmonitored },
-            { key: 'episodes',    label: 'Episodes',    value: episodes },
-          ];
+          metrics = buildArrWidgetMetrics(typeId, summary);
         } else {
           status = 'down';
         }
@@ -2878,14 +2941,22 @@ export function registerApiSpecialty(app, ctx) {
       } else if (typeId === 'lidarr') {
         const headers = { Accept: 'application/json' };
         if (apiKey) headers['X-Api-Key'] = apiKey;
-        const result = await tryAllCandidates(async (baseUrl) => doFetch(buildAppApiUrl(baseUrl, 'api/v1/artist').toString(), headers));
-        if (result?.ok && Array.isArray(result.json)) {
+        const statusResult = await tryCandidatePaths(['api/v1/system/status'], headers, { timeoutMs: 2500 });
+        const cachedSummary = getArrWidgetSummaryCache(rawAppId, isInternalWidgetRequest ? ARR_WIDGET_INTERNAL_SUMMARY_TTL_MS : ARR_WIDGET_SUMMARY_CACHE_MS);
+        let summary = cachedSummary;
+        if (!isInternalWidgetRequest) {
+          const result = await tryAllCandidates(async (baseUrl) => doFetch(buildAppApiUrl(baseUrl, 'api/v1/artist').toString(), headers));
+          if (result?.ok && Array.isArray(result.json)) {
+            summary = {
+              artists: result.json.length,
+              albums: result.json.reduce((sum, a) => sum + (Number(a.albumCount) || 0), 0),
+            };
+            setArrWidgetSummaryCache(rawAppId, summary);
+          }
+        }
+        if (statusResult?.ok || summary) {
           status = 'up';
-          const albumCount = result.json.reduce((sum, a) => sum + (Number(a.albumCount) || 0), 0);
-          metrics = [
-            { key: 'artists', label: 'Artists', value: result.json.length },
-            { key: 'albums', label: 'Albums', value: albumCount },
-          ];
+          metrics = buildArrWidgetMetrics(typeId, summary);
         } else {
           status = 'down';
         }
@@ -2894,14 +2965,22 @@ export function registerApiSpecialty(app, ctx) {
       } else if (typeId === 'readarr') {
         const headers = { Accept: 'application/json' };
         if (apiKey) headers['X-Api-Key'] = apiKey;
-        const result = await tryAllCandidates(async (baseUrl) => doFetch(buildAppApiUrl(baseUrl, 'api/v1/book').toString(), headers));
-        if (result?.ok && Array.isArray(result.json)) {
+        const statusResult = await tryCandidatePaths(['api/v1/system/status'], headers, { timeoutMs: 2500 });
+        const cachedSummary = getArrWidgetSummaryCache(rawAppId, isInternalWidgetRequest ? ARR_WIDGET_INTERNAL_SUMMARY_TTL_MS : ARR_WIDGET_SUMMARY_CACHE_MS);
+        let summary = cachedSummary;
+        if (!isInternalWidgetRequest) {
+          const result = await tryAllCandidates(async (baseUrl) => doFetch(buildAppApiUrl(baseUrl, 'api/v1/book').toString(), headers));
+          if (result?.ok && Array.isArray(result.json)) {
+            summary = {
+              books: result.json.length,
+              authors: new Set(result.json.map((b) => b.authorId).filter(Boolean)).size,
+            };
+            setArrWidgetSummaryCache(rawAppId, summary);
+          }
+        }
+        if (statusResult?.ok || summary) {
           status = 'up';
-          const authorIds = new Set(result.json.map((b) => b.authorId).filter(Boolean));
-          metrics = [
-            { key: 'books', label: 'Books', value: result.json.length },
-            { key: 'authors', label: 'Authors', value: authorIds.size },
-          ];
+          metrics = buildArrWidgetMetrics(typeId, summary);
         } else {
           status = 'down';
         }
