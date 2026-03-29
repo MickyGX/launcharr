@@ -268,12 +268,12 @@
         <div class="custom-header-row" data-custom-header-row>
           <label class="field">
             <span>Header Name</span>
-            <input type="text" name="customHeaderName[]" value="<%= hName %>" placeholder="X-Custom-Header" />
+            <input type="text" name="customHeaderName" value="<%= hName %>" placeholder="X-Custom-Header" />
           </label>
           <label class="field field-with-action">
             <span>Value</span>
             <div class="field-action-row">
-              <input id="<%= renderedFormUid %>-custom-header-val-<%= hIdx %>" type="password" name="customHeaderValue[]" value="<%= hValue %>" placeholder="header value" />
+              <input id="<%= renderedFormUid %>-custom-header-val-<%= hIdx %>" type="password" name="customHeaderValue" value="<%= hValue %>" placeholder="header value" />
               <button class="icon-button" type="button" aria-label="Show header value" data-visibility-toggle="<%= renderedFormUid %>-custom-header-val-<%= hIdx %>" data-visibility-state="hidden">
                 <img src="/icons/view-off.svg" alt="" />
               </button>
@@ -304,12 +304,12 @@
         row.innerHTML = `
           <label class="field">
             <span>Header Name</span>
-            <input type="text" name="customHeaderName[]" value="" placeholder="X-Custom-Header" />
+            <input type="text" name="customHeaderName" value="" placeholder="X-Custom-Header" />
           </label>
           <label class="field field-with-action">
             <span>Value</span>
             <div class="field-action-row">
-              <input id="${uid}" type="password" name="customHeaderValue[]" value="" placeholder="header value" />
+              <input id="${uid}" type="password" name="customHeaderValue" value="" placeholder="header value" />
               <button class="icon-button" type="button" aria-label="Show header value" data-visibility-toggle="${uid}" data-visibility-state="hidden">
                 <img src="/icons/view-off.svg" alt="" />
               </button>

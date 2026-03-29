@@ -90,6 +90,7 @@ export function registerSettings(app, ctx) {
     USER_AVATAR_BASE,
     LOCAL_AUTH_MIN_PASSWORD,
     validateLocalPasswordStrength,
+    hashPassword,
     applyLogRetention,
     buildCombinedCardId,
     buildDashboardElementsFromRequest,
@@ -3701,12 +3702,14 @@ app.post('/apps/:id/settings', requireAdmin, (req, res) => {
     if (isDisplayOnlyUpdate) return undefined; // preserve existing value
     const names = [].concat(req.body?.customHeaderName ?? []);
     const values = [].concat(req.body?.customHeaderValue ?? []);
+    pushLog({ level: 'debug', app: req.params.id, action: 'custom-headers-save', message: `customHeaders raw body: names=${JSON.stringify(names)} values=${JSON.stringify(values.map(() => '[redacted]'))}` });
     const result = {};
     names.forEach((n, i) => {
       const name = String(n || '').trim();
       if (!name) return;
       result[name] = String(values[i] ?? '');
     });
+    pushLog({ level: 'debug', app: req.params.id, action: 'custom-headers-save', message: `customHeaders parsed: ${JSON.stringify(Object.keys(result))} (${Object.keys(result).length} headers)` });
     return result;
   })();
   const shouldIgnoreJwtToken = (value) => {
