@@ -23,6 +23,7 @@ export function registerApiMedia(app, ctx) {
     mapSeerrFilter,
     fetchSeerrJson,
     resolveRequestApiCandidates,
+    mergeAppHeaders,
   } = ctx;
 
   app.get('/api/jellyfin/active', requireUser, async (req, res) => {
@@ -46,6 +47,7 @@ export function registerApiMedia(app, ctx) {
         apiKey,
         path: '/Sessions',
         query: { ActiveWithinSeconds: 21600 },
+        customHeaders: jellyfinApp.customHeaders,
       });
       const sessions = Array.isArray(sessionResponse.payload) ? sessionResponse.payload : [];
       const items = sessions
@@ -147,6 +149,7 @@ export function registerApiMedia(app, ctx) {
         apiKey,
         limit,
         mediaType,
+        customHeaders: jellyfinApp.customHeaders,
       });
       const items = recentResponse.items.map((media) => {
         const kind = mapJellyfinKind(media.Type);
@@ -236,6 +239,7 @@ export function registerApiMedia(app, ctx) {
         apiKey,
         path: '/Sessions',
         query: { ActiveWithinSeconds: 21600 },
+        customHeaders: embyApp.customHeaders,
       });
       const sessions = Array.isArray(sessionResponse.payload) ? sessionResponse.payload : [];
       const items = sessions
@@ -337,6 +341,7 @@ export function registerApiMedia(app, ctx) {
         apiKey,
         limit,
         mediaType,
+        customHeaders: embyApp.customHeaders,
       });
       const items = recentResponse.items.map((media) => {
         const kind = mapJellyfinKind(media.Type);
@@ -441,10 +446,7 @@ export function registerApiMedia(app, ctx) {
 
       try {
         const upstreamRes = await fetch(upstreamUrl.toString(), {
-          headers: {
-            Accept: 'application/json',
-            'X-API-Key': apiKey,
-          },
+          headers: mergeAppHeaders(pulsarrApp, { Accept: 'application/json', 'X-API-Key': apiKey }),
         });
         const text = await upstreamRes.text();
         if (!upstreamRes.ok) {
@@ -504,6 +506,7 @@ export function registerApiMedia(app, ctx) {
           apiKey,
           path: '/api/v1/request',
           query: { take: limit, skip: 0, sort: 'added', filter },
+          customHeaders: seerrApp.customHeaders,
         });
         const results = Array.isArray(requestPayload?.results) ? requestPayload.results : [];
         const detailCache = new Map();
@@ -520,6 +523,7 @@ export function registerApiMedia(app, ctx) {
               apiKey,
               path: detailPath,
               query: {},
+              customHeaders: seerrApp.customHeaders,
             });
             detailCache.set(detailKey, detail);
             return detail;
@@ -582,6 +586,7 @@ export function registerApiMedia(app, ctx) {
           apiKey,
           path: discoverPath,
           query: { page: 1 },
+          customHeaders: seerrApp.customHeaders,
         });
         const records = Array.isArray(discoverPayload?.results) ? discoverPayload.results : [];
         const normalized = records.slice(0, limit).map((entry) => {
@@ -649,10 +654,7 @@ export function registerApiMedia(app, ctx) {
       const upstreamUrl = buildAppApiUrl(baseUrl, `v1/tmdb/${kind}/${encodeURIComponent(tmdbId)}`);
       try {
         const upstreamRes = await fetch(upstreamUrl.toString(), {
-          headers: {
-            Accept: 'application/json',
-            'X-API-Key': apiKey,
-          },
+          headers: mergeAppHeaders(pulsarrApp, { Accept: 'application/json', 'X-API-Key': apiKey }),
         });
         const text = await upstreamRes.text();
         if (!upstreamRes.ok) {
@@ -716,6 +718,7 @@ export function registerApiMedia(app, ctx) {
         apiKey,
         path: `/api/v1/${kind === 'tv' ? 'tv' : 'movie'}/${encodeURIComponent(tmdbId)}`,
         query: {},
+        customHeaders: seerrApp.customHeaders,
       });
       const payload = { ...parsed, imdb_id: parsed?.imdb_id || parsed?.imdbId || '' };
       pushLog({

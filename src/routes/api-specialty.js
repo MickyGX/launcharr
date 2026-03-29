@@ -105,6 +105,7 @@ export function registerApiSpecialty(app, ctx) {
     evaluateRommCookiePrimingCompatibility,
     prepareRommPrimedSetCookies,
     buildBasicAuthHeader,
+    mergeAppHeaders,
     // Romm data
     extractRommList,
     mapRommConsoleItem,
@@ -580,7 +581,7 @@ export function registerApiSpecialty(app, ctx) {
         const meUrl = buildAppApiUrl(probeBase, 'api/users/me').toString();
         const cookieHeader = buildCookieHeaderFromSetCookies(bootstrap.setCookies || []);
         const csrfToken = getRommCsrfTokenFromSetCookies(bootstrap.setCookies || []);
-        const headers = { Accept: 'application/json' };
+        const headers = mergeAppHeaders(rommApp, { Accept: 'application/json' });
         if (cookieHeader) headers.Cookie = cookieHeader;
         if (csrfToken) headers['x-csrftoken'] = csrfToken;
         const response = await fetch(meUrl, { headers });
@@ -727,7 +728,7 @@ export function registerApiSpecialty(app, ctx) {
       const timeout = setTimeout(() => controller.abort(), 10000);
       try {
         return await fetch(urlString, {
-          headers: requestHeaders,
+          headers: mergeAppHeaders(rommApp, requestHeaders),
           signal: controller.signal,
         });
       } finally {
@@ -871,7 +872,7 @@ export function registerApiSpecialty(app, ctx) {
           try {
             response = await fetch(
               buildAppApiUrl(baseUrl, 'history').toString(),
-              { headers: { Accept: 'application/json' }, signal: controller.signal },
+              { headers: mergeAppHeaders(metubeApp, { Accept: 'application/json' }), signal: controller.signal },
             );
           } finally {
             clearTimeout(timeoutId);
@@ -939,7 +940,7 @@ export function registerApiSpecialty(app, ctx) {
       const rawLimit = Number(req.query?.limit);
       const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(100, Math.max(1, Math.round(rawLimit))) : 20;
 
-      const headers = { Accept: 'application/json', Authorization: `Bearer ${apiKey}` };
+      const headers = mergeAppHeaders(absApp, { Accept: 'application/json', Authorization: `Bearer ${apiKey}` });
       let lastError = '';
 
       for (const baseUrl of candidates) {
@@ -1050,7 +1051,7 @@ export function registerApiSpecialty(app, ctx) {
       const apiKey = String(absApp.apiKey || '').trim();
       if (!apiKey) return res.status(400).send('');
 
-      const fetchHeaders = { Authorization: `Bearer ${apiKey}` };
+      const fetchHeaders = mergeAppHeaders(absApp, { Authorization: `Bearer ${apiKey}` });
 
       for (const baseUrl of candidates) {
         try {
@@ -1098,7 +1099,7 @@ export function registerApiSpecialty(app, ctx) {
       if (!candidates.length) return res.status(400).json({ error: 'Missing Tdarr URL.' });
 
       const apiKey = String(tdarrApp.apiKey || '').trim();
-      const fetchHeaders = { 'Content-Type': 'application/json', Accept: 'application/json' };
+      const fetchHeaders = mergeAppHeaders(tdarrApp, { 'Content-Type': 'application/json', Accept: 'application/json' });
       if (apiKey) fetchHeaders['x-api-key'] = apiKey;
       const body = JSON.stringify({ data: { collection: 'StatisticsJSONDB', mode: 'getById', docID: 'statistics' } });
       let lastError = '';
@@ -1159,7 +1160,7 @@ export function registerApiSpecialty(app, ctx) {
       const rawSize = Number(req.query?.size);
       const size = Number.isFinite(rawSize) && rawSize > 0 ? Math.min(100, Math.max(1, Math.round(rawSize))) : 20;
 
-      const headers = { Accept: 'application/json', 'x-api-key': apiKey };
+      const headers = mergeAppHeaders(immichApp, { Accept: 'application/json', 'x-api-key': apiKey });
       let lastError = '';
 
       function extractImmichAssets(payload) {
@@ -1285,7 +1286,7 @@ export function registerApiSpecialty(app, ctx) {
       if (!apiKey) return res.status(400).send('');
 
       const thumbSize = String(req.query?.size || 'preview').trim().toLowerCase() === 'thumbnail' ? 'thumbnail' : 'preview';
-      const fetchHeaders = { 'x-api-key': apiKey };
+      const fetchHeaders = mergeAppHeaders(immichApp, { 'x-api-key': apiKey });
 
       for (const baseUrl of candidates) {
         try {
@@ -1520,7 +1521,7 @@ export function registerApiSpecialty(app, ctx) {
           const tokenBody = new URLSearchParams({ username: guacUsername, password: guacPassword }).toString();
           const tokenRes = await fetch(buildAppApiUrl(baseUrl, 'api/tokens').toString(), {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+            headers: mergeAppHeaders(guacApp, { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' }),
             body: tokenBody,
             signal: controller.signal,
           });
@@ -1540,10 +1541,11 @@ export function registerApiSpecialty(app, ctx) {
 
           // Step 2: fetch active connections, connections list, and users in parallel
           const tokenParam = `token=${encodeURIComponent(authToken)}`;
+          const guacSessionHeaders = mergeAppHeaders(guacApp, { Accept: 'application/json' });
           const [activeRes, connRes, usersRes] = await Promise.all([
-            fetch(`${buildAppApiUrl(baseUrl, `api/session/data/${dataSource}/activeConnections`)}?${tokenParam}`, { headers: { Accept: 'application/json' }, signal: controller.signal }),
-            fetch(`${buildAppApiUrl(baseUrl, `api/session/data/${dataSource}/connections`)}?${tokenParam}`, { headers: { Accept: 'application/json' }, signal: controller.signal }),
-            fetch(`${buildAppApiUrl(baseUrl, `api/session/data/${dataSource}/users`)}?${tokenParam}`, { headers: { Accept: 'application/json' }, signal: controller.signal }),
+            fetch(`${buildAppApiUrl(baseUrl, `api/session/data/${dataSource}/activeConnections`)}?${tokenParam}`, { headers: guacSessionHeaders, signal: controller.signal }),
+            fetch(`${buildAppApiUrl(baseUrl, `api/session/data/${dataSource}/connections`)}?${tokenParam}`, { headers: guacSessionHeaders, signal: controller.signal }),
+            fetch(`${buildAppApiUrl(baseUrl, `api/session/data/${dataSource}/users`)}?${tokenParam}`, { headers: guacSessionHeaders, signal: controller.signal }),
           ]);
           clearTimeout(timeout);
 
@@ -2417,7 +2419,7 @@ export function registerApiSpecialty(app, ctx) {
         try {
           const response = await fetch(urlString, {
             method,
-            headers: fetchHeaders,
+            headers: mergeAppHeaders(appItem, fetchHeaders),
             ...(body !== undefined ? { body } : {}),
             signal: controller.signal,
           });
@@ -3370,10 +3372,10 @@ export function registerApiSpecialty(app, ctx) {
         }
 
         async function fetchCuratorrPage(baseUrl, pagePath, options = {}) {
-          const headers = {
+          const headers = mergeAppHeaders(appItem, {
             Accept: String(options.accept || 'text/html,application/xhtml+xml'),
             ...(options.headers && typeof options.headers === 'object' ? options.headers : {}),
-          };
+          });
           if (options.cookieHeader) headers.Cookie = options.cookieHeader;
           const controller = new AbortController();
           const timeout = setTimeout(() => controller.abort(), 8000);
@@ -4245,7 +4247,7 @@ export function registerApiSpecialty(app, ctx) {
         let dozzleDone = false;
 
         try {
-          const dozzleHeaders = { Accept: 'text/event-stream', 'Cache-Control': 'no-cache' };
+          const dozzleHeaders = mergeAppHeaders(appItem, { Accept: 'text/event-stream', 'Cache-Control': 'no-cache' });
 
           // Step 1: resolve credentials.
           // Dozzle supports two auth modes:
@@ -4260,7 +4262,7 @@ export function registerApiSpecialty(app, ctx) {
               try {
                 const tokenRes = await fetch(buildAppApiUrl(baseUrl, 'api/token').toString(), {
                   method: 'POST',
-                  headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                  headers: mergeAppHeaders(appItem, { 'Content-Type': 'application/x-www-form-urlencoded' }),
                   body: new URLSearchParams({ username: appItem.username, password: appItem.password }).toString(),
                   signal: AbortSignal.any([budgetCtrl.signal, AbortSignal.timeout(1500)]),
                 });
@@ -4339,7 +4341,7 @@ export function registerApiSpecialty(app, ctx) {
             // Authenticate
             const authRes = await fetch(buildAppApiUrl(baseUrl, 'cgi-bin/authLogin.cgi').toString(), {
               method: 'POST',
-              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              headers: mergeAppHeaders(appItem, { 'Content-Type': 'application/x-www-form-urlencoded' }),
               body: `user=${encodeURIComponent(qnapUser)}&pwd=${encodeURIComponent(b64pw)}`,
               signal: AbortSignal.timeout(4000),
             });
@@ -4362,9 +4364,10 @@ export function registerApiSpecialty(app, ctx) {
             volumeUrl.searchParams.set('include', 'all');
             volumeUrl.searchParams.set('sid', authSid);
 
+            const qnapGetHeaders = mergeAppHeaders(appItem, {});
             const [sysinfoRes, volumeRes] = await Promise.all([
-              fetch(sysinfoUrl.toString(), { signal: AbortSignal.timeout(4000) }),
-              fetch(volumeUrl.toString(), { signal: AbortSignal.timeout(4000) }),
+              fetch(sysinfoUrl.toString(), { headers: qnapGetHeaders, signal: AbortSignal.timeout(4000) }),
+              fetch(volumeUrl.toString(), { headers: qnapGetHeaders, signal: AbortSignal.timeout(4000) }),
             ]);
             if (!sysinfoRes.ok) continue;
             const sysinfoXml = await sysinfoRes.text();

@@ -26,6 +26,7 @@ export function registerApiArr(app, ctx) {
     // maintainerr
     normalizeMaintainerrTmdbKind,
     buildBasicAuthHeader,
+    mergeAppHeaders,
     buildMaintainerrTmdbImageUrl,
     mapMaintainerrRuleItem,
     normalizeMaintainerrMediaKind,
@@ -63,10 +64,11 @@ export function registerApiArr(app, ctx) {
   
     const apiKey = String(prowlarrApp.apiKey || '').trim();
     if (!apiKey) return res.status(400).json({ error: 'Missing Prowlarr API key.' });
-  
+    const prowlarrApiHeaders = mergeAppHeaders(prowlarrApp, { Accept: 'application/json', 'X-Api-Key': apiKey });
+
     const candidates = resolveAppApiCandidates(prowlarrApp, req);
     if (!candidates.length) return res.status(400).json({ error: 'Missing Prowlarr URL.' });
-  
+
     let lastError = '';
     for (let index = 0; index < candidates.length; index += 1) {
       const baseUrl = candidates[index];
@@ -79,10 +81,7 @@ export function registerApiArr(app, ctx) {
         try {
           const indexerUrl = buildAppApiUrl(baseUrl, 'api/v1/indexer');
           const indexerRes = await fetch(indexerUrl.toString(), {
-            headers: {
-              Accept: 'application/json',
-              'X-Api-Key': apiKey,
-            },
+            headers: prowlarrApiHeaders,
             signal: controller.signal,
           });
           const indexerText = await indexerRes.text();
@@ -91,13 +90,10 @@ export function registerApiArr(app, ctx) {
             continue;
           }
           indexerPayload = indexerText ? JSON.parse(indexerText) : [];
-  
+
           const categoriesUrl = buildAppApiUrl(baseUrl, 'api/v1/indexercategory');
           const categoriesRes = await fetch(categoriesUrl.toString(), {
-            headers: {
-              Accept: 'application/json',
-              'X-Api-Key': apiKey,
-            },
+            headers: prowlarrApiHeaders,
             signal: controller.signal,
           });
           if (categoriesRes.ok) {
@@ -166,7 +162,8 @@ export function registerApiArr(app, ctx) {
   
     const apiKey = String(prowlarrApp.apiKey || '').trim();
     if (!apiKey) return res.status(400).json({ error: 'Missing Prowlarr API key.' });
-  
+    const prowlarrApiHeaders = mergeAppHeaders(prowlarrApp, { Accept: 'application/json', 'X-Api-Key': apiKey });
+
     const candidates = uniqueList([
       normalizeBaseUrl(prowlarrApp.remoteUrl || ''),
       normalizeBaseUrl(resolveLaunchUrl(prowlarrApp, req)),
@@ -174,7 +171,7 @@ export function registerApiArr(app, ctx) {
       normalizeBaseUrl(prowlarrApp.url || ''),
     ]);
     if (!candidates.length) return res.status(400).json({ error: 'Missing Prowlarr URL.' });
-  
+
     let lastError = '';
     for (let index = 0; index < candidates.length; index += 1) {
       const baseUrl = candidates[index];
@@ -216,21 +213,14 @@ export function registerApiArr(app, ctx) {
               upstreamUrl.searchParams.set(key, String(value));
             });
             return fetch(upstreamUrl.toString(), {
-              headers: {
-                Accept: 'application/json',
-                'X-Api-Key': apiKey,
-              },
+              headers: prowlarrApiHeaders,
               signal: controller.signal,
             });
           }
           const upstreamUrl = buildAppApiUrl(baseUrl, 'api/v1/search');
           return fetch(upstreamUrl.toString(), {
             method: 'POST',
-            headers: {
-              Accept: 'application/json',
-              'Content-Type': 'application/json',
-              'X-Api-Key': apiKey,
-            },
+            headers: { ...prowlarrApiHeaders, 'Content-Type': 'application/json' },
             body: JSON.stringify({ query, ...queryParams }),
             signal: controller.signal,
           });
@@ -318,7 +308,8 @@ export function registerApiArr(app, ctx) {
   
     const apiKey = String(prowlarrApp.apiKey || '').trim();
     if (!apiKey) return res.status(400).json({ error: 'Missing Prowlarr API key.' });
-  
+    const prowlarrApiHeaders = mergeAppHeaders(prowlarrApp, { Accept: 'application/json', 'X-Api-Key': apiKey });
+
     const candidates = uniqueList([
       normalizeBaseUrl(prowlarrApp.remoteUrl || ''),
       normalizeBaseUrl(resolveLaunchUrl(prowlarrApp, req)),
@@ -346,11 +337,7 @@ export function registerApiArr(app, ctx) {
             if (downloadClientId) grabBody.downloadClientId = Number(downloadClientId);
             upstreamRes = await fetch(searchGrabUrl.toString(), {
               method: 'POST',
-              headers: {
-                Accept: 'application/json',
-                'Content-Type': 'application/json',
-                'X-Api-Key': apiKey,
-              },
+              headers: { ...prowlarrApiHeaders, 'Content-Type': 'application/json' },
               body: JSON.stringify(grabBody),
               signal: controller.signal,
             });
@@ -366,11 +353,7 @@ export function registerApiArr(app, ctx) {
           if (!upstreamRes || !upstreamRes.ok) {
             upstreamRes = await fetch(releaseDownloadUrl.toString(), {
               method: 'POST',
-              headers: {
-                Accept: 'application/json',
-                'Content-Type': 'application/json',
-                'X-Api-Key': apiKey,
-              },
+              headers: { ...prowlarrApiHeaders, 'Content-Type': 'application/json' },
               body: JSON.stringify(releaseBody),
               signal: controller.signal,
             });
@@ -378,20 +361,14 @@ export function registerApiArr(app, ctx) {
           if (!upstreamRes.ok) {
             upstreamRes = await fetch(searchDownloadUrl.toString(), {
               method: 'POST',
-              headers: {
-                Accept: 'application/json',
-                'X-Api-Key': apiKey,
-              },
+              headers: prowlarrApiHeaders,
               signal: controller.signal,
             });
           }
           if (!upstreamRes.ok) {
             upstreamRes = await fetch(searchDownloadUrl.toString(), {
               method: 'GET',
-              headers: {
-                Accept: 'application/json',
-                'X-Api-Key': apiKey,
-              },
+              headers: prowlarrApiHeaders,
               signal: controller.signal,
             });
           }
@@ -452,10 +429,11 @@ export function registerApiArr(app, ctx) {
   
     const apiKey = String(jackettApp.apiKey || '').trim();
     if (!apiKey) return res.status(400).json({ error: 'Missing Jackett API key.' });
-  
+    const jackettApiHeaders = mergeAppHeaders(jackettApp, { Accept: 'application/json' });
+
     const candidates = resolveAppApiCandidates(jackettApp, req);
     if (!candidates.length) return res.status(400).json({ error: 'Missing Jackett URL.' });
-  
+
     let lastError = '';
     for (let index = 0; index < candidates.length; index += 1) {
       const baseUrl = candidates[index];
@@ -468,7 +446,7 @@ export function registerApiArr(app, ctx) {
           const upstreamUrl = buildAppApiUrl(baseUrl, 'api/v2.0/indexers');
           upstreamUrl.searchParams.set('apikey', apiKey);
           const upstreamRes = await fetch(upstreamUrl.toString(), {
-            headers: { Accept: 'application/json' },
+            headers: jackettApiHeaders,
             signal: controller.signal,
           });
           const text = await upstreamRes.text();
@@ -557,7 +535,8 @@ export function registerApiArr(app, ctx) {
   
     const apiKey = String(jackettApp.apiKey || '').trim();
     if (!apiKey) return res.status(400).json({ error: 'Missing Jackett API key.' });
-  
+    const jackettApiHeaders = mergeAppHeaders(jackettApp, { Accept: 'application/json' });
+
     const limit = Math.max(1, Math.min(250, parseFiniteNumber(req.query?.limit || 25, 25)));
     const offset = Math.max(0, parseFiniteNumber(req.query?.offset || 0, 0));
     const protocolFilter = normalizeIndexerProtocol(req.query?.protocol || req.query?.type || '');
@@ -581,7 +560,7 @@ export function registerApiArr(app, ctx) {
         let response;
         try {
           response = await fetch(jsonUrl.toString(), {
-            headers: { Accept: 'application/json' },
+            headers: jackettApiHeaders,
             signal: controller.signal,
           });
         } finally {
@@ -645,10 +624,11 @@ export function registerApiArr(app, ctx) {
   
     const apiKey = String(bazarrApp.apiKey || '').trim();
     if (!apiKey) return res.status(400).json({ error: 'Missing Bazarr API key.' });
-  
+    const bazarrApiHeaders = mergeAppHeaders(bazarrApp, { Accept: 'application/json', 'X-API-KEY': apiKey });
+
     const candidates = resolveAppApiCandidates(bazarrApp, req);
     if (!candidates.length) return res.status(400).json({ error: 'Missing Bazarr URL.' });
-  
+
     const fetchWanted = async (baseUrl, suffix) => {
       const url = buildAppApiUrl(baseUrl, suffix);
       url.searchParams.set('start', '0');
@@ -657,10 +637,7 @@ export function registerApiArr(app, ctx) {
       const timeout = setTimeout(() => controller.abort(), 10000);
       try {
         const response = await fetch(url.toString(), {
-          headers: {
-            Accept: 'application/json',
-            'X-API-KEY': apiKey,
-          },
+          headers: bazarrApiHeaders,
           signal: controller.signal,
         });
         const text = await response.text();
@@ -722,10 +699,11 @@ export function registerApiArr(app, ctx) {
   
     const apiKey = String(autobrrApp.apiKey || '').trim();
     if (!apiKey) return res.status(400).json({ error: 'Missing Autobrr API key.' });
-  
+    const autobrrApiHeaders = mergeAppHeaders(autobrrApp, { Accept: 'application/json', 'X-API-Token': apiKey });
+
     const candidates = resolveAppApiCandidates(autobrrApp, req);
     if (!candidates.length) return res.status(400).json({ error: 'Missing Autobrr URL.' });
-  
+
     let lastError = '';
     for (let index = 0; index < candidates.length; index += 1) {
       const baseUrl = candidates[index];
@@ -738,10 +716,7 @@ export function registerApiArr(app, ctx) {
         let response;
         try {
           response = await fetch(url.toString(), {
-            headers: {
-              Accept: 'application/json',
-              'X-API-Token': apiKey,
-            },
+            headers: autobrrApiHeaders,
             signal: controller.signal,
           });
         } finally {
@@ -801,7 +776,7 @@ export function registerApiArr(app, ctx) {
   
     const apiKey = String(maintainerrApp.apiKey || '').trim();
     const authHeader = buildBasicAuthHeader(maintainerrApp.username || '', maintainerrApp.password || '');
-    const headers = { Accept: 'text/plain,application/json' };
+    const headers = mergeAppHeaders(maintainerrApp, { Accept: 'text/plain,application/json' });
     if (apiKey) {
       headers['X-Api-Key'] = apiKey;
       headers['X-API-KEY'] = apiKey;
@@ -876,7 +851,7 @@ export function registerApiArr(app, ctx) {
   
     const apiKey = String(maintainerrApp.apiKey || '').trim();
     const authHeader = buildBasicAuthHeader(maintainerrApp.username || '', maintainerrApp.password || '');
-    const headers = { Accept: 'text/plain,application/json' };
+    const headers = mergeAppHeaders(maintainerrApp, { Accept: 'text/plain,application/json' });
     if (apiKey) {
       headers['X-Api-Key'] = apiKey;
       headers['X-API-KEY'] = apiKey;
@@ -1412,13 +1387,13 @@ export function registerApiArr(app, ctx) {
       try {
         let result;
         if (baseId === 'transmission') {
-          result = await fetchTransmissionQueue(baseUrl, authHeader);
+          result = await fetchTransmissionQueue(baseUrl, authHeader, appItem.customHeaders);
         } else if (baseId === 'nzbget') {
-          result = await fetchNzbgetQueue(baseUrl, authHeader);
+          result = await fetchNzbgetQueue(baseUrl, authHeader, appItem.customHeaders);
         } else if (baseId === 'qbittorrent') {
-          result = await fetchQbittorrentQueue(baseUrl, appItem.username || '', appItem.password || '');
+          result = await fetchQbittorrentQueue(baseUrl, appItem.username || '', appItem.password || '', appItem.customHeaders);
         } else {
-          result = await fetchSabnzbdQueue(baseUrl, apiKey, authHeader);
+          result = await fetchSabnzbdQueue(baseUrl, apiKey, authHeader, appItem.customHeaders);
         }
         if (result.items) {
           pushLog({
@@ -1514,10 +1489,7 @@ export function registerApiArr(app, ctx) {
         let upstreamRes;
         try {
           upstreamRes = await fetch(upstreamUrl.toString(), {
-            headers: {
-              Accept: 'application/json',
-              'X-Api-Key': apiKey,
-            },
+            headers: mergeAppHeaders(arrApp, { Accept: 'application/json', 'X-Api-Key': apiKey }),
             signal: controller.signal,
           });
         } finally {

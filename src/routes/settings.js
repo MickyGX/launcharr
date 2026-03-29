@@ -3697,6 +3697,18 @@ app.post('/apps/:id/settings', requireAdmin, (req, res) => {
     return normalizeAppVisibilityRoles(req.body?.[field]);
   };
   const plexAdminUser = String(req.body?.plexAdminUser || '').trim();
+  const nextCustomHeaders = (() => {
+    if (isDisplayOnlyUpdate) return undefined; // preserve existing value
+    const names = [].concat(req.body?.customHeaderName ?? []);
+    const values = [].concat(req.body?.customHeaderValue ?? []);
+    const result = {};
+    names.forEach((n, i) => {
+      const name = String(n || '').trim();
+      if (!name) return;
+      result[name] = String(values[i] ?? '');
+    });
+    return result;
+  })();
   const shouldIgnoreJwtToken = (value) => {
     const raw = String(value || '').trim();
     return raw && raw.split('.').length >= 3;
@@ -3776,6 +3788,7 @@ app.post('/apps/:id/settings', requireAdmin, (req, res) => {
       uptimeKumaSlug: isDisplayOnlyUpdate
         ? (appItem.uptimeKumaSlug ?? '')
         : (req.body.uptimeKumaSlug !== undefined ? req.body.uptimeKumaSlug : (appItem.uptimeKumaSlug ?? '')),
+      customHeaders: nextCustomHeaders !== undefined ? nextCustomHeaders : (appItem.customHeaders ?? {}),
       plexToken: (() => {
         if (isDisplayOnlyUpdate) return appItem.plexToken || '';
         const nextToken = req.body.plexToken !== undefined ? req.body.plexToken : (appItem.plexToken || '');

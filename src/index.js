@@ -1617,7 +1617,7 @@ function mapJellyfinKind(typeValue) {
   return 'tv';
 }
 
-async function fetchJellyfinJson({ candidates, apiKey, path, query }) {
+async function fetchJellyfinJson({ candidates, apiKey, path, query, customHeaders = {} }) {
   let lastError = '';
   for (let index = 0; index < candidates.length; index += 1) {
     const baseUrl = candidates[index];
@@ -1631,10 +1631,10 @@ async function fetchJellyfinJson({ candidates, apiKey, path, query }) {
 
     try {
       const upstreamRes = await fetch(upstreamUrl.toString(), {
-        headers: {
+        headers: mergeAppHeaders({ customHeaders }, {
           Accept: 'application/json',
           'X-Emby-Token': apiKey,
-        },
+        }),
       });
       const text = await upstreamRes.text();
       if (!upstreamRes.ok) {
@@ -1655,12 +1655,13 @@ async function fetchJellyfinJson({ candidates, apiKey, path, query }) {
   throw new Error(lastError || 'Failed to reach Jellyfin.');
 }
 
-async function fetchJellyfinRecentItems({ candidates, apiKey, limit, mediaType }) {
+async function fetchJellyfinRecentItems({ candidates, apiKey, limit, mediaType, customHeaders = {} }) {
   const usersResponse = await fetchJellyfinJson({
     candidates,
     apiKey,
     path: '/Users',
     query: {},
+    customHeaders,
   });
   const users = Array.isArray(usersResponse.payload) ? usersResponse.payload : [];
   const activeUser = users.find((user) => !user?.Policy?.IsDisabled) || users[0];
@@ -1682,12 +1683,13 @@ async function fetchJellyfinRecentItems({ candidates, apiKey, limit, mediaType }
       ImageTypeLimit: 1,
       EnableImageTypes: 'Primary,Backdrop',
     },
+    customHeaders,
   });
   const items = Array.isArray(latestResponse.payload) ? latestResponse.payload : [];
   return { baseUrl: latestResponse.baseUrl, items };
 }
 
-async function fetchEmbyJson({ candidates, apiKey, path, query }) {
+async function fetchEmbyJson({ candidates, apiKey, path, query, customHeaders = {} }) {
   let lastError = '';
   const pathCandidates = [path, `/emby${path}`];
   for (let index = 0; index < candidates.length; index += 1) {
@@ -1704,10 +1706,10 @@ async function fetchEmbyJson({ candidates, apiKey, path, query }) {
 
       try {
         const upstreamRes = await fetch(upstreamUrl.toString(), {
-          headers: {
+          headers: mergeAppHeaders({ customHeaders }, {
             Accept: 'application/json',
             'X-Emby-Token': apiKey,
-          },
+          }),
         });
         const text = await upstreamRes.text();
         if (!upstreamRes.ok) {
@@ -1729,12 +1731,13 @@ async function fetchEmbyJson({ candidates, apiKey, path, query }) {
   throw new Error(lastError || 'Failed to reach Emby.');
 }
 
-async function fetchEmbyRecentItems({ candidates, apiKey, limit, mediaType }) {
+async function fetchEmbyRecentItems({ candidates, apiKey, limit, mediaType, customHeaders = {} }) {
   const usersResponse = await fetchEmbyJson({
     candidates,
     apiKey,
     path: '/Users',
     query: {},
+    customHeaders,
   });
   const users = Array.isArray(usersResponse.payload) ? usersResponse.payload : [];
   const activeUser = users.find((user) => !user?.Policy?.IsDisabled) || users[0];
@@ -1756,6 +1759,7 @@ async function fetchEmbyRecentItems({ candidates, apiKey, limit, mediaType }) {
       ImageTypeLimit: 1,
       EnableImageTypes: 'Primary,Backdrop',
     },
+    customHeaders,
   });
   const items = Array.isArray(latestResponse.payload) ? latestResponse.payload : [];
   return { baseUrl: latestResponse.baseUrl, items };
@@ -1784,7 +1788,7 @@ function mapSeerrFilter(statusValue) {
   return 'all';
 }
 
-async function fetchSeerrJson({ candidates, apiKey, path, query }) {
+async function fetchSeerrJson({ candidates, apiKey, path, query, customHeaders = {} }) {
   let lastError = '';
   const attempted = [];
   for (let index = 0; index < candidates.length; index += 1) {
@@ -1799,10 +1803,10 @@ async function fetchSeerrJson({ candidates, apiKey, path, query }) {
 
     try {
       const upstreamRes = await fetch(upstreamUrl.toString(), {
-        headers: {
+        headers: mergeAppHeaders({ customHeaders }, {
           Accept: 'application/json',
           'X-API-Key': apiKey,
-        },
+        }),
       });
       const text = await upstreamRes.text();
       if (!upstreamRes.ok) {
@@ -4002,6 +4006,21 @@ function buildBasicAuthHeader(username, password) {
   return `Basic ${Buffer.from(`${user}:${pass}`).toString('base64')}`;
 }
 
+// Merges per-app custom headers (config.apps[n].customHeaders) into a base
+// headers object. Custom headers are plain string key→value pairs set by the
+// operator in app settings (e.g. CF-Access-Client-Id for Cloudflare Access).
+// Returns a new object — never mutates baseHeaders.
+function mergeAppHeaders(app, baseHeaders = {}) {
+  const custom = app?.customHeaders;
+  if (!custom || typeof custom !== 'object' || Array.isArray(custom)) return { ...baseHeaders };
+  const safe = {};
+  Object.entries(custom).forEach(([k, v]) => {
+    const name = String(k || '').trim();
+    if (name) safe[name] = String(v ?? '');
+  });
+  return { ...baseHeaders, ...safe };
+}
+
 function injectBasicAuthIntoUrl(rawUrl, username, password) {
   const input = String(rawUrl || '').trim();
   if (!input) return '';
@@ -4576,7 +4595,7 @@ function getRedactedHostAlias(hostname) {
   return alias;
 }
 
-async function fetchTransmissionQueue(baseUrl, authHeader) {
+async function fetchTransmissionQueue(baseUrl, authHeader, customHeaders = {}) {
   const rpcUrl = buildAppApiUrl(baseUrl, 'transmission/rpc');
   const payload = {
     method: 'torrent-get',
@@ -4605,10 +4624,10 @@ async function fetchTransmissionQueue(baseUrl, authHeader) {
   let lastError = '';
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const headers = {
+    const headers = mergeAppHeaders({ customHeaders }, {
       Accept: 'application/json',
       'Content-Type': 'application/json',
-    };
+    });
     if (authHeader) headers.Authorization = authHeader;
     if (sessionId) headers['X-Transmission-Session-Id'] = sessionId;
 
@@ -4645,17 +4664,17 @@ async function fetchTransmissionQueue(baseUrl, authHeader) {
   return { error: lastError || 'Failed to reach Transmission.' };
 }
 
-async function fetchNzbgetQueue(baseUrl, authHeader) {
+async function fetchNzbgetQueue(baseUrl, authHeader, customHeaders = {}) {
   const rpcUrl = buildAppApiUrl(baseUrl, 'jsonrpc');
   const payload = {
     method: 'listgroups',
     params: [0],
     id: Date.now(),
   };
-  const headers = {
+  const headers = mergeAppHeaders({ customHeaders }, {
     Accept: 'application/json',
     'Content-Type': 'application/json',
-  };
+  });
   if (authHeader) headers.Authorization = authHeader;
 
   const controller = new AbortController();
@@ -4681,7 +4700,7 @@ async function fetchNzbgetQueue(baseUrl, authHeader) {
   }
 }
 
-async function fetchQbittorrentQueue(baseUrl, username, password) {
+async function fetchQbittorrentQueue(baseUrl, username, password, customHeaders = {}) {
   const user = String(username || '').trim();
   const pass = String(password || '').trim();
   let cookieHeader = '';
@@ -4697,10 +4716,10 @@ async function fetchQbittorrentQueue(baseUrl, username, password) {
     try {
       const response = await fetch(loginUrl.toString(), {
         method: 'POST',
-        headers: {
+        headers: mergeAppHeaders({ customHeaders }, {
           Accept: 'text/plain',
           'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        },
+        }),
         body: loginPayload.toString(),
         signal: controller.signal,
       });
@@ -4719,7 +4738,7 @@ async function fetchQbittorrentQueue(baseUrl, username, password) {
   }
 
   const infoUrl = buildAppApiUrl(baseUrl, 'api/v2/torrents/info');
-  const headers = { Accept: 'application/json' };
+  const headers = mergeAppHeaders({ customHeaders }, { Accept: 'application/json' });
   if (cookieHeader) headers.Cookie = cookieHeader;
 
   const controller = new AbortController();
@@ -4743,13 +4762,13 @@ async function fetchQbittorrentQueue(baseUrl, username, password) {
   }
 }
 
-async function fetchSabnzbdQueue(baseUrl, apiKey, authHeader) {
+async function fetchSabnzbdQueue(baseUrl, apiKey, authHeader, customHeaders = {}) {
   const queueUrl = buildAppApiUrl(baseUrl, 'api');
   queueUrl.searchParams.set('mode', 'queue');
   queueUrl.searchParams.set('output', 'json');
   if (apiKey) queueUrl.searchParams.set('apikey', apiKey);
 
-  const headers = { Accept: 'application/json' };
+  const headers = mergeAppHeaders({ customHeaders }, { Accept: 'application/json' });
   if (authHeader) headers.Authorization = authHeader;
 
   const controller = new AbortController();
@@ -7019,7 +7038,7 @@ async function resolveDeepLaunchUrl(appItem, req, options = {}) {
   if (appItem?.id === 'tautulli') {
     const base = normalizeBaseUrl(launchUrl);
     const apiKey = String(appItem.apiKey || '').trim();
-    const ratingKey = await resolveTautulliRatingKey({ base, apiKey, query: effectiveQuery, imdbId, tmdbId, mediaType });
+    const ratingKey = await resolveTautulliRatingKey({ base, apiKey, query: effectiveQuery, imdbId, tmdbId, mediaType, customHeaders: appItem.customHeaders });
     if (ratingKey) {
       return base.replace(/\/+$/, '') + '/info?rating_key=' + encodeURIComponent(ratingKey);
     }
@@ -7072,7 +7091,7 @@ async function resolveDeepLaunchUrl(appItem, req, options = {}) {
   return launchUrl;
 }
 
-async function resolveTautulliRatingKey({ base, apiKey, query, imdbId, tmdbId, mediaType }) {
+async function resolveTautulliRatingKey({ base, apiKey, query, imdbId, tmdbId, mediaType, customHeaders = {} }) {
   if (!base || !apiKey) return '';
   const hasIds = Boolean(imdbId || tmdbId);
   const searchTerms = [];
@@ -7089,7 +7108,7 @@ async function resolveTautulliRatingKey({ base, apiKey, query, imdbId, tmdbId, m
       url.searchParams.set('cmd', 'search');
       url.searchParams.set('query', term);
       url.searchParams.set('limit', '20');
-      const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
+      const response = await fetch(url.toString(), { headers: mergeAppHeaders({ customHeaders }, { Accept: 'application/json' }) });
       if (!response.ok) continue;
       const payload = await response.json().catch(() => ({}));
       const responseData = payload?.response?.data || {};
@@ -10184,6 +10203,7 @@ const _routeCtx = {
   mapAutobrrQueueItem,
   normalizeMaintainerrTmdbKind,
   buildBasicAuthHeader,
+  mergeAppHeaders,
   buildMaintainerrTmdbImageUrl,
   mapMaintainerrRuleItem,
   normalizeMaintainerrMediaKind,

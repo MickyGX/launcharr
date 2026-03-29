@@ -259,6 +259,71 @@
       <div class="plex-settings-note" data-romm-test-status="viewer" hidden aria-live="polite"></div>
     </div>
   <% } %>
+  <div class="settings-card plex-settings-card">
+    <div class="settings-card-title">Custom HTTP Headers</div>
+    <div class="settings-card-sub">Optional headers sent with every Launcharr request to this app (e.g. <code>CF-Access-Client-Id</code> for Cloudflare Access).</div>
+    <div class="plex-settings-fields" id="<%= renderedFormUid %>-custom-headers-list">
+      <% const _customHeaders = Object.entries(renderedApp.customHeaders || {}); %>
+      <% _customHeaders.forEach(([hName, hValue], hIdx) => { %>
+        <div class="custom-header-row" data-custom-header-row>
+          <label class="field">
+            <span>Header Name</span>
+            <input type="text" name="customHeaderName[]" value="<%= hName %>" placeholder="X-Custom-Header" />
+          </label>
+          <label class="field field-with-action">
+            <span>Value</span>
+            <div class="field-action-row">
+              <input id="<%= renderedFormUid %>-custom-header-val-<%= hIdx %>" type="password" name="customHeaderValue[]" value="<%= hValue %>" placeholder="header value" />
+              <button class="icon-button" type="button" aria-label="Show header value" data-visibility-toggle="<%= renderedFormUid %>-custom-header-val-<%= hIdx %>" data-visibility-state="hidden">
+                <img src="/icons/view-off.svg" alt="" />
+              </button>
+            </div>
+          </label>
+          <div class="plex-settings-actions">
+            <button class="ghost-button" type="button" onclick="this.closest('[data-custom-header-row]').remove()">Remove</button>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+    <div class="plex-settings-actions">
+      <button class="ghost-button" type="button" data-add-custom-header="<%= renderedFormUid %>">+ Add Header</button>
+    </div>
+    <div class="plex-settings-note">Header names are case-sensitive. Values are stored in config — treat them as secrets.</div>
+  </div>
+  <script>
+    (() => {
+      const listEl = document.getElementById('<%= renderedFormUid %>-custom-headers-list');
+      const addBtn = document.querySelector('[data-add-custom-header="<%= renderedFormUid %>"]');
+      if (!addBtn || !listEl) return;
+      let rowCounter = <%= _customHeaders.length %>;
+      addBtn.addEventListener('click', () => {
+        const idx = rowCounter++;
+        const uid = '<%= renderedFormUid %>-custom-header-val-' + idx;
+        const row = document.createElement('div');
+        row.setAttribute('data-custom-header-row', '');
+        row.innerHTML = `
+          <label class="field">
+            <span>Header Name</span>
+            <input type="text" name="customHeaderName[]" value="" placeholder="X-Custom-Header" />
+          </label>
+          <label class="field field-with-action">
+            <span>Value</span>
+            <div class="field-action-row">
+              <input id="${uid}" type="password" name="customHeaderValue[]" value="" placeholder="header value" />
+              <button class="icon-button" type="button" aria-label="Show header value" data-visibility-toggle="${uid}" data-visibility-state="hidden">
+                <img src="/icons/view-off.svg" alt="" />
+              </button>
+            </div>
+          </label>
+          <div class="plex-settings-actions">
+            <button class="ghost-button" type="button">Remove</button>
+          </div>
+        `;
+        row.querySelector('.ghost-button').addEventListener('click', () => row.remove());
+        listEl.appendChild(row);
+      });
+    })();
+  </script>
   <div class="settings-card">
     <div class="settings-card-title">Sidebar Visibility</div>
     <div class="settings-grid">

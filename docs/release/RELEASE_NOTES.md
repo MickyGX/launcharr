@@ -1,4 +1,14 @@
-# Release Notes (v0.1.0 -> v0.2.51)
+# Release Notes (v0.1.0 -> v0.2.52)
+
+## v0.2.52 (2026-03-29)
+
+- [Added]
+- Added multi-arch Docker image publishing via GitHub Actions, producing `linux/amd64` and `linux/arm64` images from a single workflow run. Pushes to `main` tag `:development`; version tags publish both `:latest` and the semver tag.
+- Added per-app custom HTTP headers so any additional headers (e.g. `X-Forwarded-For`, reverse-proxy auth headers, or vendor-specific tokens) can be saved against an app and automatically merged into every outbound request Launcharr makes for that app.
+- [Changed]
+- All app API fetch paths now merge custom headers on top of their default auth headers, allowing custom values to override defaults where needed.
+- [Fixed]
+- Docker images pushed by CI are now reproducible multi-platform builds rather than single-arch local builds.
 
 ## v0.2.51 (2026-03-22)
 
