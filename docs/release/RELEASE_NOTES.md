@@ -1,4 +1,10 @@
-# Release Notes (v0.1.0 -> v0.2.52)
+# Release Notes (v0.1.0 -> v0.2.53)
+
+## v0.2.53 (2026-03-29)
+
+- [Fixed]
+- Fixed local user creation and password changes throwing `ReferenceError: hashPassword is not defined` — `hashPassword` was missing from the settings route context injection.
+- Fixed custom HTTP headers not persisting after save — `[]`-suffixed form field names were not matched by the server's `extended: false` body parser; field names corrected.
 
 ## v0.2.52 (2026-03-29)
 
