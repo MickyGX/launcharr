@@ -5,14 +5,93 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title><%= locals.pageTitle || 'Launcharr' %></title>
   <%- include('./theme-init') %>
-  <link rel="stylesheet" href="/styles.css?v=<%= assetVersion %>" />
+  <script>
+    (function () {
+      const basePath = '<%= basePath || '' %>';
+      window.LAUNCHARR_BASE_PATH = basePath;
+      const hasBasePath = Boolean(basePath);
+      const shouldRewrite = (value) => {
+        if (!hasBasePath) return false;
+        if (!value || typeof value !== 'string') return false;
+        if (value === basePath) return false;
+        if (value.startsWith(basePath + '/')) return false;
+        if (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('//')) return false;
+        if (value.startsWith('data:') || value.startsWith('mailto:') || value.startsWith('tel:')) return false;
+        return value.startsWith('/');
+      };
+      const withBasePath = (value) => (shouldRewrite(value) ? basePath + value : value);
+      window.launcharrPath = withBasePath;
+
+      const rewriteAttribute = (element, attr) => {
+        const value = element.getAttribute(attr);
+        if (shouldRewrite(value)) element.setAttribute(attr, withBasePath(value));
+      };
+
+      const originalSetAttribute = Element.prototype.setAttribute;
+      Element.prototype.setAttribute = function (name, value) {
+        if (name === 'src' || name === 'href' || name === 'action') {
+          return originalSetAttribute.call(this, name, withBasePath(value));
+        }
+        return originalSetAttribute.call(this, name, value);
+      };
+
+      const patchProperty = (ctor, prop) => {
+        if (!ctor || !ctor.prototype) return;
+        const descriptor = Object.getOwnPropertyDescriptor(ctor.prototype, prop);
+        if (!descriptor || typeof descriptor.set !== 'function') return;
+        Object.defineProperty(ctor.prototype, prop, {
+          configurable: descriptor.configurable,
+          enumerable: descriptor.enumerable,
+          get: descriptor.get,
+          set(value) {
+            return descriptor.set.call(this, withBasePath(value));
+          },
+        });
+      };
+
+      patchProperty(HTMLImageElement, 'src');
+      patchProperty(HTMLScriptElement, 'src');
+      patchProperty(HTMLSourceElement, 'src');
+      patchProperty(HTMLVideoElement, 'src');
+      patchProperty(HTMLAudioElement, 'src');
+      patchProperty(HTMLAnchorElement, 'href');
+      patchProperty(HTMLLinkElement, 'href');
+      patchProperty(HTMLFormElement, 'action');
+
+      const originalFetch = window.fetch;
+      if (typeof originalFetch === 'function') {
+        window.fetch = function (input, init) {
+          if (typeof input === 'string') {
+            return originalFetch(withBasePath(input), init);
+          }
+          if (input && typeof input === 'object' && input.url && typeof input.url === 'string') {
+            const nextUrl = withBasePath(input.url);
+            if (nextUrl !== input.url) {
+              const nextRequest = new Request(nextUrl, input);
+              return originalFetch(nextRequest, init);
+            }
+          }
+          return originalFetch(input, init);
+        };
+      }
+
+      if (hasBasePath) {
+        document.addEventListener('DOMContentLoaded', () => {
+          document.querySelectorAll('[src]').forEach((el) => rewriteAttribute(el, 'src'));
+          document.querySelectorAll('[href]').forEach((el) => rewriteAttribute(el, 'href'));
+          document.querySelectorAll('form[action]').forEach((el) => rewriteAttribute(el, 'action'));
+        });
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="<%= withBasePath('/styles.css') %>?v=<%= assetVersion %>" />
   <% (locals.extraCss || []).forEach(function(href) { %>
-    <link rel="stylesheet" href="<%= href %>?v=<%= assetVersion %>" />
+    <link rel="stylesheet" href="<%= withBasePath(href) %>?v=<%= assetVersion %>" />
   <% }); %>
-  <link rel="manifest" href="/manifest.webmanifest" />
-  <link rel="icon" type="image/png" href="/icons/launcharr-icon.png" />
+  <link rel="manifest" href="<%= withBasePath('/manifest.webmanifest') %>" />
+  <link rel="icon" type="image/png" href="<%= withBasePath('/icons/launcharr-icon.png') %>" />
   <meta name="theme-color" content="#1cc6c2" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <link rel="apple-touch-icon" href="/icons/launcharr-icon.png" />
+  <link rel="apple-touch-icon" href="<%= withBasePath('/icons/launcharr-icon.png') %>" />
 </head>

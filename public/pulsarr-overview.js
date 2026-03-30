@@ -40,6 +40,14 @@
 
   const requestsDisplaySettings = sectionDisplaySettings('recent-requests');
   const watchlistedDisplaySettings = sectionDisplaySettings('most-watchlisted');
+  const searchDisplaySettings = {
+    showSubtitle: true,
+    showMeta: false,
+    showPill: true,
+    showTypeIcon: true,
+    showViewIcon: true,
+    showUsername: false,
+  };
 
   function prefixedId(suffix) {
     return domPrefix + suffix;
@@ -66,11 +74,23 @@
       items: [],
       carousel: null,
     },
+    search: {
+      viewport: document.getElementById(prefixedId('SearchViewport')),
+      track: document.getElementById(prefixedId('SearchTrack')),
+      prevBtn: document.getElementById(prefixedId('SearchPrevBtn')),
+      nextBtn: document.getElementById(prefixedId('SearchNextBtn')),
+      input: document.getElementById(prefixedId('SearchInput')),
+      button: document.getElementById(prefixedId('SearchButton')),
+      typeFilter: document.getElementById(prefixedId('SearchTypeFilter')),
+      items: [],
+      carousel: null,
+    },
   };
 
   const hasRequests = Boolean(modules.requests.viewport && modules.requests.track);
   const hasWatchlisted = Boolean(modules.watchlisted.viewport && modules.watchlisted.track);
-  if (!hasRequests && !hasWatchlisted) return;
+  const hasSearch = Boolean(modules.search.viewport && modules.search.track);
+  if (!hasRequests && !hasWatchlisted && !hasSearch) return;
   const CACHE_TTL_MS = 5 * 60 * 1000;
 
   const modal = {
@@ -110,12 +130,28 @@
     loadMostWatchlisted();
   }
 
+  if (hasSearch) {
+    modules.search.carousel = createCarousel({
+      viewport: modules.search.viewport,
+      track: modules.search.track,
+      prevBtn: modules.search.prevBtn,
+      nextBtn: modules.search.nextBtn,
+      onView: openItemModal,
+      renderCard: (item) => renderCard(item, searchDisplaySettings),
+    });
+    modules.search.button?.addEventListener('click', runSearch);
+    modules.search.input?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') runSearch();
+    });
+  }
+
   wireModal();
   bindCollapseButtons();
 
   window.addEventListener('resize', () => {
     if (modules.requests.carousel) modules.requests.carousel.updateLayout();
     if (modules.watchlisted.carousel) modules.watchlisted.carousel.updateLayout();
+    if (modules.search.carousel) modules.search.carousel.updateLayout();
   });
 
   function escapeHtml(value) {
@@ -245,9 +281,11 @@
     }
   }
 
-  async function fetchJson(url) {
+  async function fetchJson(url, options) {
     logApi('info', appName + ' request', { url });
-    const response = await fetch(url, { headers: { Accept: 'application/json' } });
+    const headers = Object.assign({ Accept: 'application/json' }, options?.headers || {});
+    if (options?.body) headers['Content-Type'] = 'application/json';
+    const response = await fetch(url, Object.assign({ headers }, options ? { ...options, headers } : {}));
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       logApi('error', appName + ' response failed', { url, status: response.status, error: payload?.error || '' });
@@ -274,6 +312,16 @@
     return '<svg viewBox="0 0 24 24" fill="none" stroke="#e8eef7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
       '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"></path>' +
       '<circle cx="12" cy="12" r="3"></circle></svg>';
+  }
+
+  function plusSvg() {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="#e8eef7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+      '<line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>';
+  }
+
+  function checkSvg() {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="#e8eef7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+      '<polyline points="20 6 9 17 4 12"></polyline></svg>';
   }
 
   function statusColor(status) {
@@ -458,6 +506,14 @@
             onView(item);
           });
         }
+        const requestBtn = card.querySelector('[data-action="request"]');
+        if (requestBtn) {
+          requestBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            requestMedia(item, requestBtn);
+          });
+        }
         track.appendChild(card);
       });
 
@@ -590,6 +646,7 @@
     const typeSvg = item.mediaType === 'show' ? tvIcon() : movieIcon();
     const metaLine = [subtitle, meta].filter(Boolean).join(' | ');
 
+    const showRequestBtn = appId === 'seerr' && item.sectionId === 'search' && !item.status && item.tmdbId;
     card.innerHTML =
       '<div class="plex-poster-wrap">' +
         '<div class="plex-poster-well">' +
@@ -599,6 +656,7 @@
           (displaySettings.showTypeIcon ? '<div class="plex-type-icon" title="' + (item.mediaType === 'show' ? 'TV' : 'Movie') + '">' + typeSvg + '</div>' : '') +
           (displaySettings.showViewIcon ? '<div class="plex-eye-icon" title="View" data-action="view">' + eyeSvg() + '</div>' : '') +
           (displaySettings.showPill && pill ? '<div class="plex-pill"' + (item.pillColor ? ' style="background:' + item.pillColor + '"' : '') + '>' + pill + '</div>' : '') +
+          (showRequestBtn ? '<div class="plex-request-btn" title="Request" data-action="request">' + plusSvg() + '</div>' : '') +
         '</div>' +
       '</div>' +
       '<div class="plex-footer">' +
@@ -613,7 +671,7 @@
     if (!modal.backdrop || !modal.body || !modal.title) return;
     const sectionDisplay = item?.sectionId === 'recent-requests'
       ? requestsDisplaySettings
-      : watchlistedDisplaySettings;
+      : (item?.sectionId === 'search' ? searchDisplaySettings : watchlistedDisplaySettings);
     const typeSvg = item.mediaType === 'show' ? tvIcon() : movieIcon();
     if (modal.typeIcon) modal.typeIcon.innerHTML = typeSvg;
     modal.title.textContent = item.title || 'Details';
@@ -639,6 +697,10 @@
     const tmdbUrl = item.tmdbId
       ? ('https://www.themoviedb.org/' + (mediaType === 'tv' ? 'tv/' : 'movie/') + encodeURIComponent(String(item.tmdbId)))
       : ('https://www.themoviedb.org/search?query=' + query);
+    const seerrBaseUrl = String(config.baseUrl || '').replace(/\/$/, '');
+    const seerrItemUrl = (seerrBaseUrl && item.tmdbId)
+      ? (seerrBaseUrl + '/' + (mediaType === 'tv' ? 'tv/' : 'movie/') + encodeURIComponent(String(item.tmdbId)))
+      : '';
     const pills = [
       '<div class="plex-pill2"><span class="plex-dot" style="background:#f6d365"></span>' + escapeHtml(item.mediaType === 'show' ? 'TV Show' : 'Movie') + '</div>',
       sectionDisplay.showPill && item.pill ? '<div class="plex-pill2"><span class="plex-dot" style="background:var(--plex-pill)"></span>' + escapeHtml(item.pill) + '</div>' : '',
@@ -661,14 +723,22 @@
         '</div>' +
       '</div>' +
       '<div class="plex-modal-footer">' +
+        (appId === 'seerr' && item.sectionId === 'search' && !item.status && item.tmdbId
+          ? '<button class="plex-modal-link plex-modal-request" data-action="modal-request" title="Send request to Seerr">Request</button>'
+          : '') +
         '<a id="' + prefixedId('ModalImdbLink') + '" class="plex-modal-link" href="' + imdbUrl + '" target="_blank" rel="noreferrer">IMDb</a>' +
         '<a id="' + prefixedId('ModalTmdbLink') + '" class="plex-modal-link" href="' + tmdbUrl + '" target="_blank" rel="noreferrer">TMDb</a>' +
+        (seerrItemUrl ? '<a class="plex-modal-link" href="' + seerrItemUrl + '" target="_blank" rel="noreferrer">Seerr</a>' : '') +
         '<a class="plex-modal-link" href="/apps/tautulli/launch?q=' + query + tmdbPart + '&type=' + encodeURIComponent(mediaType) + '" target="_blank" rel="noreferrer">Tautulli</a>' +
         '<a class="plex-modal-link" href="/apps/plex/launch?q=' + query + tmdbPart + '&type=' + encodeURIComponent(mediaType) + '" target="_blank" rel="noreferrer">Plex</a>' +
       '</div>';
 
     modal.backdrop.classList.remove('plex-hidden');
     document.body.style.overflow = 'hidden';
+    const modalReqBtn = modal.body.querySelector('[data-action="modal-request"]');
+    if (modalReqBtn) {
+      modalReqBtn.addEventListener('click', () => requestMedia(item, modalReqBtn));
+    }
     loadModalOverview(item);
   }
 
@@ -854,6 +924,83 @@
       cacheWrite(cacheKey, cachePayload);
     } catch (err) {
       modules.watchlisted.track.innerHTML = '<div class="plex-empty">Unable to load ' + escapeHtml(appName) + ' most watchlisted: ' + escapeHtml(err.message || '') + '</div>';
+    }
+  }
+
+  async function requestMedia(item, btnEl) {
+    if (appId !== 'seerr' || !item.tmdbId) return;
+    if (btnEl) { btnEl.classList.add('requesting'); btnEl.title = 'Requesting\u2026'; }
+    try {
+      await fetchJson('/api/seerr/request', {
+        method: 'POST',
+        body: JSON.stringify({ tmdbId: item.tmdbId, mediaType: item.mediaType }),
+      });
+      if (btnEl) {
+        btnEl.classList.remove('requesting');
+        btnEl.classList.add('requested');
+        if (btnEl.classList.contains('plex-modal-request')) {
+          btnEl.textContent = 'Requested';
+        } else {
+          btnEl.innerHTML = checkSvg();
+          btnEl.title = 'Requested';
+        }
+      }
+    } catch (err) {
+      if (btnEl) {
+        btnEl.classList.remove('requesting');
+        btnEl.title = 'Request failed: ' + escapeHtml(err.message || '');
+      }
+    }
+  }
+
+  function normalizeSearchResult(item) {
+    const typeValue = String(item?.contentType || '').toLowerCase();
+    const mediaType = typeValue === 'show' ? 'show' : 'movie';
+    const status = String(item?.status || '').toLowerCase() || null;
+    const year = String(item?.year || '').trim();
+    const pill = status === 'available' ? 'Available'
+      : status === 'requested' ? 'Requested'
+      : status === 'processing' ? 'Processing'
+      : status === 'partial' ? 'Partial'
+      : '';
+    const pillColor = status === 'available' ? '#2bd56f'
+      : status === 'requested' ? '#ffd36c'
+      : status === 'processing' ? '#5b9cf6'
+      : status === 'partial' ? '#4ec9b0'
+      : '';
+    return {
+      title: String(item?.title || 'Unknown'),
+      subtitle: year,
+      meta: '',
+      thumb: posterUrl(item),
+      pill,
+      pillColor,
+      status,
+      mediaType,
+      overview: String(item?.overview || ''),
+      tmdbId: findTmdbIdFromGuids(item?.guids),
+      imdbId: '',
+      raw: item,
+    };
+  }
+
+  async function runSearch() {
+    if (!hasSearch || !modules.search.carousel) return;
+    const query = String(modules.search.input?.value || '').trim();
+    if (query.length < 2) return;
+    const type = String(modules.search.typeFilter?.value || 'all');
+
+    modules.search.track.innerHTML = '<div class="plex-empty">Searching\u2026</div>';
+
+    try {
+      const payload = await fetchJson(withParams('/api/seerr/search', { query, type }));
+      const results = Array.isArray(payload?.results) ? payload.results : [];
+      modules.search.items = results
+        .map(normalizeSearchResult)
+        .map((item) => ({ ...item, sectionId: 'search' }));
+      modules.search.carousel.setItems(modules.search.items);
+    } catch (err) {
+      modules.search.track.innerHTML = '<div class="plex-empty">Search failed: ' + escapeHtml(err.message || '') + '</div>';
     }
   }
 

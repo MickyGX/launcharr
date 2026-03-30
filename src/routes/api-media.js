@@ -741,4 +741,160 @@ export function registerApiMedia(app, ctx) {
       return res.status(502).json({ error: lastError });
     }
   });
+
+  app.get('/api/seerr/search', requireUser, async (req, res) => {
+    const query = String(req.query?.query || '').trim();
+    if (!query || query.length < 2) return res.status(400).json({ error: 'Search query must be at least 2 characters.' });
+
+    const typeRaw = String(req.query?.type || '').trim().toLowerCase();
+    const page = Math.max(1, parseInt(String(req.query?.page || '1'), 10) || 1);
+
+    const config = loadConfig();
+    const apps = config.apps || [];
+    const seerrApp = apps.find((appItem) => appItem.id === 'seerr');
+    if (!seerrApp) return res.status(404).json({ error: 'Seerr app is not configured.' });
+    if (!canAccessDashboardApp(config, seerrApp, getEffectiveRole(req))) {
+      return res.status(403).json({ error: 'Seerr dashboard access denied.' });
+    }
+
+    const apiKey = String(seerrApp.apiKey || '').trim();
+    if (!apiKey) return res.status(400).json({ error: 'Missing Seerr API key.' });
+
+    const candidates = resolveRequestApiCandidates(seerrApp, req);
+    if (!candidates.length) return res.status(400).json({ error: 'Missing Seerr URL.' });
+
+    const mapMediaStatus = (mediaInfo) => {
+      if (!mediaInfo) return null;
+      const status = Number(mediaInfo.status);
+      if (status === 5) return 'available';
+      if (status === 4) return 'partial';
+      if (status === 3) return 'processing';
+      if (status === 2) return 'requested';
+      return null;
+    };
+
+    try {
+      // Seerr rejects `+`-encoded spaces (URLSearchParams default); use encodeURIComponent for %20 encoding
+      const searchQs = 'query=' + encodeURIComponent(query) + '&page=' + page + '&language=en';
+      let searchPayload = null;
+      let searchLastError = '';
+      for (const candidate of candidates) {
+        if (!candidate) continue;
+        const base = buildAppApiUrl(candidate, '/api/v1/search');
+        const finalUrl = base.origin + base.pathname + '?' + searchQs;
+        try {
+          const rawRes = await fetch(finalUrl, {
+            headers: mergeAppHeaders({ customHeaders: seerrApp.customHeaders }, {
+              Accept: 'application/json',
+              'X-API-Key': apiKey,
+            }),
+          });
+          const text = await rawRes.text();
+          if (!rawRes.ok) {
+            searchLastError = `Seerr request failed (${rawRes.status}) via ${candidate}: ${String(text || '').slice(0, 220)}`;
+            continue;
+          }
+          searchPayload = JSON.parse(text || '{}');
+          break;
+        } catch (err) {
+          searchLastError = (safeMessage(err) || 'fetch failed') + ` via ${candidate}`;
+        }
+      }
+      if (!searchPayload) throw new Error(searchLastError || 'Failed to reach Seerr.');
+
+      const rawResults = Array.isArray(searchPayload?.results) ? searchPayload.results : [];
+      const filtered = rawResults.filter((item) => {
+        if (!item || !item.mediaType) return false;
+        if (typeRaw === 'movie') return item.mediaType === 'movie';
+        if (typeRaw === 'show') return item.mediaType === 'tv';
+        return item.mediaType === 'movie' || item.mediaType === 'tv';
+      });
+
+      const normalized = filtered.map((item) => {
+        const isShow = item.mediaType === 'tv';
+        const title = String(isShow
+          ? (item.name || item.originalName || '')
+          : (item.title || item.originalTitle || '')
+        ).trim();
+        const year = String(isShow ? (item.firstAirDate || '') : (item.releaseDate || '')).slice(0, 4);
+        const posterPath = String(item.posterPath || '').trim();
+        return {
+          title,
+          contentType: isShow ? 'show' : 'movie',
+          year,
+          posterPath,
+          overview: String(item.overview || '').trim(),
+          guids: [`tmdb:${item.id}`],
+          status: mapMediaStatus(item.mediaInfo),
+        };
+      });
+
+      return res.json({
+        results: normalized,
+        page: Number(searchPayload?.page) || 1,
+        totalPages: Number(searchPayload?.totalPages) || 1,
+        totalResults: Number(searchPayload?.totalResults) || normalized.length,
+      });
+    } catch (err) {
+      const lastError = safeMessage(err) || 'Failed to search Seerr.';
+      return res.status(502).json({ error: lastError });
+    }
+  });
+
+  app.post('/api/seerr/request', requireUser, async (req, res) => {
+    const tmdbId = parseInt(String(req.body?.tmdbId || ''), 10);
+    const mediaTypeRaw = String(req.body?.mediaType || '').toLowerCase();
+    const mediaType = (mediaTypeRaw === 'show' || mediaTypeRaw === 'tv') ? 'tv' : 'movie';
+
+    if (!tmdbId || !Number.isFinite(tmdbId)) {
+      return res.status(400).json({ error: 'Missing or invalid tmdbId.' });
+    }
+
+    const config = loadConfig();
+    const apps = config.apps || [];
+    const seerrApp = apps.find((appItem) => appItem.id === 'seerr');
+    if (!seerrApp) return res.status(404).json({ error: 'Seerr app is not configured.' });
+    if (!canAccessDashboardApp(config, seerrApp, getEffectiveRole(req))) {
+      return res.status(403).json({ error: 'Seerr dashboard access denied.' });
+    }
+
+    const apiKey = String(seerrApp.apiKey || '').trim();
+    if (!apiKey) return res.status(400).json({ error: 'Missing Seerr API key.' });
+
+    const candidates = resolveRequestApiCandidates(seerrApp, req);
+    if (!candidates.length) return res.status(400).json({ error: 'Missing Seerr URL.' });
+
+    const requestBody = JSON.stringify({
+      mediaType,
+      mediaId: tmdbId,
+      ...(mediaType === 'tv' ? { seasons: 'all' } : {}),
+    });
+
+    let lastError = '';
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      const url = buildAppApiUrl(candidate, '/api/v1/request');
+      try {
+        const rawRes = await fetch(url.toString(), {
+          method: 'POST',
+          headers: mergeAppHeaders({ customHeaders: seerrApp.customHeaders }, {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            'X-API-Key': apiKey,
+          }),
+          body: requestBody,
+        });
+        const text = await rawRes.text();
+        if (rawRes.status === 409) return res.json({ ok: true, alreadyRequested: true });
+        if (!rawRes.ok) {
+          lastError = `Seerr request failed (${rawRes.status}) via ${candidate}: ${String(text || '').slice(0, 220)}`;
+          continue;
+        }
+        return res.json({ ok: true, result: JSON.parse(text || '{}') });
+      } catch (err) {
+        lastError = (safeMessage(err) || 'fetch failed') + ` via ${candidate}`;
+      }
+    }
+    return res.status(502).json({ error: lastError || 'Failed to reach Seerr.' });
+  });
 }

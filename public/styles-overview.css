@@ -167,22 +167,22 @@
   pointer-events:none;
 }
 
-.plex-select.plex-icon.plex-filter-media:before{background-image:url('/icons/all-type.svg');}
-.plex-select.plex-icon.plex-filter-media[data-filter-value="all"]:before{background-image:url('/icons/all-type.svg');}
-.plex-select.plex-icon.plex-filter-media[data-filter-value="movie"]:before{background-image:url('/icons/movie.svg');}
+.plex-select.plex-icon.plex-filter-media:before{background-image:url('icons/all-type.svg');}
+.plex-select.plex-icon.plex-filter-media[data-filter-value="all"]:before{background-image:url('icons/all-type.svg');}
+.plex-select.plex-icon.plex-filter-media[data-filter-value="movie"]:before{background-image:url('icons/movie.svg');}
 .plex-select.plex-icon.plex-filter-media[data-filter-value="tv"]:before,
-.plex-select.plex-icon.plex-filter-media[data-filter-value="show"]:before{background-image:url('/icons/tv.svg');}
-.plex-select.plex-icon.plex-filter-media[data-filter-value="music"]:before{background-image:url('/icons/music.svg');}
-.plex-select.plex-icon.plex-filter-media[data-filter-value="book"]:before{background-image:url('/icons/book.svg');}
-.plex-select.plex-icon.plex-filter-source:before{background-image:url('/icons/all-type.svg');}
-.plex-select.plex-icon.plex-filter-source[data-filter-value="all"]:before{background-image:url('/icons/all-type.svg');}
-.plex-select.plex-icon.plex-filter-source[data-filter-value="radarr"]:before{background-image:url('/icons/radarr.png');}
-.plex-select.plex-icon.plex-filter-source[data-filter-value="sonarr"]:before{background-image:url('/icons/sonarr.png');}
-.plex-select.plex-icon.plex-filter-source[data-filter-value="lidarr"]:before{background-image:url('/icons/lidarr.png');}
-.plex-select.plex-icon.plex-filter-source[data-filter-value="readarr"]:before{background-image:url('/icons/readarr.png');}
-.plex-select.plex-icon.plex-filter-window:before{background-image:url('/icons/window.svg');}
-.plex-select.plex-icon.plex-filter-status:before{background-image:url('/icons/status.svg');}
-.plex-select.plex-icon.plex-filter-event:before{background-image:url('/icons/activity-queue.svg');}
+.plex-select.plex-icon.plex-filter-media[data-filter-value="show"]:before{background-image:url('icons/tv.svg');}
+.plex-select.plex-icon.plex-filter-media[data-filter-value="music"]:before{background-image:url('icons/music.svg');}
+.plex-select.plex-icon.plex-filter-media[data-filter-value="book"]:before{background-image:url('icons/book.svg');}
+.plex-select.plex-icon.plex-filter-source:before{background-image:url('icons/all-type.svg');}
+.plex-select.plex-icon.plex-filter-source[data-filter-value="all"]:before{background-image:url('icons/all-type.svg');}
+.plex-select.plex-icon.plex-filter-source[data-filter-value="radarr"]:before{background-image:url('icons/radarr.png');}
+.plex-select.plex-icon.plex-filter-source[data-filter-value="sonarr"]:before{background-image:url('icons/sonarr.png');}
+.plex-select.plex-icon.plex-filter-source[data-filter-value="lidarr"]:before{background-image:url('icons/lidarr.png');}
+.plex-select.plex-icon.plex-filter-source[data-filter-value="readarr"]:before{background-image:url('icons/readarr.png');}
+.plex-select.plex-icon.plex-filter-window:before{background-image:url('icons/window.svg');}
+.plex-select.plex-icon.plex-filter-status:before{background-image:url('icons/status.svg');}
+.plex-select.plex-icon.plex-filter-event:before{background-image:url('icons/activity-queue.svg');}
 
 .arr-filter-popover{
   position:relative;
@@ -823,7 +823,7 @@ html[data-hide-scrollbars="1"] .plex-carousel-viewport::-webkit-scrollbar{
   box-shadow:inset 0 0 0 2px rgba(255,255,255,.12);
   text-transform:capitalize;
 }
-.plex-type-icon,.plex-eye-icon{
+.plex-type-icon,.plex-eye-icon,.plex-request-btn{
   position:absolute;width:28px;height:24px;border-radius:8px;background:rgba(20,24,36,.92);
   border:2px solid rgba(255,255,255,.22);display:grid;place-items:center;
 }
@@ -831,6 +831,14 @@ html[data-hide-scrollbars="1"] .plex-carousel-viewport::-webkit-scrollbar{
 .plex-eye-icon{right:3px;bottom:3px;cursor:pointer;z-index:5;pointer-events:auto}
 .plex-eye-icon:hover{filter:brightness(1.1)}
 .plex-type-icon svg,.plex-eye-icon svg{width:16px;height:16px;opacity:.95}
+.plex-request-btn{left:3px;bottom:3px;cursor:pointer;z-index:5;pointer-events:auto}
+.plex-request-btn:hover{filter:brightness(1.1)}
+.plex-request-btn svg{width:14px;height:14px;opacity:.95}
+.plex-request-btn.requesting{opacity:.5;pointer-events:none}
+.plex-request-btn.requested{background:rgba(43,213,111,.85);border-color:rgba(43,213,111,.6)}
+.plex-modal-request{background:transparent;font-family:inherit;cursor:pointer}
+.plex-modal-request.requesting{opacity:.55;pointer-events:none}
+.plex-modal-request.requested{background:rgba(43,213,111,.18);border-color:rgba(43,213,111,.5);color:#2bd56f}
 .plex-source-icon{
   position:absolute;left:3px;bottom:3px;width:28px;height:24px;border-radius:8px;background:rgba(20,24,36,.92);
   border:2px solid rgba(255,255,255,.22);display:grid;place-items:center;overflow:hidden;padding:2px;

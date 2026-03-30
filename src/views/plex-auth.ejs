@@ -64,7 +64,7 @@
 
         if (data.id) {
           try {
-            await fetch("/api/plex/pin", {
+            await fetch("<%= withBasePath('/api/plex/pin') %>", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ pinId: String(data.id) })

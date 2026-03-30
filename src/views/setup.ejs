@@ -90,14 +90,14 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="/styles.css?v=<%= assetVersion %>" />
-  <link rel="stylesheet" href="/styles-auth.css?v=<%= assetVersion %>" />
-  <link rel="manifest" href="/manifest.webmanifest" />
-  <link rel="icon" type="image/png" href="/icons/launcharr-icon.png" />
+  <link rel="stylesheet" href="<%= withBasePath('/styles.css') %>?v=<%= assetVersion %>" />
+  <link rel="stylesheet" href="<%= withBasePath('/styles-auth.css') %>?v=<%= assetVersion %>" />
+  <link rel="manifest" href="<%= withBasePath('/manifest.webmanifest') %>" />
+  <link rel="icon" type="image/png" href="<%= withBasePath('/icons/launcharr-icon.png') %>" />
   <meta name="theme-color" content="#1cc6c2" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <link rel="apple-touch-icon" href="/icons/launcharr-icon.png" />
+  <link rel="apple-touch-icon" href="<%= withBasePath('/icons/launcharr-icon.png') %>" />
 </head>
 <body class="login-body">
   <div class="login-stars"></div>
@@ -107,7 +107,7 @@
     <div class="login-hero">
       <div class="login-brand">
         <span class="login-brand-mark">
-          <img src="/icons/launcharr-icon.png" alt="Launcharr" />
+          <img src="<%= withBasePath('/icons/launcharr-icon.png') %>" alt="Launcharr" />
         </span>
         <div class="login-brand-title">Launcharr</div>
         <div class="login-brand-subtitle">Arr suite control deck</div>
@@ -118,7 +118,7 @@
         <% if (error) { %>
           <div class="login-error"><%= error %></div>
         <% } %>
-        <form class="login-form" method="post" action="/setup">
+          <form class="login-form" method="post" action="<%= withBasePath('/setup') %>">
           <label class="login-field">
             <span>Username</span>
             <input class="login-input" type="text" name="username" value="<%= values?.username || '' %>" autocomplete="username" required />
@@ -141,7 +141,7 @@
       </div>
     </div>
   </main>
-  <script src="/starfield-3d.js"></script>
-  <script src="/pwa.js?v=<%= assetVersion %>"></script>
+  <script src="<%= withBasePath('/starfield-3d.js') %>"></script>
+  <script src="<%= withBasePath('/pwa.js') %>?v=<%= assetVersion %>"></script>
 </body>
 </html>

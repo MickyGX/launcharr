@@ -1681,6 +1681,46 @@
                 </div>
               </section>
             <% } %>
+            <% if (item.app.id === 'seerr' && item.element.id === 'search') { %>
+              <% const searchPrefix = item.app.id; %>
+              <section class="plex-module plex-module--no-subtitle" id="<%= searchPrefix %>-search">
+                <div class="plex-topbar">
+                  <div class="plex-title-wrap">
+                    <div class="plex-title">
+                      <img class="plex-logo" src="<%= resolveAppIconPath(item.app) %>" alt="<%= item.app.name %>" loading="eager" onerror="this.src='/icons/app.svg'" />
+                      <span>Media Search</span>
+                    </div>
+                    <div class="plex-subtitle"></div>
+                  </div>
+                  <div class="plex-spacer"></div>
+                  <div class="plex-controls-right">
+                    <div class="plex-select plex-icon plex-filter-media" title="Media type">
+                      <select id="<%= searchPrefix %>SearchTypeFilter" aria-label="Media type">
+                        <option value="all" selected>All</option>
+                        <option value="movie">Movies</option>
+                        <option value="show">TV</option>
+                      </select>
+                    </div>
+                    <div class="plex-search" title="Search">
+                      <input id="<%= searchPrefix %>SearchInput" type="text" placeholder="Search movies &amp; TV shows…" aria-label="Search" />
+                      <button class="plex-search-btn" id="<%= searchPrefix %>SearchButton" type="button">Search</button>
+                    </div>
+                    <button class="plex-iconbtn" id="<%= searchPrefix %>SearchPrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
+                    <button class="plex-iconbtn" id="<%= searchPrefix %>SearchNextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="<%= searchPrefix %>-search" data-collapse-global="true">
+                      <div class="plex-doublechev"><div class="plex-chev plex-up"></div><div class="plex-chev plex-down"></div></div>
+                    </button>
+                  </div>
+                </div>
+                <div class="plex-panel">
+                  <div id="<%= searchPrefix %>SearchViewport" class="plex-carousel-viewport">
+                    <div id="<%= searchPrefix %>SearchTrack" class="plex-carousel-track">
+                      <div class="plex-empty">Search for movies and TV shows above.</div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            <% } %>
             <% if (['pulsarr', 'seerr'].includes(item.app.id) && item.element.id === 'most-watchlisted') { %>
               <% const requestPrefix = item.app.id; %>
               <% const requestAppLogo = resolveAppIconPath(item.app); %>
@@ -2209,7 +2249,7 @@
             <%
               const requestAppIds = Array.from(new Set(
                 dashboardModules
-                  .filter((entry) => ['pulsarr', 'seerr'].includes(entry.app.id) && ['recent-requests', 'most-watchlisted'].includes(entry.element.id))
+                  .filter((entry) => ['pulsarr', 'seerr'].includes(entry.app.id) && ['recent-requests', 'most-watchlisted', 'search'].includes(entry.element.id))
                   .map((entry) => entry.app.id)
               ));
             %>
@@ -3035,10 +3075,10 @@
       <script src="/media-overview.js?v=<%= assetVersion %>"></script>
     <% } %>
   <% } %>
-  <% if (dashboardModules.some((item) => ['pulsarr', 'seerr'].includes(item.app.id) && (item.element.id === 'recent-requests' || item.element.id === 'most-watchlisted'))) { %>
+  <% if (dashboardModules.some((item) => ['pulsarr', 'seerr'].includes(item.app.id) && (item.element.id === 'recent-requests' || item.element.id === 'most-watchlisted' || item.element.id === 'search'))) { %>
     <% const requestOverviewApps = Array.from(new Set(
       dashboardModules
-        .filter((item) => ['pulsarr', 'seerr'].includes(item.app.id) && (item.element.id === 'recent-requests' || item.element.id === 'most-watchlisted'))
+        .filter((item) => ['pulsarr', 'seerr'].includes(item.app.id) && (item.element.id === 'recent-requests' || item.element.id === 'most-watchlisted' || item.element.id === 'search'))
         .map((item) => item.app.id)
     )).map((id) => dashboardModules.find((entry) => entry.app.id === id)?.app).filter(Boolean); %>
     <% requestOverviewApps.forEach((requestApp) => { %>

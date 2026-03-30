@@ -1251,9 +1251,11 @@
           const overviewById = new Map(overviewItems.map((item) => [item.id, item]));
           const recentRequestsSettings = overviewById.get('recent-requests') || { enable: true, order: 1 };
           const watchlistedSettings = overviewById.get('most-watchlisted') || { enable: true, order: 2 };
+          const searchSettings = appBaseId === 'seerr' ? (overviewById.get('search') || { enable: true, order: 3 }) : null;
           const orderedPulsarrSections = [
             { id: 'recent-requests', settings: recentRequestsSettings },
             { id: 'most-watchlisted', settings: watchlistedSettings },
+            ...(searchSettings ? [{ id: 'search', settings: searchSettings }] : []),
           ]
             .filter((item) => item.settings?.enable !== false)
             .sort((a, b) => {
@@ -1313,6 +1315,53 @@
                   <div id="<%= requestPrefix %>RequestsViewport" class="plex-carousel-viewport">
                     <div id="<%= requestPrefix %>RequestsTrack" class="plex-carousel-track">
                       <div class="plex-empty">Loading…</div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            <% } %>
+            <% if (section.id === 'search') { %>
+              <section class="plex-module plex-module--no-subtitle" id="<%= requestPrefix %>-search">
+                <div class="plex-topbar">
+                  <div class="plex-title-wrap">
+                    <div class="plex-title">
+                      <img class="plex-logo" src="<%= requestAppLogo %>" alt="<%= requestAppName %>" loading="eager" onerror="this.src='/icons/app.svg'" />
+                      <span>Media Search</span>
+                    </div>
+                    <div class="plex-subtitle"></div>
+                  </div>
+
+                  <div class="plex-spacer"></div>
+
+                  <div class="plex-controls-right">
+                    <div class="plex-select plex-icon plex-filter-media" title="Media type">
+                      <select id="<%= requestPrefix %>SearchTypeFilter" aria-label="Media type">
+                        <option value="all" selected>All</option>
+                        <option value="movie">Movies</option>
+                        <option value="show">TV</option>
+                      </select>
+                    </div>
+
+                    <div class="plex-search" title="Search">
+                      <input id="<%= requestPrefix %>SearchInput" type="text" placeholder="Search movies &amp; TV shows…" aria-label="Search" />
+                      <button class="plex-search-btn" id="<%= requestPrefix %>SearchButton" type="button">Search</button>
+                    </div>
+
+                    <button class="plex-iconbtn" id="<%= requestPrefix %>SearchPrevBtn" type="button" aria-label="Previous"><div class="plex-chev plex-left"></div></button>
+                    <button class="plex-iconbtn" id="<%= requestPrefix %>SearchNextBtn" type="button" aria-label="Next"><div class="plex-chev plex-right"></div></button>
+                    <button class="plex-iconbtn plex-collapse-btn" type="button" aria-label="Collapse" data-target="<%= requestPrefix %>-search" data-collapse-global="true">
+                      <div class="plex-doublechev">
+                        <div class="plex-chev plex-up"></div>
+                        <div class="plex-chev plex-down"></div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="plex-panel">
+                  <div id="<%= requestPrefix %>SearchViewport" class="plex-carousel-viewport">
+                    <div id="<%= requestPrefix %>SearchTrack" class="plex-carousel-track">
+                      <div class="plex-empty">Search for movies and TV shows above.</div>
                     </div>
                   </div>
                 </div>

@@ -338,6 +338,7 @@ const APP_OVERVIEW_ELEMENTS = {
   seerr: [
     { id: 'recent-requests', name: 'Recent Requests' },
     { id: 'most-watchlisted', name: 'Most Watchlisted' },
+    { id: 'search', name: 'Media Search' },
   ],
   prowlarr: [
     { id: 'search', name: 'Indexer Search' },
@@ -1390,6 +1391,144 @@ function pushLog(entry) {
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.set('trust proxy', TRUST_PROXY_SETTING);
+
+function getConfiguredBasePath() {
+  const config = loadConfig();
+  const generalSettings = resolveGeneralSettings(config);
+  return normalizeBasePath(generalSettings.basePath || '');
+}
+
+function withBasePath(basePath, targetPath) {
+  const pathValue = String(targetPath || '').trim();
+  if (!pathValue) return basePath || '';
+  if (!basePath) return pathValue;
+  if (/^https?:\/\//i.test(pathValue)) return pathValue;
+  if (pathValue.startsWith(basePath + '/')) return pathValue;
+  if (pathValue.startsWith('/')) return `${basePath}${pathValue}`;
+  return `${basePath}/${pathValue}`;
+}
+
+app.use((req, res, next) => {
+  const basePath = getConfiguredBasePath();
+  req.launcharrBasePath = basePath;
+  res.locals.basePath = basePath;
+  res.locals.withBasePath = (targetPath) => withBasePath(basePath, targetPath);
+  next();
+});
+
+app.use((req, res, next) => {
+  const basePath = req.launcharrBasePath || '';
+  if (!basePath) return next();
+
+  const rawUrl = String(req.url || '');
+  if (rawUrl === '/' || rawUrl === '' || rawUrl === basePath) {
+    res.redirect(302, `${basePath}/`);
+    return;
+  }
+  if (!rawUrl.startsWith(`${basePath}/`)) {
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      const suffix = rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`;
+      res.redirect(302, `${basePath}${suffix}`);
+      return;
+    }
+    return next();
+  }
+  req.url = rawUrl.slice(basePath.length) || '/';
+  next();
+});
+
+app.get('/manifest.webmanifest', (req, res) => {
+  const basePath = req.launcharrBasePath || '';
+  const manifest = {
+    name: 'Launcharr',
+    short_name: 'Launcharr',
+    description: 'Homepage and central hub for Arr suite apps with Plex SSO',
+    start_url: withBasePath(basePath, '/dashboard'),
+    scope: withBasePath(basePath, '/'),
+    display: 'standalone',
+    background_color: '#0b1118',
+    theme_color: '#1cc6c2',
+    icons: [
+      {
+        src: withBasePath(basePath, '/icons/launcharr-icon.png'),
+        sizes: 'any',
+        type: 'image/png',
+        purpose: 'any maskable',
+      },
+    ],
+  };
+  res.setHeader('Content-Type', 'application/manifest+json');
+  res.send(JSON.stringify(manifest, null, 2));
+});
+
+app.get('/sw.js', (req, res) => {
+  const basePath = req.launcharrBasePath || '';
+  const prefix = (pathValue) => withBasePath(basePath, pathValue);
+  const staticAssets = [
+    prefix('/manifest.webmanifest'),
+    prefix('/styles.css'),
+    prefix('/icons/launcharr-icon.png'),
+    prefix('/icons/app.svg'),
+    prefix('/icons/app-arr.svg'),
+    prefix('/icons/prowlarr.png'),
+    prefix('/icons/dashboard.svg'),
+    prefix('/icons/overview.svg'),
+    prefix('/icons/launch.svg'),
+    prefix('/icons/settings.svg'),
+    prefix('/icons/logout.svg'),
+    prefix('/icons/collapse.svg'),
+    prefix('/icons/expand.svg'),
+    prefix('/icons/all-type.svg'),
+    prefix('/icons/window.svg'),
+    prefix('/icons/status.svg'),
+  ];
+  const cacheName = `launcharr-static-${basePath || 'root'}`;
+  const script = `const CACHE_NAME = ${JSON.stringify(cacheName)};\n` +
+    `const STATIC_ASSETS = ${JSON.stringify(staticAssets, null, 2)};\n` +
+    `self.addEventListener('install', (event) => {\n` +
+    `  event.waitUntil(\n` +
+    `    caches.open(CACHE_NAME)\n` +
+    `      .then((cache) => cache.addAll(STATIC_ASSETS))\n` +
+    `      .then(() => self.skipWaiting())\n` +
+    `  );\n` +
+    `});\n\n` +
+    `self.addEventListener('activate', (event) => {\n` +
+    `  event.waitUntil(\n` +
+    `    caches.keys().then((keys) =>\n` +
+    `      Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))\n` +
+    `    ).then(() => self.clients.claim())\n` +
+    `  );\n` +
+    `});\n\n` +
+    `self.addEventListener('fetch', (event) => {\n` +
+    `  const { request } = event;\n\n` +
+    `  if (request.method !== 'GET') return;\n` +
+    `  if (request.mode === 'navigate') return;\n\n` +
+    `  const url = new URL(request.url);\n` +
+    `  if (url.origin !== self.location.origin) return;\n\n` +
+    `  const isStaticAsset =\n` +
+    `    request.destination === 'style' ||\n` +
+    `    request.destination === 'image' ||\n` +
+    `    request.destination === 'font' ||\n` +
+    `    url.pathname.endsWith('.webmanifest');\n\n` +
+    `  if (!isStaticAsset) return;\n\n` +
+    `  event.respondWith(\n` +
+    `    (async () => {\n` +
+    `      const cache = await caches.open(CACHE_NAME);\n` +
+    `      try {\n` +
+    `        const fresh = await fetch(request);\n` +
+    `        cache.put(request, fresh.clone());\n` +
+    `        return fresh;\n` +
+    `      } catch (err) {\n` +
+    `        const cached = await cache.match(request);\n` +
+    `        if (cached) return cached;\n` +
+    `        throw err;\n` +
+    `      }\n` +
+    `    })()\n` +
+    `  );\n` +
+    `});\n`;
+  res.setHeader('Content-Type', 'application/javascript');
+  res.send(script);
+});
 
 app.use(httpAccessLogMiddleware);
 app.use((req, res, next) => {
