@@ -1,4 +1,15 @@
-# Release Notes (v0.1.0 -> v0.2.53)
+# Release Notes (v0.1.0 -> v0.2.54)
+
+## v0.2.54 (2026-03-30)
+
+- [Added]
+- Added base-path hosting support (for example `/launcharr`), including route mounting, redirects, and public URL generation.
+- [Fixed]
+- Fixed local and Plex login flows when Launcharr is served under a base path.
+- Fixed manifest/service worker resolution under a base path.
+- Fixed base-path asset loading for overview icon CSS.
+- [Changed]
+- Base-path handling now rewrites root-absolute asset, link, and API URLs at runtime to match the configured subpath.
 
 ## v0.2.53 (2026-03-29)
 
