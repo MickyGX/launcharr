@@ -328,6 +328,8 @@
     const value = String(status || '').toLowerCase();
     if (value === 'available') return '#2bd56f';
     if (value === 'requested') return '#ffd36c';
+    if (value === 'processing') return '#5b9cf6';
+    if (value === 'partial') return '#4ec9b0';
     return '#9aa3b5';
   }
 
@@ -400,14 +402,20 @@
       || entry?.first_requested
       || entry?.date
       || '';
+    const status = entry?.status || null;
+    const pill = status
+      ? status.charAt(0).toUpperCase() + status.slice(1)
+      : count > 0 ? String(count) + ' watched' : 'Top';
     return {
       title: String(entry?.title || entry?.name || 'Unknown Title'),
       subtitle: resolvedType === 'show' ? 'TV Show' : 'Movie',
       meta: users ? String(users) + ' users' : '',
       thumb: posterUrl(entry),
-      pill: count > 0 ? String(count) + ' watched' : 'Top',
+      pill,
+      pillColor: status ? statusColor(status) : undefined,
       score: count,
       mediaType: resolvedType,
+      status,
       createdAt: new Date(createdAtRaw).getTime(),
       overview: String(entry?.overview || entry?.description || ''),
       tmdbId: findTmdbIdFromGuids(entry?.guids),
@@ -646,7 +654,7 @@
     const typeSvg = item.mediaType === 'show' ? tvIcon() : movieIcon();
     const metaLine = [subtitle, meta].filter(Boolean).join(' | ');
 
-    const showRequestBtn = appId === 'seerr' && item.sectionId === 'search' && !item.status && item.tmdbId;
+    const showRequestBtn = appId === 'seerr' && (item.sectionId === 'search' || item.sectionId === 'most-watchlisted') && !item.status && item.tmdbId;
     card.innerHTML =
       '<div class="plex-poster-wrap">' +
         '<div class="plex-poster-well">' +
@@ -723,7 +731,7 @@
         '</div>' +
       '</div>' +
       '<div class="plex-modal-footer">' +
-        (appId === 'seerr' && item.sectionId === 'search' && !item.status && item.tmdbId
+        (appId === 'seerr' && (item.sectionId === 'search' || item.sectionId === 'most-watchlisted') && !item.status && item.tmdbId
           ? '<button class="plex-modal-link plex-modal-request" data-action="modal-request" title="Send request to Seerr">Request</button>'
           : '') +
         '<a id="' + prefixedId('ModalImdbLink') + '" class="plex-modal-link" href="' + imdbUrl + '" target="_blank" rel="noreferrer">IMDb</a>' +
@@ -963,11 +971,7 @@
       : status === 'processing' ? 'Processing'
       : status === 'partial' ? 'Partial'
       : '';
-    const pillColor = status === 'available' ? '#2bd56f'
-      : status === 'requested' ? '#ffd36c'
-      : status === 'processing' ? '#5b9cf6'
-      : status === 'partial' ? '#4ec9b0'
-      : '';
+    const pillColor = status ? statusColor(status) : '';
     return {
       title: String(item?.title || 'Unknown'),
       subtitle: year,

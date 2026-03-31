@@ -9218,7 +9218,7 @@ function requireAdmin(req, res, next) {
     } catch (err) {
       /* ignore session write errors and fall back to plain login redirect */
     }
-    return res.redirect('/login');
+    return res.redirect((res.locals.withBasePath || ((p) => p))('/login'));
   }
   pushLog({
     level: 'error',
@@ -9242,7 +9242,7 @@ function requireActualAdmin(req, res, next) {
     } catch (err) {
       /* ignore session write errors and fall back to plain login redirect */
     }
-    return res.redirect('/login');
+    return res.redirect((res.locals.withBasePath || ((p) => p))('/login'));
   }
   pushLog({
     level: 'error',
@@ -9257,15 +9257,16 @@ function requireActualAdmin(req, res, next) {
 function requireSettingsAdmin(req, res, next) {
   const role = getActualRole(req);
   if (role === 'admin') return next();
-  const requestPath = String(req.originalUrl || req.url || '').trim() || '/settings';
+  const originalPath = String(req.originalUrl || req.url || '').trim() || '/settings';
+  const strippedPath = String(req.url || '').trim() || '/settings';
   const method = String(req.method || 'GET').toUpperCase();
-  if (!role && (method === 'GET' || method === 'HEAD') && requestPath.startsWith('/settings')) {
+  if (!role && (method === 'GET' || method === 'HEAD') && strippedPath.startsWith('/settings')) {
     try {
-      if (req.session) req.session.postLoginRedirect = requestPath;
+      if (req.session) req.session.postLoginRedirect = originalPath;
     } catch (err) {
       /* ignore session write errors and fall back to plain login redirect */
     }
-    return res.redirect('/login');
+    return res.redirect((res.locals.withBasePath || ((p) => p))('/login'));
   }
   pushLog({
     level: 'error',
@@ -9287,7 +9288,7 @@ function requireUser(req, res, next) {
     message: 'User authentication required.',
     meta: { path: req.originalUrl || req.url || '' },
   });
-  res.redirect('/login');
+  res.redirect((res.locals.withBasePath || ((p) => p))('/login'));
 }
 
 function getActualRole(req) {

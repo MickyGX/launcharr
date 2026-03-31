@@ -26,6 +26,16 @@ export function registerApiMedia(app, ctx) {
     mergeAppHeaders,
   } = ctx;
 
+  function mapMediaStatus(mediaInfo) {
+    if (!mediaInfo) return null;
+    const status = Number(mediaInfo.status);
+    if (status === 5) return 'available';
+    if (status === 4) return 'partial';
+    if (status === 3) return 'processing';
+    if (status === 2) return 'requested';
+    return null;
+  }
+
   app.get('/api/jellyfin/active', requireUser, async (req, res) => {
     const config = loadConfig();
     const apps = config.apps || [];
@@ -599,6 +609,7 @@ export function registerApiMedia(app, ctx) {
             posterPath: entry?.posterPath || entry?.poster_path || '',
             overview: String(entry?.overview || '').trim(),
             guids: tmdbId ? [`tmdb:${tmdbId}`] : [],
+            status: mapMediaStatus(entry.mediaInfo),
           };
         });
 
@@ -762,16 +773,6 @@ export function registerApiMedia(app, ctx) {
 
     const candidates = resolveRequestApiCandidates(seerrApp, req);
     if (!candidates.length) return res.status(400).json({ error: 'Missing Seerr URL.' });
-
-    const mapMediaStatus = (mediaInfo) => {
-      if (!mediaInfo) return null;
-      const status = Number(mediaInfo.status);
-      if (status === 5) return 'available';
-      if (status === 4) return 'partial';
-      if (status === 3) return 'processing';
-      if (status === 2) return 'requested';
-      return null;
-    };
 
     try {
       // Seerr rejects `+`-encoded spaces (URLSearchParams default); use encodeURIComponent for %20 encoding

@@ -1,4 +1,14 @@
-# Release Notes (v0.1.0 -> v0.2.54)
+# Release Notes (v0.1.0 -> v0.2.55)
+
+## v0.2.55 (2026-03-31)
+
+- [Fixed]
+- Fixed all auth redirects (`/login`, `/dashboard`, `/setup`, `/`) ignoring the configured base path — users behind a subdirectory reverse proxy (e.g. NPM) were sent to bare paths that never matched the proxy's location block, causing 404s or redirect loops after login/logout.
+- Fixed auth guard functions (`requireAdmin`, `requireActualAdmin`, `requireSettingsAdmin`, `requireUser`) sending bare `/login` redirects, same root cause.
+- Fixed `requireSettingsAdmin` path check incorrectly using `req.originalUrl` (which includes the base-path prefix) so that unauthenticated access to `/settings` under a base path resulted in a 403 instead of a redirect to login.
+- [Changed]
+- Pulsarr / Seerr "most-watchlisted" cards now show a coloured status pill (Available, Requested, Processing, Partial) and a Request button — matching the search section behaviour. The `mapMediaStatus` helper was promoted to module scope so both sections share it.
+- `statusColor()` in `pulsarr-overview.js` now covers `processing` (blue) and `partial` (teal); the inline status-colour ternary in the Seerr section is replaced with the shared helper.
 
 ## v0.2.54 (2026-03-30)
 

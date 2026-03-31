@@ -116,6 +116,10 @@ function recordPlexPinStatusRequest(ip) {
 export function resetLoginAttempts() { loginAttempts.clear(); }
 export { checkLoginRateLimit, recordLoginFailure, clearLoginFailures };
 
+function bp(res, path) {
+  return (res.locals.withBasePath || ((p) => p))(path);
+}
+
 function normalizePostLoginRedirectPath(value, fallback = '/dashboard') {
   const raw = String(value || '').trim();
   if (!raw) return fallback;
@@ -173,16 +177,16 @@ export function registerAuth(app, ctx) {
 
   app.get('/', (req, res) => {
     const user = req.session?.user || null;
-    if (!user) return res.redirect('/login');
-    return res.redirect('/dashboard');
+    if (!user) return res.redirect(bp(res, '/login'));
+    return res.redirect(bp(res, '/dashboard'));
   });
 
   app.get('/login', (req, res) => {
     const user = req.session?.user || null;
-    if (user) return res.redirect(consumePostLoginRedirect(req, '/dashboard'));
+    if (user) return res.redirect(bp(res, consumePostLoginRedirect(req, '/dashboard')));
     if (req.query?.next) setPostLoginRedirect(req, req.query.next);
     const config = loadConfig();
-    if (!hasLocalAdmin(config)) return res.redirect('/setup');
+    if (!hasLocalAdmin(config)) return res.redirect(bp(res, '/setup'));
     res.render('login', {
       title: 'Launcharr',
       product: PRODUCT,
@@ -194,7 +198,7 @@ export function registerAuth(app, ctx) {
 
   app.post('/login', (req, res) => {
     const user = req.session?.user || null;
-    if (user) return res.redirect(consumePostLoginRedirect(req, '/dashboard'));
+    if (user) return res.redirect(bp(res, consumePostLoginRedirect(req, '/dashboard')));
     if (req.body?.next) setPostLoginRedirect(req, req.body.next);
 
     const ip = getClientIp(req);
@@ -212,7 +216,7 @@ export function registerAuth(app, ctx) {
 
     const config = loadConfig();
     const users = resolveLocalUsers(config);
-    if (!users.length) return res.redirect('/setup');
+    if (!users.length) return res.redirect(bp(res, '/setup'));
     const identifier = String(req.body?.username || '').trim();
     const password = String(req.body?.password || '');
     const match = users.find((entry) => {
@@ -244,14 +248,14 @@ export function registerAuth(app, ctx) {
       launcharr: true,
     });
     if (loginConfig !== config) saveConfig(loginConfig);
-    return res.redirect(consumePostLoginRedirect(req, '/dashboard'));
+    return res.redirect(bp(res, consumePostLoginRedirect(req, '/dashboard')));
   });
 
   app.get('/setup', (req, res) => {
     const user = req.session?.user || null;
-    if (user) return res.redirect('/dashboard');
+    if (user) return res.redirect(bp(res, '/dashboard'));
     const config = loadConfig();
-    if (hasLocalAdmin(config)) return res.redirect('/login');
+    if (hasLocalAdmin(config)) return res.redirect(bp(res, '/login'));
     res.render('setup', {
       title: 'Launcharr Setup',
       minPassword: LOCAL_AUTH_MIN_PASSWORD,
@@ -265,9 +269,9 @@ export function registerAuth(app, ctx) {
 
   app.post('/setup', (req, res) => {
     const user = req.session?.user || null;
-    if (user) return res.redirect('/dashboard');
+    if (user) return res.redirect(bp(res, '/dashboard'));
     const config = loadConfig();
-    if (hasLocalAdmin(config)) return res.redirect('/login');
+    if (hasLocalAdmin(config)) return res.redirect(bp(res, '/login'));
 
     const ip = getClientIp(req);
     const setupBlocked = checkSetupRateLimit(ip);
@@ -353,7 +357,7 @@ export function registerAuth(app, ctx) {
 
     saveConfig({ ...config, users: serializeLocalUsers([...users, newUser]) });
     setSessionUser(req, newUser, 'local');
-    return res.redirect('/dashboard');
+    return res.redirect(bp(res, '/dashboard'));
   });
 
   app.get('/auth/plex', async (req, res) => {
@@ -467,7 +471,7 @@ export function registerAuth(app, ctx) {
       }
 
       await completePlexLogin(req, authToken);
-      res.redirect(consumePostLoginRedirect(req, '/dashboard'));
+      res.redirect(bp(res, consumePostLoginRedirect(req, '/dashboard')));
     } catch (err) {
       pushLog({
         level: 'error',
@@ -500,7 +504,7 @@ export function registerAuth(app, ctx) {
       const authToken = await exchangePin(pinId);
       if (!authToken) return res.json({ ok: false });
       await completePlexLogin(req, authToken);
-      return res.json({ ok: true, redirect: consumePostLoginRedirect(req, '/dashboard') });
+      return res.json({ ok: true, redirect: bp(res, consumePostLoginRedirect(req, '/dashboard')) });
     } catch (err) {
       const status = err?.status || 500;
       return res.status(status).json({ error: safeMessage(err) || 'PIN status check failed.' });
@@ -517,7 +521,7 @@ export function registerAuth(app, ctx) {
       meta: { user: user.username || user.email || '' },
     });
     req.session = null;
-    return res.redirect('/');
+    return res.redirect(bp(res, '/'));
   };
 
   app.post('/logout', logoutHandler);
