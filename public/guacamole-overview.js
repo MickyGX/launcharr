@@ -2,6 +2,7 @@
   'use strict';
 
   const config = window.GUACAMOLE_OVERVIEW_CONFIG || {};
+  const dashboardRefresh = window.LAUNCHARR_DASHBOARD_REFRESH;
   const appId = String(config.appId || 'guacamole').trim() || 'guacamole';
   const appName = String(config.appName || 'Guacamole').trim() || 'Guacamole';
 
@@ -17,6 +18,12 @@
   let cachedActiveSessions = null;
   let cachedConnections = null;
   let cacheTs = 0;
+
+  function bindDashboardRefresh(callback) {
+    if (!dashboardRefresh || typeof dashboardRefresh.onRefresh !== 'function' || typeof callback !== 'function') return false;
+    dashboardRefresh.onRefresh(callback);
+    return true;
+  }
 
   function escapeHtml(value) {
     return String(value || '').replace(/[&<>\"']/g, (char) => (
@@ -113,9 +120,15 @@
   loadOverview();
 
   // Auto-refresh every 30s to catch new sessions
-  setInterval(() => {
+  if (!bindDashboardRefresh(() => {
     cachedActiveSessions = null;
     cachedConnections = null;
     loadOverview();
-  }, 30000);
+  })) {
+    setInterval(() => {
+      cachedActiveSessions = null;
+      cachedConnections = null;
+      loadOverview();
+    }, 30000);
+  }
 })();

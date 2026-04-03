@@ -2,6 +2,7 @@
   'use strict';
 
   const config = window.TDARR_OVERVIEW_CONFIG || {};
+  const dashboardRefresh = window.LAUNCHARR_DASHBOARD_REFRESH;
   const appName = String(config.appName || 'Tdarr').trim() || 'Tdarr';
 
   const container = document.getElementById('tdarrStatsContainer');
@@ -9,6 +10,12 @@
 
   const CACHE_TTL_MS = 30 * 1000;
   let cacheTs = 0;
+
+  function bindDashboardRefresh(callback) {
+    if (!dashboardRefresh || typeof dashboardRefresh.onRefresh !== 'function' || typeof callback !== 'function') return false;
+    dashboardRefresh.onRefresh(callback);
+    return true;
+  }
 
   function escapeHtml(value) {
     return String(value || '').replace(/[&<>"']/g, (char) => (
@@ -57,5 +64,10 @@
   loadStats();
 
   // Refresh stats periodically
-  setInterval(loadStats, 60 * 1000);
+  if (!bindDashboardRefresh(() => {
+    cacheTs = 0;
+    loadStats();
+  })) {
+    setInterval(loadStats, 60 * 1000);
+  }
 })();

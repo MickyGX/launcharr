@@ -13,6 +13,13 @@
     ? window.MEDIA_OVERVIEW_COMBINED_CONFIGS
     : [];
   if (!configs.length) return;
+  var dashboardRefresh = window.LAUNCHARR_DASHBOARD_REFRESH;
+
+  function bindDashboardRefresh(callback) {
+    if (!dashboardRefresh || typeof dashboardRefresh.onRefresh !== 'function' || typeof callback !== 'function') return false;
+    dashboardRefresh.onRefresh(callback);
+    return true;
+  }
 
   function escapeHtml(value) {
     return String(value || '')
@@ -755,6 +762,7 @@
     if (sourceSelect) sourceSelect.addEventListener('change', reload);
     if (typeSelect) typeSelect.addEventListener('change', reload);
     if (limitSelect) limitSelect.addEventListener('change', reload);
+    bindDashboardRefresh(reload);
     reload();
   });
 })();

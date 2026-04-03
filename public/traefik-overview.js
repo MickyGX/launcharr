@@ -2,6 +2,7 @@
   'use strict';
 
   const config = window.TRAEFIK_OVERVIEW_CONFIG || {};
+  const dashboardRefresh = window.LAUNCHARR_DASHBOARD_REFRESH;
   const appId = String(config.appId || 'traefik').trim() || 'traefik';
   const appName = String(config.appName || 'Traefik').trim() || 'Traefik';
 
@@ -17,6 +18,12 @@
   let cachedRouters = null;
   let cachedServices = null;
   let cacheTs = 0;
+
+  function bindDashboardRefresh(callback) {
+    if (!dashboardRefresh || typeof dashboardRefresh.onRefresh !== 'function' || typeof callback !== 'function') return false;
+    dashboardRefresh.onRefresh(callback);
+    return true;
+  }
 
   function escapeHtml(value) {
     return String(value || '').replace(/[&<>"']/g, (char) => (
@@ -106,9 +113,15 @@
 
   loadOverview();
 
-  setInterval(() => {
+  if (!bindDashboardRefresh(() => {
     cachedRouters = null;
     cachedServices = null;
     loadOverview();
-  }, 30000);
+  })) {
+    setInterval(() => {
+      cachedRouters = null;
+      cachedServices = null;
+      loadOverview();
+    }, 30000);
+  }
 })();

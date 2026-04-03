@@ -15,6 +15,13 @@
     configs.push(window.MAINTAINERR_OVERVIEW_CONFIG);
   }
   if (!configs.length) return;
+  var dashboardRefresh = window.LAUNCHARR_DASHBOARD_REFRESH;
+
+  function bindDashboardRefresh(callback) {
+    if (!dashboardRefresh || typeof dashboardRefresh.onRefresh !== 'function' || typeof callback !== 'function') return false;
+    dashboardRefresh.onRefresh(callback);
+    return true;
+  }
 
   function escapeHtml(value) {
     return String(value || '')
@@ -636,17 +643,22 @@
     letterFilter && letterFilter.addEventListener('change', applyFilters);
     limitFilter && limitFilter.addEventListener('change', applyFilters);
 
-    track.innerHTML = '<div class="plex-empty">Loading…</div>';
-    fetchJson(config.endpoint)
-      .then(function (payload) {
-        var list = Array.isArray(payload && payload.items) ? payload.items : [];
-        sourceItems = list.map(function (entry) { return normalizeMediaItem(entry, 'library-media'); });
-        applyFilters();
-      })
-      .catch(function (err) {
-        sourceItems = [];
-        track.innerHTML = '<div class="plex-empty">' + escapeHtml(err && err.message ? err.message : 'Failed to load Maintainerr library.') + '</div>';
-      });
+    function loadLibraryItems() {
+      track.innerHTML = '<div class="plex-empty">Loading…</div>';
+      fetchJson(config.endpoint)
+        .then(function (payload) {
+          var list = Array.isArray(payload && payload.items) ? payload.items : [];
+          sourceItems = list.map(function (entry) { return normalizeMediaItem(entry, 'library-media'); });
+          applyFilters();
+        })
+        .catch(function (err) {
+          sourceItems = [];
+          track.innerHTML = '<div class="plex-empty">' + escapeHtml(err && err.message ? err.message : 'Failed to load Maintainerr library.') + '</div>';
+        });
+    }
+
+    bindDashboardRefresh(loadLibraryItems);
+    loadLibraryItems();
   }
 
   function mountRulesSection(config) {
@@ -720,34 +732,39 @@
     typeFilter && typeFilter.addEventListener('change', applyFilters);
     statusFilter && statusFilter.addEventListener('change', applyFilters);
 
-    track.innerHTML = '<div class="plex-empty">Loading…</div>';
-    fetchJson(config.endpoint)
-      .then(function (payload) {
-        var list = Array.isArray(payload && payload.items) ? payload.items : [];
-        sourceItems = list.map(function (entry) {
-          var normalized = normalizeMediaItem(entry, 'rules');
-          normalized.id = entry && entry.id;
-          normalized.name = String(entry && entry.name || 'Rule').trim();
-          normalized.title = normalized.name;
-          normalized.description = String(entry && entry.description || '').trim();
-          normalized.overview = normalized.description;
-          normalized.status = String(entry && entry.status || (entry && entry.isActive === false ? 'paused' : 'active')).trim().toLowerCase();
-          normalized.kind = normalizeKind(entry && entry.kind, 'movie');
-          normalized.libraryLabel = String(entry && entry.libraryLabel || '').trim();
-          normalized.subtitle = normalized.libraryLabel;
-          normalized.meta = 'Conditions: ' + String(Number(entry && entry.rulesCount || 0));
-          normalized.rulesCount = Number(entry && entry.rulesCount || 0);
-          normalized.pill = normalized.status === 'paused' ? 'Paused' : 'Active';
-          normalized.thumb = '';
-          normalized.art = '';
-          return normalized;
-        }).filter(function (entry) { return Boolean(entry && entry.id); });
-        applyFilters();
-      })
-      .catch(function (err) {
-        sourceItems = [];
-        track.innerHTML = '<div class="plex-empty">' + escapeHtml(err && err.message ? err.message : 'Failed to load Maintainerr rules.') + '</div>';
-      });
+    function loadRules() {
+      track.innerHTML = '<div class="plex-empty">Loading…</div>';
+      fetchJson(config.endpoint)
+        .then(function (payload) {
+          var list = Array.isArray(payload && payload.items) ? payload.items : [];
+          sourceItems = list.map(function (entry) {
+            var normalized = normalizeMediaItem(entry, 'rules');
+            normalized.id = entry && entry.id;
+            normalized.name = String(entry && entry.name || 'Rule').trim();
+            normalized.title = normalized.name;
+            normalized.description = String(entry && entry.description || '').trim();
+            normalized.overview = normalized.description;
+            normalized.status = String(entry && entry.status || (entry && entry.isActive === false ? 'paused' : 'active')).trim().toLowerCase();
+            normalized.kind = normalizeKind(entry && entry.kind, 'movie');
+            normalized.libraryLabel = String(entry && entry.libraryLabel || '').trim();
+            normalized.subtitle = normalized.libraryLabel;
+            normalized.meta = 'Conditions: ' + String(Number(entry && entry.rulesCount || 0));
+            normalized.rulesCount = Number(entry && entry.rulesCount || 0);
+            normalized.pill = normalized.status === 'paused' ? 'Paused' : 'Active';
+            normalized.thumb = '';
+            normalized.art = '';
+            return normalized;
+          }).filter(function (entry) { return Boolean(entry && entry.id); });
+          applyFilters();
+        })
+        .catch(function (err) {
+          sourceItems = [];
+          track.innerHTML = '<div class="plex-empty">' + escapeHtml(err && err.message ? err.message : 'Failed to load Maintainerr rules.') + '</div>';
+        });
+    }
+
+    bindDashboardRefresh(loadRules);
+    loadRules();
   }
 
   function mountCollectionsSection(config) {
@@ -828,6 +845,7 @@
     typeFilter && typeFilter.addEventListener('change', applyFilters);
     limitFilter && limitFilter.addEventListener('change', applyFilters);
 
+    bindDashboardRefresh(loadCollectionsItems);
     loadCollectionsItems();
   }
 

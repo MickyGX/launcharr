@@ -3,31 +3,90 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-// Set env vars BEFORE importing the app — must happen before any dynamic import
+// Set env vars BEFORE importing the app — must happen before any dynamic import.
 const testDir = join(tmpdir(), `launcharr-test-${process.pid}`);
 process.env.CONFIG_PATH = join(testDir, 'config.json');
 process.env.DATA_DIR = join(testDir, 'data');
 process.env.SESSION_SECRET = 'test-secret-do-not-use-in-prod';
-process.env.PLEX_CLIENT_ID = 'test-client-id'; // skip file I/O for plex client id
+process.env.PLEX_CLIENT_ID = 'test-client-id';
 
-// Dynamic imports so env vars are set first
 const { default: supertest } = await import('supertest');
-const { app } = await import('../index.js');
+const { app, resolveCookieSecureSetting } = await import('../index.js');
 const {
-  resetLoginAttempts,
+  resetAuthRateLimits,
   checkLoginRateLimit,
   recordLoginFailure,
   clearLoginFailures,
+  checkPlexPinCreateRateLimit,
+  recordPlexPinCreateRequest,
 } = await import('../routes/auth.js');
 
 const request = supertest(app);
+const TEST_HOST = '127.0.0.1';
+const TEST_ORIGIN = `http://${TEST_HOST}`;
 
-// ---------------------------------------------------------------------------
-// Unit tests — rate limiter pure helpers
-// ---------------------------------------------------------------------------
+function extractCsrfToken(html) {
+  const match = String(html || '').match(/name="_csrf"\s+value="([^"]+)"/i);
+  return match ? match[1] : '';
+}
+
+async function getCsrfToken(agent, path) {
+  const res = await agent.get(path).set('Host', TEST_HOST);
+  assert.equal(res.status, 200, `expected GET ${path} to return 200`);
+  const csrfToken = extractCsrfToken(res.text);
+  assert.ok(csrfToken, `expected GET ${path} to render a CSRF token`);
+  return csrfToken;
+}
+
+function browserHeaders(path) {
+  return {
+    Host: TEST_HOST,
+    Origin: TEST_ORIGIN,
+    Referer: `${TEST_ORIGIN}${path}`,
+  };
+}
+
+async function postForm(agent, path, fields, refererPath = path) {
+  const csrfToken = await getCsrfToken(agent, refererPath);
+  return agent
+    .post(path)
+    .set(browserHeaders(refererPath))
+    .type('form')
+    .send({
+      ...fields,
+      _csrf: csrfToken,
+    });
+}
+
+async function postJson(agent, path, body, refererPath = '/login') {
+  const csrfToken = await getCsrfToken(agent, '/login');
+  return agent
+    .post(path)
+    .set(browserHeaders(refererPath))
+    .set('X-CSRF-Token', csrfToken)
+    .send(body);
+}
+
+describe('resolveCookieSecureSetting', () => {
+  it('defaults secure cookies on in production', () => {
+    assert.equal(resolveCookieSecureSetting({ cookieSecureEnv: '', nodeEnv: 'production' }), true);
+  });
+
+  it('defaults secure cookies off outside production', () => {
+    assert.equal(resolveCookieSecureSetting({ cookieSecureEnv: '', nodeEnv: 'development' }), false);
+  });
+
+  it('respects explicit COOKIE_SECURE=true', () => {
+    assert.equal(resolveCookieSecureSetting({ cookieSecureEnv: 'true', nodeEnv: 'development' }), true);
+  });
+
+  it('respects explicit COOKIE_SECURE=false', () => {
+    assert.equal(resolveCookieSecureSetting({ cookieSecureEnv: 'false', nodeEnv: 'production' }), false);
+  });
+});
 
 describe('rate limiter helpers', () => {
-  afterEach(() => resetLoginAttempts());
+  afterEach(() => resetAuthRateLimits());
 
   it('returns null for an unknown IP', () => {
     assert.equal(checkLoginRateLimit('1.2.3.4'), null);
@@ -56,24 +115,29 @@ describe('rate limiter helpers', () => {
     assert.ok(checkLoginRateLimit('1.1.1.1') !== null, '1.1.1.1 should be blocked');
     assert.equal(checkLoginRateLimit('2.2.2.2'), null, '2.2.2.2 should be unaffected');
   });
+
+  it('tracks plex pin creation requests independently', () => {
+    for (let i = 0; i < 30; i++) recordPlexPinCreateRequest('9.9.9.9');
+    assert.ok(checkPlexPinCreateRateLimit('9.9.9.9') !== null, '9.9.9.9 should be blocked');
+    assert.equal(checkPlexPinCreateRateLimit('8.8.8.8'), null, '8.8.8.8 should be unaffected');
+  });
 });
 
-// ---------------------------------------------------------------------------
-// Integration tests — auth routes
-// ---------------------------------------------------------------------------
-
 describe('auth routes', () => {
-  // Create the admin user once before any login tests run
   before(async () => {
-    await request.post('/setup').type('form').send({
+    const agent = supertest.agent(app);
+    const csrfToken = await getCsrfToken(agent, '/setup');
+    const res = await agent.post('/setup').set(browserHeaders('/setup')).type('form').send({
       username: 'testadmin',
       email: 'test@launcharr.test',
       password: 'TestPassword1!',
       confirmPassword: 'TestPassword1!',
+      _csrf: csrfToken,
     });
+    assert.equal(res.status, 302);
   });
 
-  afterEach(() => resetLoginAttempts());
+  afterEach(() => resetAuthRateLimits());
 
   it('GET /login returns 200 when an admin exists', async () => {
     const res = await request.get('/login');
@@ -81,7 +145,8 @@ describe('auth routes', () => {
   });
 
   it('POST /login with wrong password returns 401', async () => {
-    const res = await request.post('/login').type('form').send({
+    const agent = supertest.agent(app);
+    const res = await postForm(agent, '/login', {
       username: 'testadmin',
       password: 'wrongpassword',
     });
@@ -89,7 +154,8 @@ describe('auth routes', () => {
   });
 
   it('POST /login with correct credentials redirects to /dashboard', async () => {
-    const res = await request.post('/login').type('form').send({
+    const agent = supertest.agent(app);
+    const res = await postForm(agent, '/login', {
       username: 'testadmin',
       password: 'TestPassword1!',
     });
@@ -97,33 +163,81 @@ describe('auth routes', () => {
     assert.ok(res.headers.location?.includes('/dashboard'), 'should redirect to /dashboard');
   });
 
+  it('POST /login rejects a missing CSRF token when origin metadata is absent', async () => {
+    const agent = supertest.agent(app);
+    await getCsrfToken(agent, '/login');
+    const res = await agent.post('/login').set('Host', TEST_HOST).type('form').send({
+      username: 'testadmin',
+      password: 'wrongpassword',
+    });
+    assert.equal(res.status, 403);
+  });
+
   it('POST /login returns 429 after 10 failed attempts', async () => {
+    const agent = supertest.agent(app);
+    const csrfToken = await getCsrfToken(agent, '/login');
     for (let i = 0; i < 10; i++) {
-      await request.post('/login').type('form').send({ username: 'testadmin', password: 'wrong' });
+      await agent.post('/login').set(browserHeaders('/login')).type('form').send({
+        username: 'testadmin',
+        password: 'wrong',
+        _csrf: csrfToken,
+      });
     }
-    const res = await request.post('/login').type('form').send({ username: 'testadmin', password: 'wrong' });
+    const res = await agent.post('/login').set(browserHeaders('/login')).type('form').send({
+      username: 'testadmin',
+      password: 'wrong',
+      _csrf: csrfToken,
+    });
     assert.equal(res.status, 429);
   });
 
   it('successful login clears the rate limit counter', async () => {
-    // 9 failures — one short of the limit
+    const firstAgent = supertest.agent(app);
+    const firstToken = await getCsrfToken(firstAgent, '/login');
     for (let i = 0; i < 9; i++) {
-      await request.post('/login').type('form').send({ username: 'testadmin', password: 'wrong' });
+      await firstAgent.post('/login').set(browserHeaders('/login')).type('form').send({
+        username: 'testadmin',
+        password: 'wrong',
+        _csrf: firstToken,
+      });
     }
-    // Successful login should clear the counter
-    await request.post('/login').type('form').send({ username: 'testadmin', password: 'TestPassword1!' });
-    // Now 9 more failures should NOT trigger rate limiting (counter was reset)
+
+    const successAgent = supertest.agent(app);
+    const successRes = await postForm(successAgent, '/login', {
+      username: 'testadmin',
+      password: 'TestPassword1!',
+    });
+    assert.equal(successRes.status, 302);
+
+    const secondAgent = supertest.agent(app);
+    const secondToken = await getCsrfToken(secondAgent, '/login');
     for (let i = 0; i < 9; i++) {
-      await request.post('/login').type('form').send({ username: 'testadmin', password: 'wrong' });
+      await secondAgent.post('/login').set(browserHeaders('/login')).type('form').send({
+        username: 'testadmin',
+        password: 'wrong',
+        _csrf: secondToken,
+      });
     }
-    const res = await request.post('/login').type('form').send({ username: 'testadmin', password: 'wrong' });
+    const res = await secondAgent.post('/login').set(browserHeaders('/login')).type('form').send({
+      username: 'testadmin',
+      password: 'wrong',
+      _csrf: secondToken,
+    });
     assert.equal(res.status, 401, 'should be 401 not 429 — counter was reset by successful login');
   });
-});
 
-// ---------------------------------------------------------------------------
-// Integration tests — route guards
-// ---------------------------------------------------------------------------
+  it('POST /api/plex/pin returns 429 after 30 requests from the same IP', async () => {
+    const agent = supertest.agent(app);
+    for (let i = 0; i < 30; i++) {
+      const res = await postJson(agent, '/api/plex/pin', { pinId: '12345' }, '/auth/plex');
+      assert.equal(res.status, 200);
+      assert.deepEqual(res.body, { ok: true });
+    }
+
+    const res = await postJson(agent, '/api/plex/pin', { pinId: '12345' }, '/auth/plex');
+    assert.equal(res.status, 429);
+  });
+});
 
 describe('route guards (unauthenticated)', () => {
   it('GET / redirects to /login', async () => {

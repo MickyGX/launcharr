@@ -118,8 +118,9 @@ Recommended Docker env (especially when running behind a reverse proxy):
 environment:
   - TRUST_PROXY=true
   - TRUST_PROXY_HOPS=1
-  # optional but recommended if you only use HTTPS on domain:
-  # - COOKIE_SECURE=true
+  # Leave COOKIE_SECURE unset to default Secure cookies on in production.
+  # For local HTTP development only:
+  # - COOKIE_SECURE=false
 ```
 
 2FA note: local-auth 2FA is not yet built in. For production access, enforce MFA at your identity provider/reverse proxy (or use Plex/OIDC SSO) until native 2FA is added.

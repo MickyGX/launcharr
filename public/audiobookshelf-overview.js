@@ -12,6 +12,7 @@
   const config = window.ABS_OVERVIEW_CONFIG || {};
   const appId = String(config.appId || 'audiobookshelf').trim() || 'audiobookshelf';
   const appName = String(config.appName || 'Audiobookshelf').trim() || 'Audiobookshelf';
+  const dashboardRefresh = window.LAUNCHARR_DASHBOARD_REFRESH;
 
   const viewport = document.getElementById('absRecentViewport');
   const track = document.getElementById('absRecentTrack');
@@ -26,6 +27,12 @@
   let allItems = [];
   let cacheTs = 0;
   let carousel = null;
+
+  function bindDashboardRefresh(callback) {
+    if (!dashboardRefresh || typeof dashboardRefresh.onRefresh !== 'function' || typeof callback !== 'function') return false;
+    dashboardRefresh.onRefresh(callback);
+    return true;
+  }
 
   function escapeHtml(value) {
     return String(value || '').replace(/[&<>"']/g, (char) => (
@@ -257,9 +264,9 @@
     carousel.setItems(filtered.slice(0, limit));
   }
 
-  async function loadRecent() {
+  async function loadRecent(forceRefresh) {
     const now = Date.now();
-    if (allItems.length && (now - cacheTs) < CACHE_TTL_MS) {
+    if (!forceRefresh && allItems.length && (now - cacheTs) < CACHE_TTL_MS) {
       applyFilters();
       return;
     }
@@ -296,5 +303,6 @@
     });
   });
 
+  bindDashboardRefresh(() => loadRecent(true));
   loadRecent();
 })();

@@ -44,6 +44,7 @@ export function registerApiArr(app, ctx) {
     fetchNzbgetQueue,
     fetchQbittorrentQueue,
     fetchSabnzbdQueue,
+    fetchSlskdQueue,
     // arr proxy
     isAppInSet,
     // constants
@@ -1392,6 +1393,14 @@ export function registerApiArr(app, ctx) {
           result = await fetchNzbgetQueue(baseUrl, authHeader, appItem.customHeaders);
         } else if (baseId === 'qbittorrent') {
           result = await fetchQbittorrentQueue(baseUrl, appItem.username || '', appItem.password || '', appItem.customHeaders);
+        } else if (baseId === 'slskd') {
+          result = await fetchSlskdQueue(
+            baseUrl,
+            apiKey,
+            appItem.username || '',
+            appItem.password || '',
+            appItem.customHeaders,
+          );
         } else {
           result = await fetchSabnzbdQueue(baseUrl, apiKey, authHeader, appItem.customHeaders);
         }

@@ -5,8 +5,10 @@
 Checks:
 
 - Set a non-default `SESSION_SECRET`.
-- If served over HTTPS, set `COOKIE_SECURE=true`.
+- In production, leave `COOKIE_SECURE` unset unless you need an explicit override.
+- Use `COOKIE_SECURE=false` only for local HTTP development.
 - Confirm reverse proxy forwards host/protocol headers.
+- If you terminate TLS at a proxy, enable `TRUST_PROXY=true` and verify the proxy sends `X-Forwarded-Proto=https`.
 
 ## Plex Login Fails or Callback Errors
 

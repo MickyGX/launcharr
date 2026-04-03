@@ -1,4 +1,16 @@
-# Release Notes (v0.1.0 -> v0.2.55)
+# Release Notes (v0.1.0 -> v0.2.56)
+
+## v0.2.56 (2026-04-03)
+
+- [Added]
+- Added built-in `slskd` downloader support across the default app catalog, settings access forms, dashboard/app overview queue surfaces, combined downloader queues, widget stats, and dedicated icon assets.
+- Added per-dashboard auto-refresh controls plus a shared dashboard refresh runtime so supported overview cards and queue modules can refresh on a configurable interval and when the dashboard tab becomes visible again.
+- [Fixed]
+- Fixed CSRF coverage for local login/setup forms, Plex PIN registration, and JavaScript-created settings `POST` forms, including dashboard item removal flows that could previously fail with a blank `CSRF validation failed.` error page.
+- Fixed downloader queue rendering so `slskd` items show the correct user/status/rate/time-left data in both dedicated and combined dashboard queue views.
+- [Changed]
+- Updated reverse-proxy and cookie guidance to prefer `TRUST_PROXY=true` with production `COOKIE_SECURE` left unset by default, while reserving `COOKIE_SECURE=false` for local HTTP development.
+- Raised the minimum local password length from `6` to `12` characters.
 
 ## v0.2.55 (2026-03-31)
 

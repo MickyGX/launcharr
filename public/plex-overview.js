@@ -16,6 +16,13 @@
   const displaySettingsMap = config.displaySettings && typeof config.displaySettings === 'object'
     ? config.displaySettings
     : {};
+  const dashboardRefresh = window.LAUNCHARR_DASHBOARD_REFRESH;
+
+  function bindDashboardRefresh(callback) {
+    if (!dashboardRefresh || typeof dashboardRefresh.onRefresh !== 'function' || typeof callback !== 'function') return false;
+    dashboardRefresh.onRefresh(callback);
+    return true;
+  }
 
   function sectionDisplaySettings(sectionId) {
     const raw = sectionId && typeof displaySettingsMap[sectionId] === 'object'
@@ -772,7 +779,9 @@
       carousel.updateLayout();
     });
 
-    setInterval(loadSessions, 15000);
+    if (!bindDashboardRefresh(loadSessions)) {
+      setInterval(loadSessions, 15000);
+    }
     loadSessions();
   })();
 
@@ -1030,6 +1039,7 @@
       carousel.updateLayout();
     });
 
+    bindDashboardRefresh(loadRecent);
     loadRecent();
   })();
 
@@ -1373,6 +1383,7 @@
       carousel.updateLayout();
     });
 
+    bindDashboardRefresh(loadWatchlisted);
     loadWatchlisted();
   })();
 

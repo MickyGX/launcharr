@@ -1,6 +1,13 @@
 (() => {
+  const dashboardRefresh = window.LAUNCHARR_DASHBOARD_REFRESH;
   const configs = resolveConfigs();
   if (!configs.length) return;
+
+  function bindDashboardRefresh(callback) {
+    if (!dashboardRefresh || typeof dashboardRefresh.onRefresh !== 'function' || typeof callback !== 'function') return false;
+    dashboardRefresh.onRefresh(callback);
+    return true;
+  }
 
   configs.forEach((config) => {
     try {
@@ -86,6 +93,7 @@
       });
     }
     loadQueue();
+    bindDashboardRefresh(loadQueue);
 
     async function loadQueue() {
       body.innerHTML = '<div class="queue-empty">Loading...</div>';
@@ -179,6 +187,7 @@
     if (baseId === 'nzbget') return mapNzbgetItem(item, options);
     if (baseId === 'qbittorrent') return mapQbittorrentItem(item, options);
     if (baseId === 'sabnzbd') return mapSabnzbdItem(item, options);
+    if (baseId === 'slskd') return mapSlskdItem(item, options);
     return null;
   }
 
@@ -189,6 +198,7 @@
     if (appId === 'nzbget' || appId.startsWith('nzbget-')) return 'nzbget';
     if (appId === 'qbittorrent' || appId.startsWith('qbittorrent-')) return 'qbittorrent';
     if (appId === 'sabnzbd' || appId.startsWith('sabnzbd-')) return 'sabnzbd';
+    if (appId === 'slskd' || appId.startsWith('slskd-')) return 'slskd';
     return appId;
   }
 
@@ -354,6 +364,43 @@
     };
   }
 
+  function mapSlskdItem(item, options = {}) {
+    const username = String(item?.username || '').trim();
+    const status = slskdStatus(item);
+    const statusKey = slskdStatusKey(item);
+    const statusKeys = slskdStatusKeys(statusKey);
+    const sizeBytes = toNumber(item?.size || item?.bytesTransferred || 0);
+    const remainingBytes = toNumber(item?.bytesRemaining || 0);
+    const speed = toNumber(item?.averageSpeed || 0);
+    const progressRaw = Number(item?.percentComplete);
+    const progress = Number.isFinite(progressRaw)
+      ? Math.max(0, Math.min(100, progressRaw))
+      : progressFromSizes(sizeBytes, remainingBytes);
+    const rateLabel = speed > 0 ? `DL ${formatBytes(speed)}/s` : '';
+    const baseDetail = username || 'User';
+    const baseSubDetail = [status, rateLabel].filter(Boolean).join(' · ') || '-';
+    const detail = options.combined
+      ? String(options.sourceName || 'slskd')
+      : baseDetail;
+    const subDetail = options.combined
+      ? [baseDetail, baseSubDetail].filter(Boolean).join(' · ')
+      : baseSubDetail;
+
+    return {
+      kind: 'soulseek',
+      title: extractPathTail(item?.filename || item?.path || item?.directory || 'Unknown'),
+      episode: detail,
+      episodeTitle: subDetail,
+      quality: sizeBytes ? formatBytes(sizeBytes) : '-',
+      protocol: 'soulseek',
+      timeLeft: formatSlskdDuration(item?.remainingTime),
+      progress,
+      statusKey,
+      statusKeys,
+      sourceId: options.sourceId || '',
+    };
+  }
+
   function transmissionStatus(item) {
     const status = Number(item?.status);
     const map = {
@@ -459,6 +506,34 @@
   }
 
   function sabnzbdStatusKeys(primary) {
+    const keys = new Set();
+    if (primary) keys.add(primary);
+    if (primary === 'downloading') keys.add('active');
+    return Array.from(keys);
+  }
+
+  function slskdStatus(item) {
+    const raw = String(item?.stateDescription || item?.state || '').trim();
+    const value = raw.toLowerCase();
+    if (!value) return 'Queued';
+    if (/(fail|error|cancel|abort|reject|deny|timeout)/.test(value)) return 'Error';
+    if (value.includes('pause')) return 'Paused';
+    if (value.includes('complete') || value.includes('success')) return 'Completed';
+    if (value.includes('download') || value.includes('transfer') || value.includes('progress') || toNumber(item?.averageSpeed || 0) > 0) return 'Downloading';
+    if (value.includes('queue') || value.includes('request') || value.includes('wait') || toNumber(item?.bytesRemaining || 0) > 0) return 'Queued';
+    return raw;
+  }
+
+  function slskdStatusKey(item) {
+    const value = slskdStatus(item).toLowerCase();
+    if (value === 'error') return 'error';
+    if (value === 'paused') return 'paused';
+    if (value === 'completed') return 'completed';
+    if (value === 'downloading') return 'downloading';
+    return 'queued';
+  }
+
+  function slskdStatusKeys(primary) {
     const keys = new Set();
     if (primary) keys.add(primary);
     if (primary === 'downloading') keys.add('active');
@@ -571,6 +646,19 @@
     return secs + 's';
   }
 
+  function formatSlskdDuration(value) {
+    const raw = String(value || '').trim();
+    if (!raw || raw === '00:00:00' || raw === '0') return '-';
+    const match = raw.match(/^(\d+):(\d+):(\d+)/);
+    if (!match) return raw;
+    const hours = Number(match[1]) || 0;
+    const minutes = Number(match[2]) || 0;
+    const seconds = Number(match[3]) || 0;
+    if (hours > 0) return hours + 'h ' + minutes + 'm';
+    if (minutes > 0) return minutes + 'm ' + seconds + 's';
+    return seconds + 's';
+  }
+
   function progressFromSizes(size, left) {
     const total = toNumber(size);
     const remaining = toNumber(left);
@@ -590,5 +678,12 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  function extractPathTail(value) {
+    const normalized = String(value || '').trim();
+    if (!normalized) return 'Unknown';
+    const parts = normalized.split(/[\\/]+/).filter(Boolean);
+    return parts[parts.length - 1] || normalized;
   }
 })();

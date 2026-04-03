@@ -15,7 +15,7 @@ Setup requirements:
 
 - Username required.
 - Valid email required.
-- Password minimum length: `6`.
+- Password minimum length: `12`.
 - Password confirmation must match.
 
 The first local setup account is created as role `admin`.
@@ -27,7 +27,8 @@ Launcharr uses Plex PIN login and stores session data in a cookie session.
 For reliable callback behavior behind a reverse proxy:
 
 - Configure `Settings -> General -> Remote URL`.
-- Set `COOKIE_SECURE=true` when serving HTTPS.
+- Set `TRUST_PROXY=true` (and adjust `TRUST_PROXY_HOPS` if needed) so Launcharr trusts forwarded HTTPS metadata correctly.
+- Leave `COOKIE_SECURE` unset in production to default to Secure cookies, or set `COOKIE_SECURE=false` only for local HTTP development.
 
 If no Plex admin list exists yet, the first Plex user to authenticate becomes owner admin.
 

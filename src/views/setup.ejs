@@ -119,6 +119,7 @@
           <div class="login-error"><%= error %></div>
         <% } %>
           <form class="login-form" method="post" action="<%= withBasePath('/setup') %>">
+          <input type="hidden" name="_csrf" value="<%= csrfToken || '' %>" />
           <label class="login-field">
             <span>Username</span>
             <input class="login-input" type="text" name="username" value="<%= values?.username || '' %>" autocomplete="username" required />

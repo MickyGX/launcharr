@@ -120,7 +120,7 @@
           const customIcon = String(appItem?.icon || '').trim();
           if (customIcon) return customIcon;
           const baseId = resolveAppBaseId(appItem?.id);
-          if (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'nzbget', 'qbittorrent', 'sabnzbd', 'jellyfin', 'emby', 'bazarr'].includes(baseId)) {
+          if (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'nzbget', 'qbittorrent', 'sabnzbd', 'slskd', 'jellyfin', 'emby', 'bazarr'].includes(baseId)) {
             return `/icons/${baseId}.png`;
           }
           return `/icons/${baseId || 'app'}.svg`;
@@ -733,6 +733,8 @@
                     id: String(entry?.id || '').trim() || 'main',
                     name: String(entry?.name || '').trim() || 'Dashboard',
                     icon: String(entry?.icon || '/icons/dashboard.svg').trim() || '/icons/dashboard.svg',
+                    autoRefreshEnabled: entry?.autoRefreshEnabled === true,
+                    refreshSeconds: Number(entry?.refreshSeconds),
                     visibilityRole: String(entry?.visibilityRole || 'user').trim() || 'user',
                     visibilityRoles: Array.isArray(entry?.visibilityRoles) ? entry.visibilityRoles : [],
                   }))
@@ -744,6 +746,8 @@
                     id: 'main',
                     name: 'Dashboard',
                     icon: '/icons/dashboard.svg',
+                    autoRefreshEnabled: false,
+                    refreshSeconds: 60,
                     visibilityRole: 'user',
                   });
                 }
@@ -812,6 +816,9 @@
                       .filter((option) => activeDashboardVisibilityRoles.includes(option.value))
                       .map((option) => option.label)
                       .join(', '));
+                const activeDashboardRefreshSeconds = Number.isFinite(activeDashboardEntry.refreshSeconds)
+                  ? Math.max(15, Math.min(3600, Math.round(activeDashboardEntry.refreshSeconds)))
+                  : 60;
                 const deletableDashboardTabs = dashboardTabs.filter((entry) => entry.id !== 'main');
               %>
               <input type="hidden" name="dashboardId" value="<%= activeDashboardEntry.id %>" />
@@ -933,6 +940,33 @@
                     placeholder="<%= activeDashboardEntry.id === 'main' ? 'Dashboard' : 'Dashboard name' %>"
                     maxlength="48"
                   />
+                </label>
+                <label class="field field--dashboard-refresh-seconds">
+                  <span>Refresh every (seconds)</span>
+                  <input
+                    type="number"
+                    name="dashboard_refresh_seconds"
+                    data-dashboard-refresh-input
+                    min="15"
+                    max="3600"
+                    step="15"
+                    value="<%= activeDashboardRefreshSeconds %>"
+                    <%= activeDashboardEntry.autoRefreshEnabled ? '' : 'disabled' %>
+                  />
+                </label>
+                <label
+                  class="settings-toggle field--dashboard-refresh-toggle field--dashboard-refresh-toggle-compact"
+                  title="Enable dashboard refresh"
+                >
+                  <input
+                    type="checkbox"
+                    name="dashboard_auto_refresh_enabled"
+                    data-dashboard-refresh-toggle
+                    aria-label="Enable dashboard refresh"
+                    <%= activeDashboardEntry.autoRefreshEnabled ? 'checked' : '' %>
+                  />
+                  <span class="settings-toggle-slider" aria-hidden="true"></span>
+                  <span class="sr-only">Enable dashboard refresh</span>
                 </label>
                 <label class="field field--dashboard-icon">
                   <span>Dashboard icon</span>
@@ -1063,7 +1097,7 @@
                   <% const combinedDownloaderApps = isUnifiedDownloaderCard
                     ? ((Array.isArray(downloaderApps) && downloaderApps.length)
                       ? downloaderApps
-                      : (Array.isArray(apps) ? apps.filter((appItem) => ['transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(resolveAppBaseId(appItem.id))) : []))
+                      : (Array.isArray(apps) ? apps.filter((appItem) => ['transmission', 'nzbget', 'qbittorrent', 'sabnzbd', 'slskd'].includes(resolveAppBaseId(appItem.id))) : []))
                     : []; %>
                   <% const isUnifiedMediaCard = item.combined && (item.combinedType === 'media' || item.combinedType === 'mediacustom'); %>
                   <% const mediaSectionKey = isUnifiedMediaCard ? (item.mediaCombined?.sectionKey || item.combinedSection || 'active') : ''; %>
@@ -1384,7 +1418,7 @@
                                 </label>
                                 <label class="radio-pill">
                                   <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_queue_col_size" <%= element.queueShowSize !== false ? 'checked' : '' %> />
-                                  <span><%= ['transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(resolveAppBaseId(item.appId)) ? 'Size' : 'Quality' %></span>
+                                  <span><%= ['transmission', 'nzbget', 'qbittorrent', 'sabnzbd', 'slskd'].includes(resolveAppBaseId(item.appId)) ? 'Size' : 'Quality' %></span>
                                 </label>
                                 <label class="radio-pill">
                                   <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_queue_col_protocol" <%= element.queueShowProtocol !== false ? 'checked' : '' %> />
@@ -1557,7 +1591,7 @@
                           </label>
                           <label class="radio-pill">
                             <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_queue_col_size" <%= element.queueShowSize !== false ? 'checked' : '' %> />
-                            <span><%= ['transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(resolveAppBaseId(item.appId)) ? 'Size' : 'Quality' %></span>
+                            <span><%= ['transmission', 'nzbget', 'qbittorrent', 'sabnzbd', 'slskd'].includes(resolveAppBaseId(item.appId)) ? 'Size' : 'Quality' %></span>
                           </label>
                           <label class="radio-pill">
                             <input type="checkbox" name="dashboard_<%= item.appId %>_<%= element.id %>_queue_col_protocol" <%= element.queueShowProtocol !== false ? 'checked' : '' %> />
@@ -2841,6 +2875,7 @@
                 'jellyfin',
                 'emby',
                 'sabnzbd',
+                'slskd',
                 'jackett',
                 'autobrr',
                 // new integrations
@@ -7167,6 +7202,15 @@
           safeStorage.set('settingsTab', 'custom');
           safeStorage.set('settingsCustomTab', 'dashboard');
         });
+        const dashboardRefreshToggle = dashboardSettingsForm?.querySelector('[data-dashboard-refresh-toggle]');
+        const dashboardRefreshInput = dashboardSettingsForm?.querySelector('[data-dashboard-refresh-input]');
+        if (dashboardRefreshToggle && dashboardRefreshInput) {
+          const syncDashboardRefreshInputState = () => {
+            dashboardRefreshInput.disabled = !dashboardRefreshToggle.checked;
+          };
+          syncDashboardRefreshInputState();
+          dashboardRefreshToggle.addEventListener('change', syncDashboardRefreshInputState);
+        }
 
         const dashboardDuplicatePopover = dashboardSettingsForm?.querySelector('[data-dashboard-duplicate-popover]');
         const dashboardDuplicateInput = dashboardSettingsForm?.querySelector('[data-dashboard-duplicate-source]');

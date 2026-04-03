@@ -7,6 +7,14 @@
     }
   })();
 
+  const dashboardRefresh = window.LAUNCHARR_DASHBOARD_REFRESH;
+
+  function bindDashboardRefresh(callback) {
+    if (!dashboardRefresh || typeof dashboardRefresh.onRefresh !== 'function' || typeof callback !== 'function') return false;
+    dashboardRefresh.onRefresh(callback);
+    return true;
+  }
+
   const configs = resolveConfigs();
   if (!configs.length) return;
 
@@ -308,6 +316,13 @@
       if (isCombined) bindCombinedLogoToFilter(modules.calendar.typeFilter);
       loadCalendar();
     }
+
+    bindDashboardRefresh(() => {
+      if (hasSoon) loadSoon();
+      if (hasRecent) loadRecent();
+      if (hasQueue) loadQueue();
+      if (hasCalendar) loadCalendar();
+    });
 
     window.addEventListener('resize', () => {
       if (modules.soon.carousel) modules.soon.carousel.updateLayout();

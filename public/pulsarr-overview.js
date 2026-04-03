@@ -23,6 +23,13 @@
   const displaySettingsMap = config.displaySettings && typeof config.displaySettings === 'object'
     ? config.displaySettings
     : {};
+  const dashboardRefresh = window.LAUNCHARR_DASHBOARD_REFRESH;
+
+  function bindDashboardRefresh(callback) {
+    if (!dashboardRefresh || typeof dashboardRefresh.onRefresh !== 'function' || typeof callback !== 'function') return false;
+    dashboardRefresh.onRefresh(callback);
+    return true;
+  }
 
   function sectionDisplaySettings(sectionId) {
     const raw = sectionId && typeof displaySettingsMap[sectionId] === 'object'
@@ -147,6 +154,10 @@
 
   wireModal();
   bindCollapseButtons();
+  bindDashboardRefresh(() => {
+    if (hasRequests) loadRecentRequests(true);
+    if (hasWatchlisted) loadMostWatchlisted(true);
+  });
 
   window.addEventListener('resize', () => {
     if (modules.requests.carousel) modules.requests.carousel.updateLayout();
@@ -824,7 +835,7 @@
     modules.watchlisted.carousel.setItems(filtered);
   }
 
-  async function loadRecentRequests() {
+  async function loadRecentRequests(forceRefresh) {
     if (!hasRequests) return;
 
     try {
@@ -832,7 +843,7 @@
       const limit = Number.isFinite(limitValue) && limitValue > 0 ? limitValue : 20;
       const status = statusParamValue(modules.requests.statusFilter?.value || '');
       const cacheKey = requestsCacheKey(limit, status);
-      const cachedRecords = cacheRead(cacheKey);
+      const cachedRecords = forceRefresh ? null : cacheRead(cacheKey);
 
       if (cachedRecords) {
         modules.requests.items = cachedRecords
@@ -862,14 +873,14 @@
     }
   }
 
-  async function loadMostWatchlisted() {
+  async function loadMostWatchlisted(forceRefresh) {
     if (!hasWatchlisted) return;
 
     try {
       const limitValue = Number(modules.watchlisted.limitFilter?.value || 20);
       const limit = Number.isFinite(limitValue) && limitValue > 0 ? limitValue : 20;
       const cacheKey = watchlistedCacheKey(limit);
-      const cachedRecords = cacheRead(cacheKey);
+      const cachedRecords = forceRefresh ? null : cacheRead(cacheKey);
 
       const extractRecords = (payload) => (
         toArray(payload?.results).length

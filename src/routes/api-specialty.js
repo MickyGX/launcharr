@@ -106,6 +106,7 @@ export function registerApiSpecialty(app, ctx) {
     prepareRommPrimedSetCookies,
     buildBasicAuthHeader,
     mergeAppHeaders,
+    fetchSlskdJson,
     // Romm data
     extractRommList,
     mapRommConsoleItem,
@@ -3316,6 +3317,41 @@ export function registerApiSpecialty(app, ctx) {
           ];
         } else {
           status = 'down';
+        }
+
+      // ── slskd ────────────────────────────────────────────────────────────
+      } else if (typeId === 'slskd') {
+        const result = await tryAllCandidates(async (baseUrl) =>
+          fetchSlskdJson(baseUrl, 'api/v0/application', {
+            apiKey,
+            username: appItem.username || '',
+            password: appItem.password || '',
+            customHeaders: appItem.customHeaders,
+          }));
+
+        if (result?.ok && result.json && typeof result.json === 'object') {
+          const summary = result.json;
+          const serverState = String(summary?.server?.state || '').trim() || 'Unknown';
+          const isConnected = Boolean(summary?.server?.isConnected);
+          const averageSpeed = Number(summary?.user?.statistics?.averageSpeed) || 0;
+          const sharedFiles = Number(summary?.shares?.files ?? summary?.user?.statistics?.fileCount) || 0;
+          const uploadCount = Number(summary?.user?.statistics?.uploadCount) || 0;
+          const formatRate = (bytesPerSecond) => {
+            const value = Number(bytesPerSecond) || 0;
+            if (value >= 1048576) return `${(value / 1048576).toFixed(1)} MB/s`;
+            if (value >= 1024) return `${Math.round(value / 1024)} KB/s`;
+            return `${value} B/s`;
+          };
+
+          status = isConnected ? 'up' : 'unknown';
+          metrics = [
+            { key: 'state', label: 'State', value: serverState },
+            { key: 'speed', label: 'Avg Speed', value: formatRate(averageSpeed) },
+            { key: 'files', label: 'Shared Files', value: sharedFiles },
+            { key: 'uploads', label: 'Uploads', value: uploadCount },
+          ];
+        } else {
+          status = result?.status != null ? 'down' : 'unknown';
         }
 
       // ── maintainerr ──────────────────────────────────────────────────────

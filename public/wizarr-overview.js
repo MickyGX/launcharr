@@ -2,6 +2,7 @@
   'use strict';
 
   const config = window.WIZARR_OVERVIEW_CONFIG || {};
+  const dashboardRefresh = window.LAUNCHARR_DASHBOARD_REFRESH;
   const appId = String(config.appId || 'wizarr').trim() || 'wizarr';
   const appName = String(config.appName || 'Wizarr').trim() || 'Wizarr';
 
@@ -22,6 +23,12 @@
   let cachedUsers = null;
   let cachedInvitations = null;
   let cacheTs = 0;
+
+  function bindDashboardRefresh(callback) {
+    if (!dashboardRefresh || typeof dashboardRefresh.onRefresh !== 'function' || typeof callback !== 'function') return false;
+    dashboardRefresh.onRefresh(callback);
+    return true;
+  }
 
   function escapeHtml(value) {
     return String(value || '').replace(/[&<>"']/g, (char) => (
@@ -180,4 +187,10 @@
   invLimitFilter?.addEventListener('change', applyInvitationsFilters);
 
   loadOverview();
+  bindDashboardRefresh(() => {
+    cachedUsers = null;
+    cachedInvitations = null;
+    cacheTs = 0;
+    loadOverview();
+  });
 })();

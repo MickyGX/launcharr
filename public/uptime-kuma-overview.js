@@ -2,6 +2,7 @@
   'use strict';
 
   const config = window.UPTIME_KUMA_OVERVIEW_CONFIG || {};
+  const dashboardRefresh = window.LAUNCHARR_DASHBOARD_REFRESH;
   const appName = String(config.appName || 'Uptime Kuma').trim() || 'Uptime Kuma';
   const queueVisibleRows = Number(config.queueVisibleRows) > 0 ? Number(config.queueVisibleRows) : 10;
   const showDetail = config.queueShowDetail !== false;
@@ -16,6 +17,12 @@
 
   let cacheTs = 0;
   let cachedGroups = null;
+
+  function bindDashboardRefresh(callback) {
+    if (!dashboardRefresh || typeof dashboardRefresh.onRefresh !== 'function' || typeof callback !== 'function') return false;
+    dashboardRefresh.onRefresh(callback);
+    return true;
+  }
 
   function esc(v) {
     return String(v || '').replace(/[&<>"']/g, (c) => (
@@ -126,5 +133,11 @@
   }
 
   loadStatus();
-  setInterval(loadStatus, 60 * 1000);
+  if (!bindDashboardRefresh(() => {
+    cachedGroups = null;
+    cacheTs = 0;
+    loadStatus();
+  })) {
+    setInterval(loadStatus, 60 * 1000);
+  }
 })();

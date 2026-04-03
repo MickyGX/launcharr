@@ -98,6 +98,7 @@ export function registerSettings(app, ctx) {
     buildDashboardSettingsRedirect,
     buildDisabledMenuAccess,
     buildDisabledOverviewElements,
+    buildDefaultOverviewElements,
     buildEmptyDashboardStateSnapshot,
     buildMenuAccessConfig,
     buildNextInstanceId,
@@ -139,6 +140,7 @@ export function registerSettings(app, ctx) {
     normalizeCategoryName,
     normalizeDashboardDisplayName,
     normalizeDashboardIcon,
+    normalizeDashboardRefreshSeconds,
     normalizeDashboardInstanceId,
     normalizeLaunchMode,
     normalizeLocalRole,
@@ -149,6 +151,7 @@ export function registerSettings(app, ctx) {
     normalizeThemeSettings,
     normalizeUserKey,
     normalizeVisibilityRole,
+    parseEnvFlag,
     parseCsv,
     parsePlexUsers,
     parseUserAvatarDataUrl,
@@ -1250,6 +1253,8 @@ app.post('/settings/dashboard-elements', requireSettingsAdmin, (req, res) => {
           name: normalizeDashboardDisplayName(req.body?.dashboard_name, entry.name || 'Dashboard'),
           icon: normalizeDashboardIcon(req.body?.dashboard_icon, entry.icon || DEFAULT_DASHBOARD_ICON),
           visibilityRoles,
+          autoRefreshEnabled: parseEnvFlag(req.body?.dashboard_auto_refresh_enabled, false),
+          refreshSeconds: normalizeDashboardRefreshSeconds(req.body?.dashboard_refresh_seconds, entry.refreshSeconds),
           visibilityRole: deriveDashboardLegacyVisibilityRole(
             visibilityRoles,
             visibilityRoles.length ? (entry.visibilityRole || 'user') : 'disabled',
@@ -2113,18 +2118,24 @@ app.post('/settings/dashboards/add', requireSettingsAdmin, (req, res) => {
       const visibilityRoles = duplicateSourceDashboard
         ? resolveDashboardDefinitionVisibilityRoles(duplicateSourceDashboard, 'user')
         : resolveDashboardVisibilityRolesFromRequest(req.body, sourceDashboard);
-      return {
-        id: nextId,
-        name: duplicateSourceDashboard
-          ? normalizeDashboardDisplayName(duplicateSourceDashboard.name, `Dashboard ${dashboards.length + 1}`)
-          : normalizeDashboardDisplayName(req.body?.dashboard_name, `Dashboard ${dashboards.length + 1}`),
-        icon: duplicateSourceDashboard
-          ? normalizeDashboardIcon(duplicateSourceDashboard.icon, DEFAULT_DASHBOARD_ICON)
-          : normalizeDashboardIcon(req.body?.dashboard_icon, sourceDashboard.icon || DEFAULT_DASHBOARD_ICON),
-        visibilityRoles,
-        visibilityRole: deriveDashboardLegacyVisibilityRole(
+        return {
+          id: nextId,
+          name: duplicateSourceDashboard
+            ? normalizeDashboardDisplayName(duplicateSourceDashboard.name, `Dashboard ${dashboards.length + 1}`)
+            : normalizeDashboardDisplayName(req.body?.dashboard_name, `Dashboard ${dashboards.length + 1}`),
+          icon: duplicateSourceDashboard
+            ? normalizeDashboardIcon(duplicateSourceDashboard.icon, DEFAULT_DASHBOARD_ICON)
+            : normalizeDashboardIcon(req.body?.dashboard_icon, sourceDashboard.icon || DEFAULT_DASHBOARD_ICON),
           visibilityRoles,
-          visibilityRoles.length ? (sourceDashboard.visibilityRole || 'user') : 'disabled',
+          autoRefreshEnabled: duplicateSourceDashboard
+            ? Boolean(duplicateSourceDashboard.autoRefreshEnabled)
+            : parseEnvFlag(req.body?.dashboard_auto_refresh_enabled, false),
+          refreshSeconds: duplicateSourceDashboard
+            ? normalizeDashboardRefreshSeconds(duplicateSourceDashboard.refreshSeconds, sourceDashboard.refreshSeconds)
+            : normalizeDashboardRefreshSeconds(req.body?.dashboard_refresh_seconds, sourceDashboard.refreshSeconds),
+          visibilityRole: deriveDashboardLegacyVisibilityRole(
+            visibilityRoles,
+            visibilityRoles.length ? (sourceDashboard.visibilityRole || 'user') : 'disabled',
         ),
         state: useBlankDashboard
           ? buildEmptyDashboardStateSnapshot(config)
@@ -2972,7 +2983,7 @@ app.post('/settings/default-apps/add', requireSettingsAdmin, (req, res) => {
     menu: enforceSidebarAdminDefaults(recoveredMenu),
     overviewElements: Array.isArray(recoveredOverviewElements) && recoveredOverviewElements.length
       ? recoveredOverviewElements
-      : buildDisabledOverviewElements(nextAppSeed),
+      : buildDefaultOverviewElements(nextAppSeed),
   };
   const shouldAppendOverviewOrders = Boolean((existingIndex === -1 || current?.removed) && !removedStateBackup);
   if (shouldAppendOverviewOrders && Array.isArray(nextApp.overviewElements) && nextApp.overviewElements.length) {

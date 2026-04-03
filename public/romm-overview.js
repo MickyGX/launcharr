@@ -15,6 +15,13 @@
     configs.push(window.ROMM_OVERVIEW_CONFIG);
   }
   if (!configs.length) return;
+  var dashboardRefresh = window.LAUNCHARR_DASHBOARD_REFRESH;
+
+  function bindDashboardRefresh(callback) {
+    if (!dashboardRefresh || typeof dashboardRefresh.onRefresh !== 'function' || typeof callback !== 'function') return false;
+    dashboardRefresh.onRefresh(callback);
+    return true;
+  }
 
   function escapeHtml(value) {
     return String(value || '')
@@ -658,16 +665,21 @@
     limitFilter && limitFilter.addEventListener('change', applyFilters);
     sortFilter && sortFilter.addEventListener('change', applyFilters);
 
-    track.innerHTML = '<div class="plex-empty">Loading…</div>';
-    fetchJson(endpoint)
-      .then(function (payload) {
-        var rows = Array.isArray(payload && payload.items) ? payload.items : [];
-        track.__rommItems = rows.map(function (item, index) { return normalizeItem(item, config, index); });
-        applyFilters();
-      })
-      .catch(function (err) {
-        track.__rommItems = [];
-        track.innerHTML = '<div class="plex-empty">' + escapeHtml(err && err.message ? err.message : 'Failed to load Romm data.') + '</div>';
-      });
+    function loadItems() {
+      track.innerHTML = '<div class="plex-empty">Loading…</div>';
+      fetchJson(endpoint)
+        .then(function (payload) {
+          var rows = Array.isArray(payload && payload.items) ? payload.items : [];
+          track.__rommItems = rows.map(function (item, index) { return normalizeItem(item, config, index); });
+          applyFilters();
+        })
+        .catch(function (err) {
+          track.__rommItems = [];
+          track.innerHTML = '<div class="plex-empty">' + escapeHtml(err && err.message ? err.message : 'Failed to load Romm data.') + '</div>';
+        });
+    }
+
+    bindDashboardRefresh(loadItems);
+    loadItems();
   });
 })();

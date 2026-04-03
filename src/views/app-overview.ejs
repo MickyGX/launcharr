@@ -34,7 +34,7 @@
       const customIcon = String(appItem?.icon || '').trim();
       if (customIcon) return customIcon;
       const baseId = resolveAppBaseId(appItem?.id);
-      if (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'nzbget', 'qbittorrent', 'sabnzbd', 'jellyfin', 'emby', 'bazarr'].includes(baseId)) {
+      if (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'nzbget', 'qbittorrent', 'sabnzbd', 'slskd', 'jellyfin', 'emby', 'bazarr'].includes(baseId)) {
         return `/icons/${baseId}.png`;
       }
       return `/icons/${baseId || 'app'}.svg`;
@@ -748,19 +748,20 @@
         </div>
       <% } %>
 
-      <% if (['transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(appBaseId)) { %>
+      <% if (['transmission', 'nzbget', 'qbittorrent', 'sabnzbd', 'slskd'].includes(appBaseId)) { %>
         <%
           const overviewItems = Array.isArray(overviewElements) ? overviewElements : [];
           const overviewById = new Map(overviewItems.map((item) => [item.id, item]));
           const activityQueueSettings = overviewById.get('activity-queue') || { enable: true, order: 1 };
-          const appLogo = app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'nzbget', 'qbittorrent', 'sabnzbd', 'jellyfin', 'emby'].includes(appBaseId)
+          const appLogo = app.icon || (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'nzbget', 'qbittorrent', 'sabnzbd', 'slskd', 'jellyfin', 'emby'].includes(appBaseId)
             ? '/icons/' + appBaseId + '.png'
             : '/icons/' + appBaseId + '.svg');
           const appPrefix = app.id;
           const isTorrentDownloader = ['transmission', 'qbittorrent'].includes(appBaseId);
           const isUsenetDownloader = ['nzbget', 'sabnzbd'].includes(appBaseId);
-          const queueDetailLabel = isUsenetDownloader ? 'Category' : 'Status';
-          const queueSubDetailLabel = isUsenetDownloader ? 'Status' : 'Rate';
+          const isSoulseekDownloader = appBaseId === 'slskd';
+          const queueDetailLabel = isUsenetDownloader ? 'Category' : (isSoulseekDownloader ? 'User' : 'Status');
+          const queueSubDetailLabel = isUsenetDownloader ? 'Status' : (isSoulseekDownloader ? 'Status' : 'Rate');
           const orderedDownloaderSections = [
             { id: 'activity-queue', settings: activityQueueSettings },
           ]
@@ -808,6 +809,13 @@
                           <option value="downloading">Downloading</option>
                           <option value="queued">Queued</option>
                           <option value="seeding">Seeding</option>
+                          <option value="paused">Paused</option>
+                          <option value="completed">Completed</option>
+                          <option value="error">Error</option>
+                        <% } else if (isSoulseekDownloader) { %>
+                          <option value="active">Active</option>
+                          <option value="downloading">Downloading</option>
+                          <option value="queued">Queued</option>
                           <option value="paused">Paused</option>
                           <option value="completed">Completed</option>
                           <option value="error">Error</option>
@@ -2701,7 +2709,7 @@
     </script>
     <script src="/arr-overview.js?v=<%= assetVersion %>"></script>
   <% } %>
-  <% if (['transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(appBaseId)) { %>
+  <% if (['transmission', 'nzbget', 'qbittorrent', 'sabnzbd', 'slskd'].includes(appBaseId)) { %>
     <script>
       window.DOWNLOADER_QUEUE_CONFIG = <%- JSON.stringify({
         appId: app.id,

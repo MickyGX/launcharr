@@ -1,120 +1,137 @@
 import crypto from 'crypto';
 
-// Rate limiting for POST /login — in-memory, resets on restart (acceptable for self-hosted)
-const loginAttempts = new Map(); // ip -> { failures: number, windowStart: ms }
-
 const PIN_MAX_AGE_MS = 15 * 60 * 1000; // Plex PIN valid for 15 minutes
+const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const PLEX_PIN_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 
 function isValidPlexPinId(v) {
   const s = String(v || '').trim();
   return /^\d+$/.test(s) && s.length > 0 && s.length <= 20;
 }
 
-const RATE_LIMIT_MAX = 10;
-const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
-
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, entry] of loginAttempts) {
-    if (now - entry.windowStart > RATE_LIMIT_WINDOW_MS) loginAttempts.delete(ip);
-  }
-}, 30 * 60 * 1000).unref();
-
 function getClientIp(req) {
   return req.ip || req.socket?.remoteAddress || 'unknown';
 }
 
-// Returns minutes remaining if blocked, null if not blocked.
+function createInMemoryRateLimiter({ max, windowMs, pruneIntervalMs }) {
+  const attempts = new Map();
+  const cleanupWindowMs = Number.isFinite(pruneIntervalMs) && pruneIntervalMs > 0
+    ? pruneIntervalMs
+    : Math.max(windowMs, 60 * 1000);
+
+  setInterval(() => {
+    const now = Date.now();
+    for (const [ip, entry] of attempts) {
+      if (now - entry.windowStart > windowMs) attempts.delete(ip);
+    }
+  }, cleanupWindowMs).unref();
+
+  return {
+    check(ip) {
+      const now = Date.now();
+      const entry = attempts.get(ip);
+      if (!entry || now - entry.windowStart > windowMs) return null;
+      if (entry.count >= max) {
+        return Math.max(1, Math.ceil((windowMs - (now - entry.windowStart)) / 60000));
+      }
+      return null;
+    },
+    record(ip) {
+      const now = Date.now();
+      const entry = attempts.get(ip);
+      if (!entry || now - entry.windowStart > windowMs) {
+        attempts.set(ip, { count: 1, windowStart: now });
+      } else {
+        entry.count += 1;
+      }
+    },
+    clear(ip) {
+      attempts.delete(ip);
+    },
+    reset() {
+      attempts.clear();
+    },
+  };
+}
+
+const loginRateLimiter = createInMemoryRateLimiter({
+  max: 10,
+  windowMs: RATE_LIMIT_WINDOW_MS,
+  pruneIntervalMs: 30 * 60 * 1000,
+});
+
 function checkLoginRateLimit(ip) {
-  const now = Date.now();
-  const entry = loginAttempts.get(ip);
-  if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW_MS) return null;
-  if (entry.failures >= RATE_LIMIT_MAX) {
-    return Math.max(1, Math.ceil((RATE_LIMIT_WINDOW_MS - (now - entry.windowStart)) / 60000));
-  }
-  return null;
+  return loginRateLimiter.check(ip);
 }
 
 function recordLoginFailure(ip) {
-  const now = Date.now();
-  const entry = loginAttempts.get(ip);
-  if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
-    loginAttempts.set(ip, { failures: 1, windowStart: now });
-  } else {
-    entry.failures += 1;
-  }
+  loginRateLimiter.record(ip);
 }
 
 function clearLoginFailures(ip) {
-  loginAttempts.delete(ip);
+  loginRateLimiter.clear(ip);
 }
 
-// Rate limiting for POST /setup — 5 failures per 15 min per IP
-const setupAttempts = new Map();
-const SETUP_RATE_LIMIT_MAX = 5;
-
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, entry] of setupAttempts) {
-    if (now - entry.windowStart > RATE_LIMIT_WINDOW_MS) setupAttempts.delete(ip);
-  }
-}, 30 * 60 * 1000).unref();
+const setupRateLimiter = createInMemoryRateLimiter({
+  max: 5,
+  windowMs: RATE_LIMIT_WINDOW_MS,
+  pruneIntervalMs: 30 * 60 * 1000,
+});
 
 function checkSetupRateLimit(ip) {
-  const now = Date.now();
-  const entry = setupAttempts.get(ip);
-  if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW_MS) return null;
-  if (entry.failures >= SETUP_RATE_LIMIT_MAX) {
-    return Math.max(1, Math.ceil((RATE_LIMIT_WINDOW_MS - (now - entry.windowStart)) / 60000));
-  }
-  return null;
+  return setupRateLimiter.check(ip);
 }
 
 function recordSetupFailure(ip) {
-  const now = Date.now();
-  const entry = setupAttempts.get(ip);
-  if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
-    setupAttempts.set(ip, { failures: 1, windowStart: now });
-  } else {
-    entry.failures += 1;
-  }
+  setupRateLimiter.record(ip);
 }
 
-// Rate limiting for GET /api/plex/pin/status — 120 requests per 5 min per IP
-const plexPinStatusAttempts = new Map();
-const PLEX_PIN_STATUS_RATE_MAX = 120;
-const PLEX_PIN_STATUS_WINDOW_MS = 5 * 60 * 1000;
-
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, entry] of plexPinStatusAttempts) {
-    if (now - entry.windowStart > PLEX_PIN_STATUS_WINDOW_MS) plexPinStatusAttempts.delete(ip);
-  }
-}, 10 * 60 * 1000).unref();
+const plexPinStatusRateLimiter = createInMemoryRateLimiter({
+  max: 120,
+  windowMs: PLEX_PIN_RATE_LIMIT_WINDOW_MS,
+  pruneIntervalMs: 10 * 60 * 1000,
+});
 
 function checkPlexPinStatusRateLimit(ip) {
-  const now = Date.now();
-  const entry = plexPinStatusAttempts.get(ip);
-  if (!entry || now - entry.windowStart > PLEX_PIN_STATUS_WINDOW_MS) return null;
-  if (entry.count >= PLEX_PIN_STATUS_RATE_MAX) {
-    return Math.max(1, Math.ceil((PLEX_PIN_STATUS_WINDOW_MS - (now - entry.windowStart)) / 60000));
-  }
-  return null;
+  return plexPinStatusRateLimiter.check(ip);
 }
 
 function recordPlexPinStatusRequest(ip) {
-  const now = Date.now();
-  const entry = plexPinStatusAttempts.get(ip);
-  if (!entry || now - entry.windowStart > PLEX_PIN_STATUS_WINDOW_MS) {
-    plexPinStatusAttempts.set(ip, { count: 1, windowStart: now });
-  } else {
-    entry.count += 1;
-  }
+  plexPinStatusRateLimiter.record(ip);
 }
 
-// Exported for testing only
-export function resetLoginAttempts() { loginAttempts.clear(); }
-export { checkLoginRateLimit, recordLoginFailure, clearLoginFailures };
+const plexPinCreateRateLimiter = createInMemoryRateLimiter({
+  max: 30,
+  windowMs: PLEX_PIN_RATE_LIMIT_WINDOW_MS,
+  pruneIntervalMs: 10 * 60 * 1000,
+});
+
+function checkPlexPinCreateRateLimit(ip) {
+  return plexPinCreateRateLimiter.check(ip);
+}
+
+function recordPlexPinCreateRequest(ip) {
+  plexPinCreateRateLimiter.record(ip);
+}
+
+export function resetAuthRateLimits() {
+  loginRateLimiter.reset();
+  setupRateLimiter.reset();
+  plexPinStatusRateLimiter.reset();
+  plexPinCreateRateLimiter.reset();
+}
+
+export function resetLoginAttempts() {
+  loginRateLimiter.reset();
+}
+
+export {
+  checkLoginRateLimit,
+  recordLoginFailure,
+  clearLoginFailures,
+  checkPlexPinCreateRateLimit,
+  recordPlexPinCreateRequest,
+};
 
 function bp(res, path) {
   return (res.locals.withBasePath || ((p) => p))(path);
@@ -408,6 +425,13 @@ export function registerAuth(app, ctx) {
 
   app.post('/api/plex/pin', (req, res) => {
     try {
+      const ip = getClientIp(req);
+      const blockedMinutes = checkPlexPinCreateRateLimit(ip);
+      if (blockedMinutes !== null) {
+        return res.status(429).json({ error: `Too many PIN requests. Try again in ${blockedMinutes} minute${blockedMinutes === 1 ? '' : 's'}.` });
+      }
+      recordPlexPinCreateRequest(ip);
+
       const pinId = String(req.body?.pinId || '').trim();
       if (!isValidPlexPinId(pinId)) return res.status(400).json({ error: 'Invalid pinId.' });
       req.session.pinId = pinId;

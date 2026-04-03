@@ -120,6 +120,7 @@
         <% } %>
         <% if (allowLocalLogin) { %>
           <form class="login-form" method="post" action="<%= withBasePath('/login') %>">
+            <input type="hidden" name="_csrf" value="<%= csrfToken || '' %>" />
             <label class="login-field">
               <span>Username or email</span>
               <input class="login-input" type="text" name="username" autocomplete="username" required />

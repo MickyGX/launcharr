@@ -7,6 +7,7 @@
     }
   })();
 
+  const dashboardRefresh = window.LAUNCHARR_DASHBOARD_REFRESH;
   const config = window.TAUTULLI_OVERVIEW_CONFIG || {};
   const apiKey = String(config.apiKey || '').trim();
   const rawBaseUrl = String(config.baseUrl || '').trim();
@@ -36,6 +37,12 @@
     if (track) track.innerHTML = '<div class="plex-empty">Add a Tautulli API key in settings.</div>';
     if (wheelTrack) wheelTrack.innerHTML = '<div class="plex-empty">Add a Tautulli API key in settings.</div>';
     return;
+  }
+
+  function bindDashboardRefresh(callback) {
+    if (!dashboardRefresh || typeof dashboardRefresh.onRefresh !== 'function' || typeof callback !== 'function') return false;
+    dashboardRefresh.onRefresh(callback);
+    return true;
   }
 
   function normalizeBaseUrl(value) {
@@ -1305,4 +1312,5 @@
   }
 
   fetchServerIdentifier().finally(fetchHomeStats);
+  bindDashboardRefresh(fetchHomeStats);
 })();

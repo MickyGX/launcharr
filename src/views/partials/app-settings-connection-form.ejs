@@ -153,6 +153,8 @@
           Use an API key from Wizarr Settings -> API Keys.
         <% } else if (renderedAppBaseId === 'profilarr') { %>
           Use the API key from Profilarr Settings -> General.
+        <% } else if (renderedAppBaseId === 'slskd') { %>
+          Optional: use a slskd API key, or leave blank and use username/password below.
         <% } else if (renderedAppBaseId === 'unraid') { %>
           Use an API key from Unraid Settings -> Management Access -> API Keys.
         <% } else { %>
@@ -185,7 +187,7 @@
       </div>
     </div>
   <% } %>
-  <% if (['nzbget', 'transmission', 'qbittorrent', 'sabnzbd', 'romm', 'maintainerr', 'curatorr', 'glances', 'paperless-ngx', 'guacamole', 'traefik', 'dozzle', 'ersatztv', 'apprise', 'qnap'].includes(renderedAppBaseId)) { %>
+  <% if (['nzbget', 'transmission', 'qbittorrent', 'sabnzbd', 'slskd', 'romm', 'maintainerr', 'curatorr', 'glances', 'paperless-ngx', 'guacamole', 'traefik', 'dozzle', 'ersatztv', 'apprise', 'qnap'].includes(renderedAppBaseId)) { %>
     <div class="settings-card plex-settings-card">
       <div class="settings-card-title"><%= renderedAppName %> Access</div>
       <div class="settings-card-sub">

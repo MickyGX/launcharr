@@ -1,6 +1,13 @@
 (() => {
+  const dashboardRefresh = window.LAUNCHARR_DASHBOARD_REFRESH;
   const configs = resolveConfigs();
   if (!configs.length) return;
+
+  function bindDashboardRefresh(callback) {
+    if (!dashboardRefresh || typeof dashboardRefresh.onRefresh !== 'function' || typeof callback !== 'function') return false;
+    dashboardRefresh.onRefresh(callback);
+    return true;
+  }
 
   configs.forEach((config) => {
     try {
@@ -83,6 +90,7 @@
     }
 
     loadItems();
+    bindDashboardRefresh(loadItems);
 
     async function loadItems() {
       body.innerHTML = '<div class="queue-empty">Loading...</div>';

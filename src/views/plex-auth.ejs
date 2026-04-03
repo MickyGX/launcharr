@@ -39,6 +39,7 @@
       (async () => {
         const callbackBase = "<%= callbackUrl %>";
         const plexState = "<%= plexState %>";
+        const launcharrCsrfToken = "<%= csrfToken || '' %>";
         const client = <%- JSON.stringify(client) %>;
         const headers = {
           Accept: "application/json",
@@ -66,7 +67,11 @@
           try {
             await fetch("<%= withBasePath('/api/plex/pin') %>", {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              credentials: "same-origin",
+              headers: {
+                "Content-Type": "application/json",
+                "X-CSRF-Token": launcharrCsrfToken
+              },
               body: JSON.stringify({ pinId: String(data.id) })
             });
           } catch (err) {

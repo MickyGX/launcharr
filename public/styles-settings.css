@@ -983,12 +983,24 @@
   gap:16px;
 }
 .settings-grid--dashboard-meta{
-  grid-template-columns:minmax(420px, 1fr) 240px max-content;
+  grid-template-columns:minmax(320px, 1fr) 200px max-content 240px max-content;
   align-items:end;
   column-gap:10px;
 }
 .settings-grid--dashboard-meta .field--dashboard-name{
   min-width:0;
+}
+.settings-grid--dashboard-meta .field--dashboard-refresh-seconds{
+  width:200px;
+  justify-self:end;
+}
+.settings-grid--dashboard-meta .field--dashboard-refresh-toggle{
+  justify-self:start;
+  align-self:end;
+  margin-bottom:8px;
+}
+.settings-grid--dashboard-meta .field--dashboard-refresh-toggle-compact{
+  gap:0;
 }
 .settings-grid--dashboard-meta .field--dashboard-icon{
   justify-self:end;
@@ -2711,18 +2723,25 @@ input[type="checkbox"]{
     display:none;
   }
   .settings-grid--dashboard-meta{
-    grid-template-columns:minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns:minmax(0, 1fr) minmax(120px, 160px) max-content;
     align-items:stretch;
     gap:12px;
   }
-  .settings-grid--dashboard-meta .field--dashboard-name{
+  .settings-grid--dashboard-meta .field--dashboard-name,
+  .settings-grid--dashboard-meta .field--dashboard-icon{
     grid-column:1 / -1;
   }
-  .settings-grid--dashboard-meta .field--dashboard-icon,
+  .settings-grid--dashboard-meta .field--dashboard-refresh-seconds,
+  .settings-grid--dashboard-meta .field--dashboard-refresh-toggle,
   .settings-grid--dashboard-meta .field--dashboard-role{
     justify-self:stretch;
     width:auto;
     max-width:none;
+  }
+  .settings-grid--dashboard-meta .field--dashboard-refresh-toggle{
+    justify-self:start;
+    align-self:end;
+    margin-bottom:0;
   }
   .settings-grid--dashboard-meta .field--dashboard-icon .icon-picker,
   .settings-grid--dashboard-meta .field--dashboard-icon .icon-picker-trigger{

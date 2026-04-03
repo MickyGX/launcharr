@@ -29,6 +29,7 @@ Current catalog status:
 | MeTube | `metube` | `Downloaders` | Overview + Widget stats | `http://localhost:8081` |
 | NZBGet | `nzbget` | `Downloaders` | Overview + Widget stats | `http://localhost:6789` |
 | SABnzbd | `sabnzbd` | `Downloaders` | Overview + Widget stats | `http://localhost:8085` |
+| slskd | `slskd` | `Downloaders` | Overview + Widget stats | `http://localhost:5030` |
 | Transmission | `transmission` | `Downloaders` | Overview + Widget stats | `http://localhost:9091` |
 | qBittorrent | `qbittorrent` | `Downloaders` | Overview + Widget stats | `http://localhost:8080` |
 | Actual Budget | `actual-budget` | `Finance` | Launch/settings | `http://localhost:5006` |
@@ -87,7 +88,7 @@ Overview modules are currently implemented for:
 - Arr Suite: Radarr, Sonarr, Lidarr, Readarr, Bazarr, Autobrr, Maintainerr.
 - Requesters: Pulsarr, Seerr.
 - Indexers: Prowlarr, Jackett.
-- Downloaders: Transmission, qBittorrent, SABnzbd, NZBGet, MeTube.
+- Downloaders: Transmission, qBittorrent, SABnzbd, NZBGet, slskd, MeTube.
 - Specialty: Romm, Immich, Wizarr, Uptime Kuma, Guacamole.
 - Manager: Tautulli.
 

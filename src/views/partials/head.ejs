@@ -8,8 +8,11 @@
   <script>
     (function () {
       const basePath = '<%= basePath || '' %>';
+      const csrfToken = '<%= csrfToken || '' %>';
       window.LAUNCHARR_BASE_PATH = basePath;
+      window.LAUNCHARR_CSRF_TOKEN = csrfToken;
       const hasBasePath = Boolean(basePath);
+      const unsafeMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
       const shouldRewrite = (value) => {
         if (!hasBasePath) return false;
         if (!value || typeof value !== 'string') return false;
@@ -21,6 +24,37 @@
       };
       const withBasePath = (value) => (shouldRewrite(value) ? basePath + value : value);
       window.launcharrPath = withBasePath;
+      const isUnsafeMethod = (value) => unsafeMethods.has(String(value || 'GET').trim().toUpperCase());
+      const isSameOriginUrl = (value) => {
+        if (!value || typeof value !== 'string') return false;
+        try {
+          return new URL(value, window.location.href).origin === window.location.origin;
+        } catch (_err) {
+          return false;
+        }
+      };
+      const ensureCsrfHeaders = (method, url, headersLike) => {
+        const headers = new Headers(headersLike || undefined);
+        if (!csrfToken || !isUnsafeMethod(method) || !isSameOriginUrl(url) || headers.has('x-csrf-token')) {
+          return headers;
+        }
+        headers.set('x-csrf-token', csrfToken);
+        return headers;
+      };
+      const ensureFormCarriesCsrf = (form) => {
+        if (!csrfToken || !(form instanceof HTMLFormElement)) return;
+        const method = String(form.getAttribute('method') || form.method || 'get').trim().toUpperCase();
+        if (method !== 'POST' || form.querySelector('input[name="_csrf"]')) return;
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = '_csrf';
+        input.value = csrfToken;
+        form.appendChild(input);
+      };
+      const ensurePostFormsCarryCsrf = () => {
+        if (!csrfToken) return;
+        document.querySelectorAll('form').forEach((form) => ensureFormCarriesCsrf(form));
+      };
 
       const rewriteAttribute = (element, attr) => {
         const value = element.getAttribute(attr);
@@ -57,33 +91,85 @@
       patchProperty(HTMLAnchorElement, 'href');
       patchProperty(HTMLLinkElement, 'href');
       patchProperty(HTMLFormElement, 'action');
+      const originalFormSubmit = HTMLFormElement.prototype.submit;
+      HTMLFormElement.prototype.submit = function () {
+        ensureFormCarriesCsrf(this);
+        return originalFormSubmit.call(this);
+      };
+      const originalRequestSubmit = HTMLFormElement.prototype.requestSubmit;
+      if (typeof originalRequestSubmit === 'function') {
+        HTMLFormElement.prototype.requestSubmit = function (submitter) {
+          ensureFormCarriesCsrf(this);
+          return originalRequestSubmit.call(this, submitter);
+        };
+      }
 
       const originalFetch = window.fetch;
       if (typeof originalFetch === 'function') {
         window.fetch = function (input, init) {
+          const nextInit = init ? { ...init } : null;
           if (typeof input === 'string') {
-            return originalFetch(withBasePath(input), init);
+            const url = withBasePath(input);
+            const headers = ensureCsrfHeaders(nextInit?.method || 'GET', url, nextInit?.headers);
+            if (!nextInit && !headers.has('x-csrf-token')) return originalFetch(url);
+            return originalFetch(url, { ...(nextInit || {}), headers });
           }
           if (input && typeof input === 'object' && input.url && typeof input.url === 'string') {
             const nextUrl = withBasePath(input.url);
-            if (nextUrl !== input.url) {
-              const nextRequest = new Request(nextUrl, input);
-              return originalFetch(nextRequest, init);
+            const method = nextInit?.method || input.method || 'GET';
+            const existingHeaders = nextInit?.headers || input.headers;
+            const headers = ensureCsrfHeaders(method, nextUrl, existingHeaders);
+            const hadCsrfHeader = new Headers(existingHeaders || undefined).has('x-csrf-token');
+            if (nextUrl !== input.url || nextInit || (headers.has('x-csrf-token') && !hadCsrfHeader)) {
+              const requestInit = nextInit ? { ...nextInit, headers } : { headers };
+              return originalFetch(new Request(nextUrl, input), requestInit);
             }
           }
-          return originalFetch(input, init);
+          return nextInit ? originalFetch(input, nextInit) : originalFetch(input);
         };
       }
+
+      const originalXhrOpen = XMLHttpRequest.prototype.open;
+      const originalXhrSend = XMLHttpRequest.prototype.send;
+      const originalXhrSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
+      XMLHttpRequest.prototype.open = function (method, url, async, username, password) {
+        const nextUrl = typeof url === 'string' ? withBasePath(url) : url;
+        this.__launcharrMethod = String(method || 'GET').trim().toUpperCase();
+        this.__launcharrUrl = typeof nextUrl === 'string' ? nextUrl : '';
+        this.__launcharrHeaders = new Set();
+        return originalXhrOpen.call(this, method, nextUrl, async, username, password);
+      };
+      XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
+        if (this.__launcharrHeaders) this.__launcharrHeaders.add(String(name || '').trim().toLowerCase());
+        return originalXhrSetRequestHeader.call(this, name, value);
+      };
+      XMLHttpRequest.prototype.send = function (body) {
+        if (
+          csrfToken
+          && isUnsafeMethod(this.__launcharrMethod)
+          && isSameOriginUrl(this.__launcharrUrl)
+          && !(this.__launcharrHeaders && this.__launcharrHeaders.has('x-csrf-token'))
+        ) {
+          originalXhrSetRequestHeader.call(this, 'x-csrf-token', csrfToken);
+        }
+        return originalXhrSend.call(this, body);
+      };
 
       if (hasBasePath) {
         document.addEventListener('DOMContentLoaded', () => {
           document.querySelectorAll('[src]').forEach((el) => rewriteAttribute(el, 'src'));
           document.querySelectorAll('[href]').forEach((el) => rewriteAttribute(el, 'href'));
           document.querySelectorAll('form[action]').forEach((el) => rewriteAttribute(el, 'action'));
+          ensurePostFormsCarryCsrf();
         });
+      } else if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', ensurePostFormsCarryCsrf);
+      } else {
+        ensurePostFormsCarryCsrf();
       }
     })();
   </script>
+  <meta name="launcharr-csrf-token" content="<%= csrfToken || '' %>" />
   <link rel="stylesheet" href="<%= withBasePath('/styles.css') %>?v=<%= assetVersion %>" />
   <% (locals.extraCss || []).forEach(function(href) { %>
     <link rel="stylesheet" href="<%= withBasePath(href) %>?v=<%= assetVersion %>" />

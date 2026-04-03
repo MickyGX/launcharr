@@ -12,6 +12,7 @@
   const config = window.IMMICH_OVERVIEW_CONFIG || {};
   const appId = String(config.appId || 'immich').trim() || 'immich';
   const appName = String(config.appName || 'Immich').trim() || 'Immich';
+  const dashboardRefresh = window.LAUNCHARR_DASHBOARD_REFRESH;
 
   const viewport = document.getElementById('immichRecentViewport');
   const track = document.getElementById('immichRecentTrack');
@@ -25,6 +26,12 @@
   const CACHE_TTL_MS = 3 * 60 * 1000;
   let allItems = [];
   let carousel = null;
+
+  function bindDashboardRefresh(callback) {
+    if (!dashboardRefresh || typeof dashboardRefresh.onRefresh !== 'function' || typeof callback !== 'function') return false;
+    dashboardRefresh.onRefresh(callback);
+    return true;
+  }
 
   function escapeHtml(value) {
     return String(value || '').replace(/[&<>"']/g, (char) => (
@@ -319,11 +326,11 @@
     carousel.setItems(filtered.slice(0, limit));
   }
 
-  async function loadRecent() {
+  async function loadRecent(forceRefresh) {
     const limit = Math.max(1, Number(limitSelect?.value) || 20);
     const fetchSize = Math.min(100, Math.max(limit, 50));
     const key = cacheKey(fetchSize);
-    const cached = cacheRead(key);
+    const cached = forceRefresh ? null : cacheRead(key);
     if (cached) {
       allItems = cached;
       applyFilters();
@@ -362,6 +369,7 @@
     });
   }
   bindCollapseButtons();
+  bindDashboardRefresh(() => loadRecent(true));
 
   loadRecent();
 })();

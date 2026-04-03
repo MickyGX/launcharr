@@ -1121,6 +1121,43 @@
     "instanceNamePlaceholder": "..."
   },
   {
+    "id": "slskd",
+    "name": "slskd",
+    "url": "http://localhost:5030",
+    "description": "Soulseek client",
+    "category": "Downloaders",
+    "roles": [
+      "hidden"
+    ],
+    "apiKey": "",
+    "username": "",
+    "password": "",
+    "menu": {
+      "overview": {
+        "user": false,
+        "admin": true
+      },
+      "launch": {
+        "user": true,
+        "admin": true
+      },
+      "settings": {
+        "user": false,
+        "admin": true
+      }
+    },
+    "order": 5,
+    "favourite": false,
+    "launchMode": "iframe",
+    "localUrl": "http://localhost:5030",
+    "remoteUrl": "",
+    "plexToken": "",
+    "removed": true,
+    "supportsInstances": true,
+    "maxInstances": 5,
+    "instanceNamePlaceholder": "..."
+  },
+  {
     "id": "jackett",
     "name": "Jackett",
     "icon": "/icons/jackett.png",

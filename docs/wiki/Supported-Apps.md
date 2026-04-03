@@ -66,6 +66,7 @@ Current built-in catalog totals:
 | MeTube | `metube` | `Downloaders` | Overview + Widget stats | `http://localhost:8081` |
 | NZBGet | `nzbget` | `Downloaders` | Overview + Widget stats | `http://localhost:6789` |
 | SABnzbd | `sabnzbd` | `Downloaders` | Overview + Widget stats | `http://localhost:8085` |
+| slskd | `slskd` | `Downloaders` | Overview + Widget stats | `http://localhost:5030` |
 | Transmission | `transmission` | `Downloaders` | Overview + Widget stats | `http://localhost:9091` |
 | qBittorrent | `qbittorrent` | `Downloaders` | Overview + Widget stats | `http://localhost:8080` |
 | Actual Budget | `actual-budget` | `Finance` | Launch/settings | `http://localhost:5006` |

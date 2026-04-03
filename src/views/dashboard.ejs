@@ -45,7 +45,7 @@
       const customIcon = String(appItem?.icon || '').trim();
       if (customIcon) return customIcon;
       const baseId = resolveAppBaseId(appItem?.id);
-      if (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'qbittorrent', 'sabnzbd', 'jellyfin', 'emby', 'bazarr'].includes(baseId)) {
+      if (['plex', 'tautulli', 'radarr', 'sonarr', 'lidarr', 'readarr', 'pulsarr', 'seerr', 'prowlarr', 'cleanuparr', 'huntarr', 'transmission', 'qbittorrent', 'sabnzbd', 'slskd', 'jellyfin', 'emby', 'bazarr'].includes(baseId)) {
         return `/icons/${baseId}.png`;
       }
       return `/icons/${baseId || 'app'}.svg`;
@@ -83,7 +83,11 @@
       <%- include('partials/user-menu') %>
     </aside>
 
-    <section class="dash-main">
+    <section
+      class="dash-main"
+      data-dashboard-id="<%= activeDashboardEntry.id %>"
+      data-dashboard-auto-refresh-enabled="<%= activeDashboard?.autoRefreshEnabled ? '1' : '0' %>"
+      data-dashboard-refresh-seconds="<%= activeDashboard?.refreshSeconds ?? 60 %>">
       <div class="main-window-bar">
         <button class="sidebar-toggle main-toggle left-toggle" type="button" aria-label="Toggle sidebar">
           <img class="toggle-icon" src="/icons/sidebar-toggle.svg" alt="" />
@@ -1506,7 +1510,7 @@
                 </div>
               </section>
             <% } %>
-            <% if (['transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(resolveAppBaseId(item.app.id)) && item.element.id === 'activity-queue') { %>
+            <% if (['transmission', 'nzbget', 'qbittorrent', 'sabnzbd', 'slskd'].includes(resolveAppBaseId(item.app.id)) && item.element.id === 'activity-queue') { %>
               <%
                 const isCombined = Boolean(item.downloaderCombined);
                 const itemBaseId = resolveAppBaseId(item.app.id);
@@ -1518,14 +1522,15 @@
                 const controlPrefix = configPrefix + 'Queue';
                 const isTorrentApp = ['transmission', 'qbittorrent'].includes(itemBaseId);
                 const isUsenetApp = ['nzbget', 'sabnzbd'].includes(itemBaseId);
+                const isSoulseekApp = itemBaseId === 'slskd';
                 const logo = isCombined
                   ? (item.downloaderCombined?.iconPath || '/icons/download.svg')
                   : resolveAppIconPath(item.app);
                 const title = isCombined
                   ? (item.downloaderCombined?.displayName || 'Download Queue')
                   : 'Download Queue';
-                const detailLabel = isCombined ? 'Source' : (isUsenetApp ? 'Category' : 'Status');
-                const subDetailLabel = isCombined ? 'Detail' : (isUsenetApp ? 'Status' : 'Rate');
+                const detailLabel = isCombined ? 'Source' : (isUsenetApp ? 'Category' : (isSoulseekApp ? 'User' : 'Status'));
+                const subDetailLabel = isCombined ? 'Detail' : (isUsenetApp ? 'Status' : (isSoulseekApp ? 'Status' : 'Rate'));
                 const combinedQueueDisplay = isCombined ? downloaderCombinedQueueDisplay : null;
                 const queueDisplay = combinedQueueDisplay || item.element || {};
                 const queueClasses = [
@@ -1579,6 +1584,13 @@
                           <option value="downloading">Downloading</option>
                           <option value="queued">Queued</option>
                           <option value="seeding">Seeding</option>
+                          <option value="paused">Paused</option>
+                          <option value="completed">Completed</option>
+                          <option value="error">Error</option>
+                        <% } else if (isSoulseekApp) { %>
+                          <option value="active">Active</option>
+                          <option value="downloading">Downloading</option>
+                          <option value="queued">Queued</option>
                           <option value="paused">Paused</option>
                           <option value="completed">Completed</option>
                           <option value="error">Error</option>
@@ -2832,6 +2844,14 @@
       });
     });
   </script>
+  <script>
+    window.LAUNCHARR_DASHBOARD_REFRESH_CONFIG = <%- JSON.stringify({
+      dashboardId: activeDashboardEntry.id,
+      enabled: activeDashboard?.autoRefreshEnabled === true,
+      refreshSeconds: activeDashboard?.refreshSeconds ?? 60,
+    }) %>;
+  </script>
+  <script src="/dashboard-refresh.js?v=<%= assetVersion %>"></script>
   <% if (dashboardModules.some((item) => resolveAppBaseId(item.app.id) === 'plex' && !item.mediaCombined)) { %>
     <% const plexApp = dashboardModules.find((item) => resolveAppBaseId(item.app.id) === 'plex' && !item.mediaCombined)?.app; %>
     <% if (plexApp) { %>
@@ -2995,11 +3015,11 @@
       <script src="/arr-overview.js?v=<%= assetVersion %>"></script>
     <% } %>
   <% } %>
-  <% if (dashboardModules.some((item) => ['transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(resolveAppBaseId(item.app.id)) && item.element.id === 'activity-queue')) { %>
+  <% if (dashboardModules.some((item) => ['transmission', 'nzbget', 'qbittorrent', 'sabnzbd', 'slskd'].includes(resolveAppBaseId(item.app.id)) && item.element.id === 'activity-queue')) { %>
     <%
       const downloaderQueueApps = [];
       dashboardModules
-        .filter((item) => ['transmission', 'nzbget', 'qbittorrent', 'sabnzbd'].includes(resolveAppBaseId(item.app.id)) && item.element.id === 'activity-queue')
+        .filter((item) => ['transmission', 'nzbget', 'qbittorrent', 'sabnzbd', 'slskd'].includes(resolveAppBaseId(item.app.id)) && item.element.id === 'activity-queue')
         .forEach((item) => {
           if (downloaderQueueApps.some((entry) => entry.appId === item.app.id)) return;
           downloaderQueueApps.push({

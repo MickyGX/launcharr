@@ -2,6 +2,7 @@
   'use strict';
 
   const config = window.METUBE_OVERVIEW_CONFIG || {};
+  const dashboardRefresh = window.LAUNCHARR_DASHBOARD_REFRESH;
   const appId = String(config.appId || 'metube').trim() || 'metube';
   const appName = String(config.appName || 'MeTube').trim() || 'MeTube';
 
@@ -15,6 +16,12 @@
   let cachedQueue = null;
   let cachedDone = null;
   let cacheTs = 0;
+
+  function bindDashboardRefresh(callback) {
+    if (!dashboardRefresh || typeof dashboardRefresh.onRefresh !== 'function' || typeof callback !== 'function') return false;
+    dashboardRefresh.onRefresh(callback);
+    return true;
+  }
 
   function escapeHtml(value) {
     return String(value || '').replace(/[&<>"']/g, (char) => (
@@ -124,10 +131,19 @@
   loadQueue();
 
   // Auto-refresh while downloading
-  setInterval(() => {
-    if (cachedQueue && cachedQueue.some((item) => item.status === 'downloading')) {
-      cachedQueue = null;
-      loadQueue();
-    }
-  }, 10000);
+  if (!bindDashboardRefresh(() => {
+    cachedQueue = null;
+    cachedDone = null;
+    cacheTs = 0;
+    loadQueue();
+  })) {
+    setInterval(() => {
+      if (cachedQueue && cachedQueue.some((item) => item.status === 'downloading')) {
+        cachedQueue = null;
+        cachedDone = null;
+        cacheTs = 0;
+        loadQueue();
+      }
+    }, 10000);
+  }
 })();

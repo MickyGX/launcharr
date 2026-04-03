@@ -74,7 +74,7 @@ const LOG_IP_ALIAS_CACHE = new Map();
 
 const ADMIN_USERS = parseCsv(process.env.ADMIN_USERS || '');
 const ARR_APP_IDS = ['radarr', 'sonarr', 'lidarr', 'readarr'];
-const DOWNLOADER_APP_IDS = ['transmission', 'nzbget', 'qbittorrent', 'sabnzbd'];
+const DOWNLOADER_APP_IDS = ['transmission', 'nzbget', 'qbittorrent', 'sabnzbd', 'slskd'];
 const MEDIA_APP_IDS = ['plex', 'jellyfin', 'emby'];
 const LEGACY_MULTI_INSTANCE_APP_IDS = ['radarr', 'sonarr', 'bazarr', 'transmission'];
 const DEFAULT_MAX_MULTI_INSTANCES_PER_APP = 5;
@@ -129,6 +129,7 @@ const WIDGET_STAT_TYPES = [
   { typeId: 'sabnzbd',      name: 'SABnzbd',      icon: '/icons/sabnzbd.png',      metricFields: [{ key: 'speed', label: 'Speed' }, { key: 'queue', label: 'Queue' }] },
   { typeId: 'nzbget',       name: 'NZBGet',       icon: '/icons/nzbget.svg',       metricFields: [{ key: 'downloading', label: 'Downloading' }, { key: 'queue', label: 'Queued' }, { key: 'speed', label: 'Download Speed' }, { key: 'remaining', label: 'Remaining' }] },
   { typeId: 'transmission', name: 'Transmission', icon: '/icons/transmission.svg', metricFields: [{ key: 'active', label: 'Active' }, { key: 'paused', label: 'Paused' }, { key: 'total', label: 'Total' }, { key: 'downloading', label: 'Downloading' }, { key: 'seeding', label: 'Seeding' }, { key: 'dlspeed', label: 'Download Speed' }, { key: 'upspeed', label: 'Upload Speed' }] },
+  { typeId: 'slskd',        name: 'slskd',        icon: '/icons/slskd.png',        metricFields: [{ key: 'state', label: 'State' }, { key: 'speed', label: 'Avg Speed' }, { key: 'files', label: 'Shared Files' }, { key: 'uploads', label: 'Uploads' }] },
   { typeId: 'maintainerr',  name: 'Maintainerr',  icon: '/icons/maintainerr.svg',  metricFields: [{ key: 'rules', label: 'Rules' }, { key: 'active', label: 'Active' }] },
   { typeId: 'curatorr',     name: 'Curatorr',     icon: '/icons/curatorr-icon.svg', metricFields: [{ key: 'plex_users', label: 'Plex Users' }, { key: 'active_users', label: 'Active Users' }, { key: 'plays', label: 'Plays' }] },
   { typeId: 'cleanuparr',   name: 'Cleanuparr',   icon: '/icons/cleanuparr.svg',   metricFields: [{ key: 'tracked', label: 'Tracked' }, { key: 'removed', label: 'Removed' }] },
@@ -374,6 +375,9 @@ const APP_OVERVIEW_ELEMENTS = {
   sabnzbd: [
     { id: 'activity-queue', name: 'Download Queue' },
   ],
+  slskd: [
+    { id: 'activity-queue', name: 'Download Queue' },
+  ],
   immich: [
     { id: 'recent', name: 'Recently Added' },
   ],
@@ -495,12 +499,14 @@ const APP_BASE_NAME_MAP = {
   sonarr: 'Sonarr',
   bazarr: 'Bazarr',
   transmission: 'Transmission',
+  slskd: 'slskd',
 };
 const APP_INSTANCE_PLACEHOLDER_MAP = {
   radarr: 'Movies (e.g. 4K)',
   sonarr: 'TV (e.g. Anime)',
   bazarr: 'Subtitles (e.g. Foreign)',
   transmission: 'Client (e.g. Main)',
+  slskd: 'Client (e.g. Main)',
 };
 let RUNTIME_MULTI_INSTANCE_BASE_IDS = [...LEGACY_MULTI_INSTANCE_APP_IDS];
 const VISIBILITY_ROLE_ORDER = ['disabled', 'guest', 'user', 'co-admin', 'admin'];
@@ -4931,6 +4937,132 @@ async function fetchSabnzbdQueue(baseUrl, apiKey, authHeader, customHeaders = {}
     clearTimeout(timeout);
   }
 }
+
+async function fetchSlskdJson(baseUrl, apiPath, options = {}) {
+  const apiKey = String(options?.apiKey || '').trim();
+  const username = String(options?.username || '').trim();
+  const password = String(options?.password || '').trim();
+  const customHeaders = options?.customHeaders || {};
+  const url = buildAppApiUrl(baseUrl, apiPath);
+
+  const doRequest = async (headers) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+    try {
+      const response = await fetch(url.toString(), {
+        headers,
+        signal: controller.signal,
+      });
+      const text = await response.text();
+      const parsed = text ? JSON.parse(text) : null;
+      return {
+        ok: response.ok,
+        status: response.status,
+        json: parsed,
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
+  const requestHeaders = mergeAppHeaders({ customHeaders }, { Accept: 'application/json' });
+  if (apiKey) requestHeaders.Authorization = `Bearer ${apiKey}`;
+
+  try {
+    const directResult = await doRequest(requestHeaders);
+    if (directResult.ok) return directResult;
+    if (apiKey) {
+      return { error: `slskd request failed (${directResult.status}).`, status: directResult.status };
+    }
+
+    if (!username && !password) {
+      return { error: `slskd request failed (${directResult.status}).`, status: directResult.status };
+    }
+
+    const loginUrl = buildAppApiUrl(baseUrl, 'api/v0/session');
+    const loginHeaders = mergeAppHeaders({ customHeaders }, {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    });
+    const loginController = new AbortController();
+    const loginTimeout = setTimeout(() => loginController.abort(), 12000);
+    let token = '';
+    try {
+      const loginResponse = await fetch(loginUrl.toString(), {
+        method: 'POST',
+        headers: loginHeaders,
+        body: JSON.stringify({ username, password }),
+        signal: loginController.signal,
+      });
+      const loginText = await loginResponse.text();
+      if (!loginResponse.ok) {
+        return { error: `slskd authentication failed (${loginResponse.status}).`, status: loginResponse.status };
+      }
+      const loginJson = loginText ? JSON.parse(loginText) : {};
+      token = String(loginJson?.token || '').trim();
+    } finally {
+      clearTimeout(loginTimeout);
+    }
+
+    if (!token) return { error: 'slskd authentication did not return a bearer token.' };
+    const authedHeaders = mergeAppHeaders({ customHeaders }, {
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+    });
+    return await doRequest(authedHeaders);
+  } catch (err) {
+    return { error: safeMessage(err) || 'Failed to reach slskd.' };
+  }
+}
+
+function flattenSlskdTransfers(payload) {
+  if (!Array.isArray(payload)) return [];
+  return payload.flatMap((userEntry) => {
+    const directories = Array.isArray(userEntry?.directories) ? userEntry.directories : [];
+    return directories.flatMap((directoryEntry) => {
+      const files = Array.isArray(directoryEntry?.files) ? directoryEntry.files : [];
+      return files.map((fileEntry) => ({
+        ...(fileEntry || {}),
+        username: fileEntry?.username || userEntry?.username || '',
+        directory: directoryEntry?.directory || '',
+      }));
+    });
+  });
+}
+
+function shouldIncludeSlskdTransfer(entry) {
+  const state = String(entry?.stateDescription || entry?.state || '').trim().toLowerCase();
+  const percentComplete = Number(entry?.percentComplete);
+  const bytesRemaining = Number(entry?.bytesRemaining);
+  const isDownload = String(entry?.direction || 'Download').trim().toLowerCase() !== 'upload';
+  if (!isDownload) return false;
+  if (/(fail|error|cancel|abort|reject|deny|timeout)/.test(state)) return true;
+  const finished = state.includes('completed')
+    && (!Number.isFinite(percentComplete) || percentComplete >= 100)
+    && (!Number.isFinite(bytesRemaining) || bytesRemaining <= 0);
+  return !finished;
+}
+
+async function fetchSlskdQueue(baseUrl, apiKey, username, password, customHeaders = {}) {
+  const result = await fetchSlskdJson(baseUrl, 'api/v0/transfers/downloads', {
+    apiKey,
+    username,
+    password,
+    customHeaders,
+  });
+  if (!result?.ok) {
+    return { error: result?.error || `slskd request failed (${result?.status || 502}).` };
+  }
+
+  const items = flattenSlskdTransfers(result.json)
+    .filter((entry) => shouldIncludeSlskdTransfer(entry))
+    .sort((left, right) => {
+      const leftStamp = Date.parse(left?.requestedAt || left?.enqueuedAt || left?.startedAt || '') || 0;
+      const rightStamp = Date.parse(right?.requestedAt || right?.enqueuedAt || right?.startedAt || '') || 0;
+      return rightStamp - leftStamp;
+    });
+  return { items };
+}
 // /api/downloaders/:appId/queue — moved to src/routes/api-arr.js
 // /api/arr/:appId/:version/* — moved to src/routes/api-arr.js
 // /api/arr/* — moved to src/routes/api-arr.js
@@ -4983,28 +5115,6 @@ function resolveProxyHopCount(value, fallback = 1) {
   return Math.max(1, Math.min(10, Math.round(parsed)));
 }
 
-function buildCurrentRequestOrigin(req) {
-  const protocol = String(req.protocol || 'http').trim().toLowerCase() || 'http';
-  const host = String(req.get('host') || '').trim().toLowerCase();
-  if (!host) return '';
-  return `${protocol}://${host}`;
-}
-
-function isSameOriginValue(value, req) {
-  const raw = String(value || '').trim();
-  if (!raw) return false;
-  try {
-    const parsed = new URL(raw);
-    const expectedOrigin = buildCurrentRequestOrigin(req);
-    if (!expectedOrigin) return false;
-    const expected = new URL(expectedOrigin);
-    return parsed.protocol.toLowerCase() === expected.protocol.toLowerCase()
-      && parsed.host.toLowerCase() === expected.host.toLowerCase();
-  } catch (_err) {
-    return false;
-  }
-}
-
 function safeTokenEquals(expectedValue, providedValue) {
   const expected = String(expectedValue || '');
   const provided = String(providedValue || '');
@@ -5020,6 +5130,13 @@ function isUnsafeHttpMethod(method) {
   return normalized === 'POST' || normalized === 'PUT' || normalized === 'PATCH' || normalized === 'DELETE';
 }
 
+const CSRF_EXEMPT_PATHS = new Set();
+
+function isCsrfExemptRequest(req) {
+  const pathValue = String(req.path || req.originalUrl || '').split('?')[0];
+  return CSRF_EXEMPT_PATHS.has(pathValue);
+}
+
 function rejectCsrfRequest(req, res) {
   const payload = { error: 'CSRF validation failed.' };
   const acceptsJson = String(req.get('accept') || '').toLowerCase().includes('application/json')
@@ -5030,7 +5147,7 @@ function rejectCsrfRequest(req, res) {
 }
 
 function csrfProtectionMiddleware(req, res, next) {
-  if (!isUnsafeHttpMethod(req.method)) return next();
+  if (!isUnsafeHttpMethod(req.method) || isCsrfExemptRequest(req)) return next();
 
   const sessionToken = String(req.session?.csrfToken || '').trim();
   const suppliedToken = String(
@@ -5040,21 +5157,7 @@ function csrfProtectionMiddleware(req, res, next) {
       || ''
   ).trim();
   if (sessionToken && safeTokenEquals(sessionToken, suppliedToken)) return next();
-
-  const origin = String(req.get('origin') || '').trim();
-  if (origin) {
-    if (isSameOriginValue(origin, req)) return next();
-    return rejectCsrfRequest(req, res);
-  }
-
-  const referer = String(req.get('referer') || '').trim();
-  if (referer) {
-    if (isSameOriginValue(referer, req)) return next();
-    return rejectCsrfRequest(req, res);
-  }
-
-  // Requests without Origin/Referer (CLI tools, legacy clients) are allowed.
-  return next();
+  return rejectCsrfRequest(req, res);
 }
 
 function createRequestBodySizeGuard(maxBytes) {
@@ -5268,8 +5371,18 @@ function uniqueList(items) {
   return out;
 }
 
+export function resolveCookieSecureSetting({
+  cookieSecureEnv = process.env.COOKIE_SECURE,
+  nodeEnv = process.env.NODE_ENV,
+} = {}) {
+  const rawOverride = String(cookieSecureEnv || '').trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(rawOverride)) return true;
+  if (['0', 'false', 'no', 'off'].includes(rawOverride)) return false;
+  return String(nodeEnv || '').trim().toLowerCase() === 'production';
+}
+
 function isSecureEnv() {
-  return (process.env.COOKIE_SECURE || '').toLowerCase() === 'true';
+  return resolveCookieSecureSetting();
 }
 
 function loadPackageVersion() {
@@ -5945,6 +6058,36 @@ function buildDisabledOverviewElements(appItem) {
   }));
 }
 
+function buildDefaultOverviewElements(appItem) {
+  const elements = getOverviewElements(appItem);
+  return elements.map((element, index) => ({
+    id: element.id,
+    enable: true,
+    dashboard: true,
+    favourite: false,
+    order: index + 1,
+  }));
+}
+
+function isLegacyDisabledOverviewPlaceholder(appItem, overviewElements) {
+  const expectedElements = getOverviewElements(appItem);
+  const savedElements = Array.isArray(overviewElements) ? overviewElements : [];
+  if (!expectedElements.length || expectedElements.length !== savedElements.length) return false;
+  const expectedIds = expectedElements.map((element) => String(element?.id || '').trim());
+  const savedIds = savedElements.map((element) => String(element?.id || '').trim());
+  if (expectedIds.some((id, index) => id !== savedIds[index])) return false;
+  return savedElements.every((element, index) => {
+    const entry = element && typeof element === 'object' ? element : {};
+    const allowedKeys = new Set(['id', 'enable', 'dashboard', 'favourite', 'order', 'dashboardVisibilityRole']);
+    const keys = Object.keys(entry);
+    if (keys.some((key) => !allowedKeys.has(key))) return false;
+    return entry.enable === false
+      && entry.dashboard === false
+      && entry.favourite === false
+      && (!('dashboardVisibilityRole' in entry) || normalizeVisibilityRole(entry.dashboardVisibilityRole, 'disabled') === 'disabled');
+  });
+}
+
 function normalizeCategoryName(value) {
   const name = String(value || '').trim();
   const key = name.toLowerCase();
@@ -6332,6 +6475,9 @@ function canAccessCombinedDashboardVisibility(settings, role, fallback = 'user')
 const DASHBOARD_MAIN_ID = 'main';
 const DASHBOARD_MAX_COUNT = 10;
 const DEFAULT_DASHBOARD_ICON = '/icons/dashboard.svg';
+const DEFAULT_DASHBOARD_REFRESH_SECONDS = 60;
+const DASHBOARD_REFRESH_MIN_SECONDS = 15;
+const DASHBOARD_REFRESH_MAX_SECONDS = 3600;
 const DASHBOARD_VISIBILITY_SELECTABLE_ROLES = ['guest', 'user', 'co-admin', 'admin'];
 
 function dashboardVisibilityRolesFromLegacyMinRole(minRole = 'user') {
@@ -6419,6 +6565,16 @@ function normalizeDashboardIcon(value, fallback = DEFAULT_DASHBOARD_ICON) {
   return raw;
 }
 
+function normalizeDashboardRefreshSeconds(value, fallback = DEFAULT_DASHBOARD_REFRESH_SECONDS) {
+  const fallbackNumber = Number(fallback);
+  const safeFallback = Number.isFinite(fallbackNumber)
+    ? Math.max(DASHBOARD_REFRESH_MIN_SECONDS, Math.min(DASHBOARD_REFRESH_MAX_SECONDS, Math.round(fallbackNumber)))
+    : DEFAULT_DASHBOARD_REFRESH_SECONDS;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return safeFallback;
+  return Math.max(DASHBOARD_REFRESH_MIN_SECONDS, Math.min(DASHBOARD_REFRESH_MAX_SECONDS, Math.round(parsed)));
+}
+
 function normalizeDashboardDefinition(entry, index = 0) {
   const source = entry && typeof entry === 'object' ? entry : {};
   const requestedId = normalizeDashboardInstanceId(source.id);
@@ -6436,6 +6592,8 @@ function normalizeDashboardDefinition(entry, index = 0) {
       visibilityRoles.length ? normalizeVisibilityRole(source.visibilityRole, 'user') : 'disabled',
     ),
     visibilityRoles,
+    autoRefreshEnabled: parseEnvFlag(source.autoRefreshEnabled, false),
+    refreshSeconds: normalizeDashboardRefreshSeconds(source.refreshSeconds, DEFAULT_DASHBOARD_REFRESH_SECONDS),
     state: source.state && typeof source.state === 'object'
       ? cloneJsonValue(source.state, {})
       : undefined,
@@ -6462,6 +6620,8 @@ function resolveDashboardDefinitions(config) {
       icon: DEFAULT_DASHBOARD_ICON,
       visibilityRole: 'user',
       visibilityRoles: dashboardVisibilityRolesFromLegacyMinRole('user'),
+      autoRefreshEnabled: false,
+      refreshSeconds: DEFAULT_DASHBOARD_REFRESH_SECONDS,
     });
   }
 
@@ -7973,6 +8133,11 @@ function migrateDeprecatedDashboardCards(config) {
       ? appItem.overviewElements.map((entry) => ({ ...(entry || {}) }))
       : [];
 
+    if (isLegacyDisabledOverviewPlaceholder(appItem, nextOverviewElements)) {
+      nextOverviewElements = buildDefaultOverviewElements(appItem);
+      markChanged();
+    }
+
     if (normalizedAppId === 'tautulli') {
       const watchStatsKey = `app:${appItem.id}:watch-stats`;
       const wheelKey = `app:${appItem.id}:watch-stats-wheel`;
@@ -8540,6 +8705,9 @@ function resolveQueueColumnLabels(appItem) {
   const appId = getAppBaseId(appItem?.id);
   if (appId === 'nzbget' || appId === 'sabnzbd') {
     return { detailLabel: 'Category', subDetailLabel: 'Status' };
+  }
+  if (appId === 'slskd') {
+    return { detailLabel: 'User', subDetailLabel: 'Status' };
   }
   if (appId === 'transmission' || appId === 'qbittorrent') {
     return { detailLabel: 'Status', subDetailLabel: 'Rate' };
@@ -10360,6 +10528,8 @@ const _routeCtx = {
   fetchNzbgetQueue,
   fetchQbittorrentQueue,
   fetchSabnzbdQueue,
+  fetchSlskdJson,
+  fetchSlskdQueue,
   // api-specialty — romm data
   injectBasicAuthIntoUrl,
   buildCookieHeaderFromSetCookies,
@@ -10412,6 +10582,7 @@ const _routeCtx = {
   buildDashboardSettingsRedirect,
   buildDisabledMenuAccess,
   buildDisabledOverviewElements,
+  buildDefaultOverviewElements,
   buildEmptyDashboardStateSnapshot,
   buildMenuAccessConfig,
   buildNextInstanceId,
@@ -10453,6 +10624,7 @@ const _routeCtx = {
   normalizeCategoryName,
   normalizeDashboardDisplayName,
   normalizeDashboardIcon,
+  normalizeDashboardRefreshSeconds,
   normalizeDashboardInstanceId,
   normalizeLaunchMode,
   normalizeLocalRole,
@@ -10463,6 +10635,7 @@ const _routeCtx = {
   normalizeThemeSettings,
   normalizeUserKey,
   normalizeVisibilityRole,
+  parseEnvFlag,
   parseCsv,
   parsePlexUsers,
   parseUserAvatarDataUrl,
