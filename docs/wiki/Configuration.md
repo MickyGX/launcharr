@@ -1,5 +1,22 @@
 # Configuration
 
+Launcharr is configured through container environment variables and the Settings UI.
+
+## Environment Variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `SESSION_SECRET` | Yes | Session encryption secret. Generate with `openssl rand -hex 32`. |
+| `BASE_URL` | Yes | Public or local URL Launcharr is served from. Used in redirects and Plex callback. |
+| `CONFIG_PATH` | No | Config file path inside the container. Default: `/app/config/config.json` |
+| `DATA_DIR` | No | Runtime data directory. Default: `/app/data` |
+| `TRUST_PROXY` | No | Set `true` behind a reverse proxy. |
+| `TRUST_PROXY_HOPS` | No | Trusted proxy hop count. Default: `1` |
+| `COOKIE_SECURE` | No | `false` for plain HTTP access, `true` for HTTPS-only. Production image defaults to `true` if not set. |
+| `ADMIN_USERS` | No | Comma-separated list of Plex usernames to bootstrap as admins. |
+| `URLENCODED_BODY_LIMIT` | No | Max body size for form requests. Default: `8mb` |
+| `JSON_BODY_LIMIT` | No | Max body size for JSON requests. Default: `2mb` |
+
 ## Config Model
 
 Launcharr merges shipped defaults with user overrides:

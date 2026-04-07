@@ -1,71 +1,71 @@
 # Troubleshooting
 
-## Login Loop or Session Loss
+## Plex login fails or shows "No active login session"
 
-Checks:
+This error (and CSRF validation failures on local account login) means the session cookie was not sent back to the server.
 
-- Set a non-default `SESSION_SECRET`. Sessions reset on container restart if this is not set.
-- Set `COOKIE_SECURE` explicitly — the production image defaults to secure cookies, which will break login over plain HTTP. See [Plex Login Fails or Callback Errors](#plex-login-fails-or-callback-errors) below.
-- Confirm reverse proxy forwards `X-Forwarded-Proto` and `X-Forwarded-Host` headers.
-- If you terminate TLS at a proxy, enable `TRUST_PROXY=true` and verify the proxy sends `X-Forwarded-Proto=https`.
+The production Docker image defaults to secure (HTTPS-only) cookies. If you access Launcharr over plain HTTP, the browser silently drops the cookie and the login flow fails.
 
-## Plex Login Fails or Callback Errors
-
-**"No active login session. Please start the login again."** or CSRF validation errors on local account login are almost always caused by the session cookie not being sent back to the server. This happens because the production Docker image defaults to `secure` (HTTPS-only) cookies.
-
-Fix: set `COOKIE_SECURE` explicitly in your compose environment to match how you access Launcharr:
+Fix: set `COOKIE_SECURE` in your compose environment to match how you access Launcharr:
 
 ```yaml
-# If accessing over plain HTTP (direct IP, Tailscale without HTTPS, no TLS proxy):
+# Plain HTTP (direct local IP, Tailscale without HTTPS, no TLS proxy):
 - COOKIE_SECURE=false
 
-# If always accessed via HTTPS (reverse proxy with a valid cert):
+# HTTPS only (reverse proxy with a valid cert):
 - COOKIE_SECURE=true
 ```
 
-If you use a mix of both (e.g. HTTPS domain + direct local IP fallback), always go through the HTTPS URL — the secure cookie will not be sent over plain HTTP.
+If you use both a HTTPS domain and a direct local IP, always go through the HTTPS URL — secure cookies will not be sent over plain HTTP.
 
-Other checks:
+## Login loop or session loss
 
-- `Settings -> General -> Remote URL` is set to your public URL.
-- Plex app has correct local/remote URL values.
-- Re-run `Get Plex Token` and `Get Plex Machine`.
+Check:
 
-## Missing Widgets or Empty Dashboard Cards
+- `SESSION_SECRET` is set to a non-default value. Sessions reset on container restart if this is not configured.
+- `COOKIE_SECURE` matches your access method (see above).
+- Reverse proxy forwards `X-Forwarded-Proto` and `X-Forwarded-Host` headers.
+- `TRUST_PROXY=true` is set if you terminate TLS at a proxy.
 
-Checks:
+## Config file corrupted or broken
 
-- User role can access app overview menu.
-- Overview elements are enabled for that app.
-- App credentials/API keys are configured.
+Rename or delete `config/config.json` and restart. Launcharr regenerates a clean default on startup. Your database and uploaded icons in `data/` are unaffected.
 
-## Access Denied for Settings
+```bash
+mv ./config/config.json ./config/config.json.bak
+docker compose restart launcharr
+```
 
-Expected behavior:
+## App overview or widget stats are missing
 
-- Only `admin` can access settings routes.
-- `co-admin` has overview/launch access but not settings access.
+Check:
 
-## App Not Loading in Iframe
+- The app is enabled and not set to `disabled` launch mode.
+- Credentials and URLs are saved in the app's settings page.
+- The user role has overview/launch access enabled for that app in `Settings -> Display`.
+
+## App not loading in iframe
 
 Common causes:
 
-- Target app denies framing (`X-Frame-Options` / CSP).
-- Incorrect remote URL or mixed content issue.
+- The target app blocks framing via `X-Frame-Options` or CSP headers.
+- Mixed content (HTTP app embedded in HTTPS Launcharr).
 
-Fix:
+Fix: switch the app's launch mode to `new-tab`.
 
-- Switch app launch mode to `new-tab`.
+## Settings access denied
 
-## Logs Are Not Persisting
+Only `admin` can access settings routes. `co-admin` has overview and launch access but not settings access. This is expected behavior.
 
-Checks:
+## Logs are not persisting
 
-- Ensure `DATA_DIR` is writable.
-- Confirm `LOG_PATH` points to a writable file path.
-- Verify container UID/GID (`PUID`/`PGID`) matches host volume ownership.
+Check:
 
-## Reset Plex Device Identity
+- `DATA_DIR` is writable by the container.
+- `LOG_PATH` points to a writable path.
+- Container `PUID`/`PGID` matches host volume ownership.
+
+## Reset Plex device identity
 
 If Plex auth material is corrupted, stop Launcharr and remove:
 
@@ -74,3 +74,14 @@ If Plex auth material is corrupted, stop Launcharr and remove:
 - `data/plex_client_id.txt`
 
 Then restart and re-authenticate.
+
+## Logs
+
+Use `Settings -> Logs` and filter by component to diagnose issues:
+
+- `plex` — Plex SSO and webhook events
+- `webhook` — incoming webhook processing
+- `settings` — settings save/load activity
+- `auth` — login and session events
+
+This is usually the fastest way to confirm whether a login flow, app credential check, or webhook completed successfully.

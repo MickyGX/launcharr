@@ -1,40 +1,6 @@
 # Quick Start
 
-## Prerequisites
-
-- Docker and Docker Compose.
-- Running Plex server and target Arr apps.
-- Writable host directories for `config/` and `data/`.
-
-## Option A: Docker Run
-
-Generate a persistent session secret once (pick one):
-
-- `openssl rand -hex 32`
-- `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
-
-```bash
-# Example:
-# SESSION_SECRET="$(openssl rand -hex 32)"
-
-docker run -d \
-  --name=launcharr \
-  --restart unless-stopped \
-  -p 3333:3333 \
-  -e CONFIG_PATH=/app/config/config.json \
-  -e DATA_DIR=/app/data \
-  -e BASE_URL=http://localhost:3333 \
-  -e TRUST_PROXY=true \
-  -e TRUST_PROXY_HOPS=1 \
-  -e SESSION_SECRET=replace-this-with-your-generated-secret \
-  -e COOKIE_SECURE=false \
-  -v ./config:/app/config \
-  -v ./data:/app/data \
-  -v ./data/icons/custom:/app/public/icons/custom \
-  mickygx/launcharr:latest
-```
-
-## Option B: Docker Compose
+## 1. Create your compose file
 
 ```yaml
 services:
@@ -52,12 +18,11 @@ services:
       # Generate once: openssl rand -hex 32
       - SESSION_SECRET=replace-this-with-your-generated-secret
       # IMPORTANT: The production image defaults to secure (HTTPS-only) session cookies.
-      # Set COOKIE_SECURE=false if you access Launcharr over plain HTTP
-      # (direct local IP, Tailscale without HTTPS, or no reverse proxy with TLS).
-      # Set COOKIE_SECURE=true if you always access via HTTPS (e.g. behind a reverse proxy with a cert).
-      # If this is not set correctly, Plex login and local account login will fail silently.
-      # - COOKIE_SECURE=false   # use this for plain HTTP access
-      # - COOKIE_SECURE=true    # use this for HTTPS-only access
+      # Set based on how you access Launcharr — if wrong, Plex and local login will fail.
+      # Plain HTTP (direct local IP, no TLS reverse proxy, Tailscale without HTTPS):
+      - COOKIE_SECURE=false
+      # HTTPS only (reverse proxy with a valid cert):
+      # - COOKIE_SECURE=true
     volumes:
       - ./config:/app/config
       - ./data:/app/data
@@ -65,36 +30,58 @@ services:
     restart: unless-stopped
 ```
 
+Generate `SESSION_SECRET` with:
+
+```bash
+openssl rand -hex 32
+```
+
+## 2. Start the container
+
 ```bash
 docker compose up -d
 ```
 
-## First Login and Plex Setup
+## 3. Complete initial setup
 
-1. Open `http://localhost:3333`.
-2. If no local admin exists yet, Launcharr redirects to `/setup`.
-3. Create the local fallback admin account.
-4. Open `Plex -> Settings` and set `Local URL` and `Remote URL`.
-5. Use `Get Plex Token` and `Get Plex Machine`.
-6. Save settings and confirm Plex widgets on the dashboard.
-7. Log out and test Plex SSO login.
+Open `http://localhost:3333`.
+
+If no local admin exists yet, Launcharr redirects to `/setup`. Create the local fallback admin account — this is your recovery account, keep the credentials safe.
+
+## 4. Configure Plex
+
+In `Settings -> Plex`:
+
+1. Set `Local URL` and `Remote URL`
+2. Use `Get Plex Token` and `Get Plex Machine`
+3. Save settings
+
+## 5. Recommended first checks
+
+- `Settings -> General` — confirm `Remote URL` matches your public URL
+- `Settings -> Display` — configure app and module visibility by role
+- Dashboard — enable the apps you use and configure credentials per app
+
+## 6. Test login
+
+Log out and test Plex SSO login from your configured URL to confirm the full auth flow works end to end.
 
 ## Reverse Proxy Setup
 
-- Start from `docker-compose.traefik.example.yml`.
-- Replace `launcharr.example.com` with your domain.
-- Set `BASE_URL` in the Traefik compose file to your public URL (`https://...`).
-- Start with:
+For Traefik, start from `docker-compose.traefik.example.yml`:
+
+- Replace `launcharr.example.com` with your domain
+- Set `BASE_URL` to your public HTTPS URL
+- Set `COOKIE_SECURE=true`
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.traefik.example.yml up -d
 ```
 
-## Local Development
+## Next Steps
 
-```bash
-npm install
-npm start
-```
-
-Default local URL: `http://localhost:3333`
+- [Configuration](Configuration.md)
+- [Authentication and Roles](Authentication-and-Roles.md)
+- [Integrations](Integrations.md)
+- [Supported Apps](Supported-Apps.md)
+- [Troubleshooting](Troubleshooting.md)
