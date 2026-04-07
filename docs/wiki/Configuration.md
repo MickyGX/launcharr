@@ -118,9 +118,16 @@ Recommended Docker env (especially when running behind a reverse proxy):
 environment:
   - TRUST_PROXY=true
   - TRUST_PROXY_HOPS=1
-  # Leave COOKIE_SECURE unset to default Secure cookies on in production.
-  # For local HTTP development only:
-  # - COOKIE_SECURE=false
+  # The production image defaults to secure (HTTPS-only) session cookies.
+  # You must set COOKIE_SECURE explicitly based on how you access Launcharr:
+  #
+  # Plain HTTP (direct local IP, Tailscale without HTTPS, no TLS proxy):
+  - COOKIE_SECURE=false
+  #
+  # HTTPS only (reverse proxy with a valid certificate):
+  # - COOKIE_SECURE=true
+  #
+  # If this is wrong, Plex login and local account login will fail silently.
 ```
 
 2FA note: local-auth 2FA is not yet built in. For production access, enforce MFA at your identity provider/reverse proxy (or use Plex/OIDC SSO) until native 2FA is added.

@@ -12,7 +12,11 @@ services:
       - TRUST_PROXY_HOPS=1
       # Generate once: openssl rand -hex 32
       - SESSION_SECRET=replace-this-with-a-random-secret
-      # optional but recommended if you only use HTTPS on domain:
+      # IMPORTANT: The production image defaults to secure (HTTPS-only) session cookies.
+      # Set this based on how you access Launcharr — if wrong, Plex and local login will fail.
+      # Plain HTTP (direct local IP, no TLS reverse proxy, Tailscale without HTTPS):
+      - COOKIE_SECURE=false
+      # HTTPS only (reverse proxy with a valid cert):
       # - COOKIE_SECURE=true
       # - PUID=${PUID}
       # - PGID=${PGID}

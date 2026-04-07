@@ -27,6 +27,7 @@ docker run -d \
   -e TRUST_PROXY=true \
   -e TRUST_PROXY_HOPS=1 \
   -e SESSION_SECRET=replace-this-with-your-generated-secret \
+  -e COOKIE_SECURE=false \
   -v ./config:/app/config \
   -v ./data:/app/data \
   -v ./data/icons/custom:/app/public/icons/custom \
@@ -50,8 +51,13 @@ services:
       - TRUST_PROXY_HOPS=1
       # Generate once: openssl rand -hex 32
       - SESSION_SECRET=replace-this-with-your-generated-secret
-      # Optional if only served over HTTPS:
-      # - COOKIE_SECURE=true
+      # IMPORTANT: The production image defaults to secure (HTTPS-only) session cookies.
+      # Set COOKIE_SECURE=false if you access Launcharr over plain HTTP
+      # (direct local IP, Tailscale without HTTPS, or no reverse proxy with TLS).
+      # Set COOKIE_SECURE=true if you always access via HTTPS (e.g. behind a reverse proxy with a cert).
+      # If this is not set correctly, Plex login and local account login will fail silently.
+      # - COOKIE_SECURE=false   # use this for plain HTTP access
+      # - COOKIE_SECURE=true    # use this for HTTPS-only access
     volumes:
       - ./config:/app/config
       - ./data:/app/data
