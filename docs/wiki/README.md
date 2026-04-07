@@ -1,12 +1,14 @@
 # Launcharr Wiki (In-Repo Source)
 
-This folder contains launch-ready wiki pages for Launcharr.
+This folder contains the in-repo source for the Launcharr GitHub wiki.
+
+These source pages use normal repo-relative `.md` links so they work when browsed directly on GitHub. The publish script rewrites those links to GitHub wiki-style page links during sync.
 
 You can:
 
 - Keep these pages in-repo as product documentation.
-- Copy them into a GitHub Wiki repository as-is.
-- Edit them as your release process matures.
+- Publish them to the GitHub wiki with the included sync script.
+- Edit them alongside feature work so README and wiki stay aligned.
 
 Recommended publish order:
 
@@ -41,9 +43,4 @@ Preview without pushing:
 scripts/publish-wiki.sh --dry-run
 ```
 
-The publish script also syncs screenshot assets from `docs/media/` into the wiki repo under `media/`, and rewrites wiki page image links to use `media/...` paths.
-
-Authoring note:
-
-- Prefer markdown image links that point to `../media/...` in source pages.
-- Avoid relative HTML image paths like `../../public/icons/...`; the `.wiki` repo does not include `public/`.
+The publish script copies pages from `docs/wiki/`, syncs screenshot assets from `docs/media/` into `media/`, and rewrites image paths for the GitHub wiki repo.

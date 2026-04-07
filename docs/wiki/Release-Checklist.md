@@ -19,6 +19,7 @@ Use this checklist before announcing a Launcharr release.
 ## Security and Access
 
 - [ ] Default `SESSION_SECRET` overridden in deployment docs.
+- [ ] `COOKIE_SECURE` guidance correct in compose examples and wiki (plain HTTP = `false`, HTTPS only = `true`).
 - [ ] Role behavior validated (`admin`, `co-admin`, `user`).
 - [ ] Plex login/callback tested via local and remote URLs.
 - [ ] Sensitive values not committed to repo.

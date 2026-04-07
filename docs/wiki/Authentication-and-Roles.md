@@ -28,7 +28,7 @@ For reliable callback behavior behind a reverse proxy:
 
 - Configure `Settings -> General -> Remote URL`.
 - Set `TRUST_PROXY=true` (and adjust `TRUST_PROXY_HOPS` if needed) so Launcharr trusts forwarded HTTPS metadata correctly.
-- Leave `COOKIE_SECURE` unset in production to default to Secure cookies, or set `COOKIE_SECURE=false` only for local HTTP development.
+- Set `COOKIE_SECURE` explicitly — the production image defaults to secure cookies, which breaks login over plain HTTP. See [Troubleshooting](Troubleshooting.md) for details.
 
 If no Plex admin list exists yet, the first Plex user to authenticate becomes owner admin.
 
