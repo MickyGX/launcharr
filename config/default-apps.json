@@ -1815,6 +1815,42 @@
     "instanceNamePlaceholder": "..."
   },
   {
+    "id": "houndarr",
+    "name": "Houndarr",
+    "url": "http://localhost:8877",
+    "description": "Automated missing media searcher for the Arr stack",
+    "category": "Arr Suite",
+    "roles": [
+      "hidden"
+    ],
+    "apiKey": "",
+    "username": "",
+    "password": "",
+    "menu": {
+      "overview": {
+        "user": false,
+        "admin": true
+      },
+      "launch": {
+        "user": false,
+        "admin": true
+      },
+      "settings": {
+        "user": false,
+        "admin": true
+      }
+    },
+    "order": 14,
+    "favourite": false,
+    "launchMode": "iframe",
+    "localUrl": "http://localhost:8877",
+    "remoteUrl": "",
+    "removed": true,
+    "supportsInstances": true,
+    "maxInstances": 5,
+    "instanceNamePlaceholder": "..."
+  },
+  {
     "id": "kometa",
     "name": "Kometa",
     "icon": "/icons/kometa.png",

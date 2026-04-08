@@ -4855,6 +4855,98 @@ export function registerApiSpecialty(app, ctx) {
           status = 'down';
         }
 
+      // ── houndarr ─────────────────────────────────────────────────────────
+      } else if (typeId === 'houndarr') {
+        // /api/status requires session auth via POST /login (form-encoded, 303 on success)
+        // /api/health is public — used as fallback when no credentials are configured
+        const uname = appItem.username || '';
+        const pwd = appItem.password || '';
+
+        if (!uname || !pwd) {
+          // No credentials — probe health endpoint only
+          const health = await tryAllCandidates(async (baseUrl) =>
+            doFetch(buildAppApiUrl(baseUrl, 'api/health').toString(), { Accept: 'application/json' })
+          );
+          if (health?.ok && health.json?.status === 'ok') {
+            status = 'up';
+            metrics = [
+              { key: 'instances',      label: 'Instances',      value: '—' },
+              { key: 'searches_today', label: 'Searches Today', value: '—' },
+              { key: 'found',          label: 'Found',          value: '—' },
+            ];
+          } else {
+            status = 'down';
+          }
+        } else {
+          // Authenticate: POST /login → capture houndarr_session cookie from 303 redirect
+          let sessionCookie = null;
+          let authBaseUrl = null;
+          for (const baseUrl of candidates) {
+            try {
+              const controller = new AbortController();
+              const tId = setTimeout(() => controller.abort(), 8000);
+              let loginRes;
+              try {
+                loginRes = await fetch(buildAppApiUrl(baseUrl, 'login').toString(), {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                  body: `username=${encodeURIComponent(uname)}&password=${encodeURIComponent(pwd)}`,
+                  redirect: 'manual',
+                  signal: controller.signal,
+                });
+              } finally {
+                clearTimeout(tId);
+              }
+              if (loginRes.status === 302 || loginRes.status === 303) {
+                const rawCookies = typeof loginRes.headers.getSetCookie === 'function'
+                  ? loginRes.headers.getSetCookie()
+                  : [loginRes.headers.get('set-cookie') || ''];
+                const sessionRaw = rawCookies.find((c) => c.startsWith('houndarr_session='));
+                if (sessionRaw) {
+                  sessionCookie = sessionRaw.split(';')[0].replace('houndarr_session=', '');
+                  authBaseUrl = baseUrl;
+                  break;
+                }
+              }
+            } catch (_e) { /* try next candidate */ }
+          }
+
+          if (sessionCookie && authBaseUrl) {
+            const controller = new AbortController();
+            const tId = setTimeout(() => controller.abort(), 8000);
+            let statusResult = null;
+            try {
+              const response = await fetch(buildAppApiUrl(authBaseUrl, 'api/status').toString(), {
+                headers: { Accept: 'application/json', Cookie: `houndarr_session=${sessionCookie}` },
+                signal: controller.signal,
+              });
+              const text = await response.text().catch(() => '');
+              let json = null;
+              try { json = text ? JSON.parse(text) : null; } catch (_e) { json = null; }
+              statusResult = { ok: response.ok, json };
+            } finally {
+              clearTimeout(tId);
+            }
+
+            if (statusResult?.ok && Array.isArray(statusResult.json)) {
+              status = 'up';
+              const instances = statusResult.json;
+              const enabled = instances.filter((i) => i?.enabled !== false);
+              const totalSearchesToday = enabled.reduce((s, i) => s + (Number(i?.searches_today) || 0), 0);
+              const totalFound = enabled.reduce((s, i) => s + (Number(i?.items_found_total) || 0), 0);
+              metrics = [
+                { key: 'instances',      label: 'Instances',      value: enabled.length },
+                { key: 'searches_today', label: 'Searches Today', value: totalSearchesToday },
+                { key: 'found',          label: 'Found',          value: totalFound },
+              ];
+            } else {
+              status = 'down';
+            }
+          } else {
+            status = 'down';
+          }
+        }
+
       // ── fallback: generic reachability check for unsupported app types ──
       } else {
         const headers = { Accept: 'application/json' };

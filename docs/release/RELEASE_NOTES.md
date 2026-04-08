@@ -1,4 +1,13 @@
-# Release Notes (v0.1.0 -> v0.2.56)
+# Release Notes (v0.1.0 -> v0.2.57)
+
+## v0.2.57 (2026-04-08)
+
+- [Added]
+- Added built-in `houndarr` default app (Arr Suite, port 8877) with session-cookie widget stats (Instances, Searches Today, Found) and credentials settings on both app-settings and inline settings pages.
+- [Fixed]
+- Fixed `slskd` widget returning blank when an invalid/expired API key was stored — the widget now falls back to username/password token auth on a 401 instead of bailing out.
+- Fixed `slskd` API key field missing from both settings pages; the API key is now shown as optional alongside the existing username/password section.
+- Fixed settings page flashing the General tab momentarily before switching to the user's stored tab on every navigation.
 
 ## v0.2.56 (2026-04-03)
 

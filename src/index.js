@@ -159,6 +159,7 @@ const WIDGET_STAT_TYPES = [
   { typeId: 'dozzle',          name: 'Dozzle',          icon: '/icons/dozzle.svg',          metricFields: [{ key: 'running', label: 'Running' }] },
   { typeId: 'qnap',            name: 'QNAP',            icon: '/icons/qnap.svg',            metricFields: [{ key: 'cpu', label: 'CPU' }, { key: 'memory', label: 'Memory' }, { key: 'volume', label: 'Volume' }] },
   { typeId: 'unraid',          name: 'unRAID',          icon: '/icons/unraid.png',          metricFields: [{ key: 'cpu', label: 'CPU' }, { key: 'memory', label: 'Memory' }, { key: 'array', label: 'Array' }, { key: 'notifications', label: 'Alerts' }] },
+  { typeId: 'houndarr',        name: 'Houndarr',        icon: '/icons/houndarr.png',        metricFields: [{ key: 'instances', label: 'Instances' }, { key: 'searches_today', label: 'Searches Today' }, { key: 'found', label: 'Found' }] },
 ];
 const WIDGET_STAT_TYPE_BY_ID = new Map(WIDGET_STAT_TYPES.map((t) => [t.typeId, t]));
 
@@ -4971,7 +4972,8 @@ async function fetchSlskdJson(baseUrl, apiPath, options = {}) {
   try {
     const directResult = await doRequest(requestHeaders);
     if (directResult.ok) return directResult;
-    if (apiKey) {
+    // If API key failed with a non-auth error, or there are no credentials to fall back to, give up
+    if (apiKey && directResult.status !== 401) {
       return { error: `slskd request failed (${directResult.status}).`, status: directResult.status };
     }
 

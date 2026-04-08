@@ -2214,9 +2214,17 @@
       item.classList.toggle('open');
     };
     const handleDefaultPress = (item, isCategoryTrigger) => {
-      if (autoOpenSingleAppMenuItem && !isCategoryTrigger) {
+      if (!isCategoryTrigger) {
         const links = getDirectLinks(item);
-        if (links.length === 1 && openSubmenuLink(links[0])) return;
+        const hasActiveLink = links.some((link) => link.classList.contains('active'));
+        if (!hasActiveLink && links.length > 0) {
+          const overviewLink = links.find((link) => {
+            const href = String((link.getAttribute && link.getAttribute('href')) || '');
+            return /\/apps\/[^/?#]+(?:$|[?#])/.test(href) && !/\/(launch|settings|activity)(?:$|[/?#])/.test(href);
+          });
+          if (openSubmenuLink(overviewLink || links[0])) return;
+        }
+        if (autoOpenSingleAppMenuItem && links.length === 1 && openSubmenuLink(links[0])) return;
       }
       toggleAccordionItem(item);
     };

@@ -127,7 +127,7 @@
         };
       %>
       <div class="settings-tabs" role="tablist" aria-label="Settings tabs">
-        <button class="settings-tab-btn is-active" type="button" data-tab="general">
+        <button class="settings-tab-btn" type="button" data-tab="general">
           <img class="settings-tab-icon" src="/icons/settings.svg" alt="" />
           <span class="settings-tab-text">General</span>
         </button>
@@ -157,7 +157,7 @@
         </button>
       </div>
 
-      <div class="settings-tab-panel is-active" data-tab="general">
+      <div class="settings-tab-panel" data-tab="general">
         <div class="dash-panel">
           <form method="post" action="/settings/general" class="settings-form">
             <div class="settings-card">
@@ -2888,11 +2888,12 @@
                 'wizarr',
                 'profilarr',
                 'unraid',
+                'slskd',
               ]);
               const appRequiresApiKey = appIsArrSuite || apiKeyAppBaseIds.has(appBaseId);
               const appHasToken = appBaseId === 'plex'
                 ? Boolean(panelAppItem.plexToken)
-                : (appRequiresApiKey ? Boolean(panelAppItem.apiKey) : true);
+                : ((appRequiresApiKey && appBaseId !== 'maintainerr' && appBaseId !== 'slskd') ? Boolean(panelAppItem.apiKey) : true);
               const appStatusOk = appEnabled && appHasUrl && appHasToken;
               const baseInstanceCount = instanceItems.length;
               const maxInstancesForBase = Math.max(2, Number(multiInstanceMaxMap?.[appBaseId]) || 5);
@@ -3941,9 +3942,17 @@
       item.classList.toggle('open');
     };
     const handleDefaultPress = (item, isCategoryTrigger) => {
-      if (autoOpenSingleAppMenuItem && !isCategoryTrigger) {
+      if (!isCategoryTrigger) {
         const links = getDirectLinks(item);
-        if (links.length === 1 && openSubmenuLink(links[0])) return;
+        const hasActiveLink = links.some((link) => link.classList.contains('active'));
+        if (!hasActiveLink && links.length > 0) {
+          const overviewLink = links.find((link) => {
+            const href = String((link.getAttribute && link.getAttribute('href')) || '');
+            return /\/apps\/[^/?#]+(?:$|[?#])/.test(href) && !/\/(launch|settings|activity)(?:$|[/?#])/.test(href);
+          });
+          if (openSubmenuLink(overviewLink || links[0])) return;
+        }
+        if (autoOpenSingleAppMenuItem && links.length === 1 && openSubmenuLink(links[0])) return;
       }
       toggleAccordionItem(item);
     };
