@@ -3183,6 +3183,35 @@
               <div id="plexUsersBody"></div>
             </div>
           </div>
+
+          <div class="settings-card">
+            <div class="settings-card-title">Jellyfin Users</div>
+            <div class="settings-card-sub">Pull users from Jellyfin and assign Launcharr roles.</div>
+            <div class="settings-users-actions">
+              <button class="primary-button" type="button" id="fetchJellyfinUsersBtn">Fetch users</button>
+              <button class="primary-button" type="button" id="saveJellyfinRolesBtn" disabled>Save roles</button>
+              <span class="settings-users-note" id="jellyfinUsersNote">Requires the Jellyfin app URL and API key.</span>
+            </div>
+            <div class="settings-users-table">
+              <div class="settings-users-row settings-users-head">
+                <div class="settings-users-head-cell">
+                  <img class="settings-head-icon" src="/icons/name.svg" alt="" />
+                  <span>Name</span>
+                </div>
+                <div class="settings-users-head-cell">
+                  <span>Last seen (Jellyfin)</span>
+                </div>
+                <div class="settings-users-head-cell">
+                  <span>Last Launcharr login</span>
+                </div>
+                <div class="settings-users-head-cell">
+                  <img class="settings-head-icon" src="/icons/role.svg" alt="" />
+                  <span>Role</span>
+                </div>
+              </div>
+              <div id="jellyfinUsersBody"></div>
+            </div>
+          </div>
         </div>
       </div>
       </div>
@@ -3820,6 +3849,7 @@
         if (dashNav) dashNav.scrollTop = 0;
         setToggleIcon(!collapsed);
       }
+      delete document.documentElement.dataset.sidebarCollapsed;
     }
 
     function closeMobileNav() {
@@ -6995,6 +7025,10 @@
       const saveBtn = document.getElementById('savePlexRolesBtn');
       const usersBody = document.getElementById('plexUsersBody');
       const note = document.getElementById('plexUsersNote');
+      const fetchJellyfinBtn = document.getElementById('fetchJellyfinUsersBtn');
+      const saveJellyfinBtn = document.getElementById('saveJellyfinRolesBtn');
+      const jellyfinUsersBody = document.getElementById('jellyfinUsersBody');
+      const jellyfinNote = document.getElementById('jellyfinUsersNote');
 
       try {
         const customAppForm = document.getElementById('customAppForm');
@@ -8704,6 +8738,42 @@
       sortUserRows();
     }
 
+    function renderSyncedUsers(targetBody, users, options = {}) {
+      if (!targetBody) return;
+      const seenKey = String(options.seenKey || 'lastSeen').trim() || 'lastSeen';
+      const emptyLabel = String(options.emptyLabel || 'No synced users found.').trim() || 'No synced users found.';
+      const defaultName = String(options.defaultName || 'Synced User').trim() || 'Synced User';
+      targetBody.innerHTML = '';
+      if (!Array.isArray(users) || !users.length) {
+        const row = document.createElement('div');
+        row.className = 'settings-users-row';
+        row.innerHTML =
+          '<div class="settings-users-login">' + emptyLabel + '</div>' +
+          '<div class="settings-users-login">—</div>' +
+          '<div class="settings-users-login">—</div>' +
+          '<div class="settings-users-login">—</div>';
+        targetBody.appendChild(row);
+        return;
+      }
+      users.forEach((user) => {
+        const row = document.createElement('div');
+        row.className = 'settings-users-row';
+        row.dataset.identifier = user.identifier;
+        const seenValue = user[seenKey] || '';
+        row.innerHTML =
+          '<div class="settings-users-name">' + (user.name || user.username || defaultName) + '</div>' +
+          '<div class="settings-users-login" title="' + seenValue + '">' + formatLoginTimestamp(seenValue) + '</div>' +
+          '<div class="settings-users-login" title="' + (user.lastLauncharrLogin || '') + '">' + formatLoginTimestamp(user.lastLauncharrLogin) + '</div>' +
+          '<div class="settings-users-role">' +
+            '<select ' + (user.locked ? 'disabled' : '') + '>' +
+              roleOptions(user.role || 'user') +
+            '</select>' +
+            (user.locked ? '<span class="settings-users-locked">Owner</span>' : '') +
+          '</div>';
+        targetBody.appendChild(row);
+      });
+    }
+
     async function fetchUsers() {
       if (!fetchBtn || !usersBody || !note) return;
       fetchBtn.disabled = true;
@@ -8754,11 +8824,66 @@
       }
     }
 
+    async function fetchJellyfinUsers() {
+      if (!fetchJellyfinBtn || !jellyfinUsersBody || !jellyfinNote) return;
+      fetchJellyfinBtn.disabled = true;
+      jellyfinNote.textContent = 'Fetching Jellyfin users...';
+      try {
+        const res = await fetch('/settings/jellyfin-users');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to fetch Jellyfin users.');
+        renderSyncedUsers(jellyfinUsersBody, data.users || [], {
+          seenKey: 'lastJellyfinSeen',
+          emptyLabel: 'No Jellyfin users found.',
+          defaultName: 'Jellyfin User',
+        });
+        saveJellyfinBtn.disabled = false;
+        jellyfinNote.textContent = 'Update roles and hit save.';
+      } catch (err) {
+        console.error('[Launcharr] Jellyfin users failed', { error: err?.message || String(err) });
+        jellyfinNote.textContent = err.message || 'Failed to fetch Jellyfin users.';
+      } finally {
+        fetchJellyfinBtn.disabled = false;
+      }
+    }
+
+    async function saveJellyfinRoles() {
+      if (!saveJellyfinBtn || !jellyfinUsersBody || !jellyfinNote) return;
+      const rows = Array.from(jellyfinUsersBody.querySelectorAll('.settings-users-row'));
+      const roles = rows.map((row) => {
+        const identifier = row.dataset.identifier || '';
+        const select = row.querySelector('select');
+        return { identifier, role: select ? select.value : 'user' };
+      }).filter((entry) => entry.identifier);
+      saveJellyfinBtn.disabled = true;
+      jellyfinNote.textContent = 'Saving roles...';
+      try {
+        const res = await fetch('/settings/roles', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roles }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to save roles.');
+        jellyfinNote.textContent = 'Roles saved.';
+      } catch (err) {
+        console.error('[Launcharr] Jellyfin roles save failed', { error: err?.message || String(err) });
+        jellyfinNote.textContent = err.message || 'Failed to save roles.';
+      } finally {
+        saveJellyfinBtn.disabled = false;
+      }
+    }
+
     fetchBtn?.addEventListener('click', fetchUsers);
     saveBtn?.addEventListener('click', saveRoles);
+    fetchJellyfinBtn?.addEventListener('click', fetchJellyfinUsers);
+    saveJellyfinBtn?.addEventListener('click', saveJellyfinRoles);
 
       if (fetchBtn) {
         fetchUsers();
+      }
+      if (fetchJellyfinBtn) {
+        fetchJellyfinUsers();
       }
     } catch (err) {
       console.error('[Launcharr] Settings form init failed', err);

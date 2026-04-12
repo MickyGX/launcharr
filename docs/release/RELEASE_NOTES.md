@@ -1,4 +1,15 @@
-# Release Notes (v0.1.0 -> v0.2.57)
+# Release Notes (v0.1.0 -> v0.2.58)
+
+## v0.2.58 (2026-04-12)
+
+- [Added]
+- Added Jellyfin synced login on the Launcharr sign-in page, including direct Jellyfin username/password authentication and Launcharr role resolution from synced identities.
+- Added Jellyfin user import and role assignment tools in Settings so admins can fetch Jellyfin accounts and assign Launcharr roles without editing config files manually.
+- Added per-provider login visibility toggles for Plex and Jellyfin in app settings, defaulting new unconfigured providers to hidden on the login screen.
+- [Fixed]
+- Fixed synced-role saves so updating Plex or Jellyfin assignments no longer wipes out previously stored roles from the other provider.
+- Fixed login-page layout on shorter screens by allowing the auth panel to scroll instead of clipping provider options off-screen.
+- Fixed the pre-JavaScript sidebar collapsed state flashing expanded accordion panels before the saved sidebar preference is applied.
 
 ## v0.2.57 (2026-04-08)
 

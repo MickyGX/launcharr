@@ -143,7 +143,7 @@ function normalizePostLoginRedirectPath(value, fallback = '/dashboard') {
   if (!raw.startsWith('/') || raw.startsWith('//')) return fallback;
   const normalized = raw;
   const lowerPath = normalized.split('?')[0].toLowerCase();
-  if (['/login', '/logout', '/setup', '/auth/plex'].includes(lowerPath)) return fallback;
+  if (['/login', '/logout', '/setup', '/auth/plex', '/auth/jellyfin'].includes(lowerPath)) return fallback;
   return normalized;
 }
 
@@ -183,6 +183,9 @@ export function registerAuth(app, ctx) {
     exchangePinWithRetry,
     exchangePin,
     completePlexLogin,
+    authenticateJellyfinUser,
+    resolveSyncedUserRole,
+    resolveJellyfinCandidates,
     safeMessage,
     PRODUCT,
     PLATFORM,
@@ -191,6 +194,59 @@ export function registerAuth(app, ctx) {
     LOCAL_AUTH_MIN_PASSWORD,
     validateLocalPasswordStrength,
   } = ctx;
+
+  function resolveAuthProviderEnabled(appItem, provider) {
+    const normalizedProvider = String(provider || '').trim().toLowerCase();
+    if (!appItem || typeof appItem !== 'object') return false;
+    if (appItem.loginEnabled === true) return true;
+    if (appItem.loginEnabled === false) return false;
+
+    const hasUrl = Boolean(appItem.localUrl || appItem.remoteUrl || appItem.url);
+    if (normalizedProvider === 'plex') {
+      return hasUrl || Boolean(appItem.plexToken || appItem.plexMachine);
+    }
+    if (normalizedProvider === 'jellyfin') {
+      return hasUrl || Boolean(appItem.apiKey);
+    }
+    return false;
+  }
+
+  function resolvePlexLoginConfig(config) {
+    const apps = Array.isArray(config?.apps) ? config.apps : [];
+    const plexApp = apps.find((appItem) => String(appItem?.id || '').trim().toLowerCase() === 'plex') || null;
+    return {
+      plexApp,
+      allowPlexLogin: resolveAuthProviderEnabled(plexApp, 'plex'),
+    };
+  }
+
+  function resolveJellyfinLoginConfig(config, req) {
+    const apps = Array.isArray(config?.apps) ? config.apps : [];
+    const jellyfinApp = apps.find((appItem) => String(appItem?.id || '').trim().toLowerCase() === 'jellyfin') || null;
+    const candidates = jellyfinApp ? resolveJellyfinCandidates(jellyfinApp, req) : [];
+    return {
+      jellyfinApp,
+      allowJellyfinLogin: candidates.length > 0 && resolveAuthProviderEnabled(jellyfinApp, 'jellyfin'),
+      jellyfinLabel: String(jellyfinApp?.name || 'Jellyfin').trim() || 'Jellyfin',
+      candidates,
+    };
+  }
+
+  function renderLoginPage(req, res, options = {}) {
+    const config = loadConfig();
+    const plexConfig = resolvePlexLoginConfig(config);
+    const jellyfinConfig = resolveJellyfinLoginConfig(config, req);
+    return res.status(Number(options?.status) || 200).render('login', {
+      title: 'Launcharr',
+      product: PRODUCT,
+      allowLocalLogin: true,
+      allowPlexLogin: plexConfig.allowPlexLogin,
+      allowJellyfinLogin: jellyfinConfig.allowJellyfinLogin,
+      jellyfinLabel: jellyfinConfig.jellyfinLabel,
+      error: options?.error || null,
+      info: options?.info || null,
+    });
+  }
 
   app.get('/', (req, res) => {
     const user = req.session?.user || null;
@@ -204,13 +260,7 @@ export function registerAuth(app, ctx) {
     if (req.query?.next) setPostLoginRedirect(req, req.query.next);
     const config = loadConfig();
     if (!hasLocalAdmin(config)) return res.redirect(bp(res, '/setup'));
-    res.render('login', {
-      title: 'Launcharr',
-      product: PRODUCT,
-      allowLocalLogin: true,
-      error: null,
-      info: null,
-    });
+    return renderLoginPage(req, res);
   });
 
   app.post('/login', (req, res) => {
@@ -222,12 +272,9 @@ export function registerAuth(app, ctx) {
     const blockedMinutes = checkLoginRateLimit(ip);
     if (blockedMinutes !== null) {
       pushLog({ level: 'warn', app: 'system', action: 'login.ratelimit', message: `Rate limit reached from ${ip}.` });
-      return res.status(429).render('login', {
-        title: 'Launcharr',
-        product: PRODUCT,
-        allowLocalLogin: true,
+      return renderLoginPage(req, res, {
+        status: 429,
         error: `Too many failed login attempts. Try again in ${blockedMinutes} minute${blockedMinutes === 1 ? '' : 's'}.`,
-        info: null,
       });
     }
 
@@ -249,16 +296,18 @@ export function registerAuth(app, ctx) {
       const suffix = nowBlocked !== null
         ? ` Too many failed attempts — try again in ${nowBlocked} minute${nowBlocked === 1 ? '' : 's'}.`
         : '';
-      return res.status(401).render('login', {
-        title: 'Launcharr',
-        product: PRODUCT,
-        allowLocalLogin: true,
+      return renderLoginPage(req, res, {
+        status: 401,
         error: `Invalid username/email or password.${suffix}`,
-        info: null,
       });
     }
 
     clearLoginFailures(ip);
+    req.session.authToken = null;
+    req.session.plexServerToken = null;
+    req.session.pinId = null;
+    req.session.jellyfinAccessToken = null;
+    req.session.jellyfinUserId = null;
     setSessionUser(req, match, 'local');
     const loginConfig = updateUserLogins(config, {
       identifier: match.email || match.username,
@@ -266,6 +315,105 @@ export function registerAuth(app, ctx) {
     });
     if (loginConfig !== config) saveConfig(loginConfig);
     return res.redirect(bp(res, consumePostLoginRedirect(req, '/dashboard')));
+  });
+
+  app.post('/auth/jellyfin', async (req, res) => {
+    const user = req.session?.user || null;
+    if (user) return res.redirect(bp(res, consumePostLoginRedirect(req, '/dashboard')));
+    if (req.body?.next) setPostLoginRedirect(req, req.body.next);
+
+    const ip = getClientIp(req);
+    const blockedMinutes = checkLoginRateLimit(ip);
+    if (blockedMinutes !== null) {
+      pushLog({ level: 'warn', app: 'jellyfin', action: 'login.ratelimit', message: `Rate limit reached from ${ip}.` });
+      return renderLoginPage(req, res, {
+        status: 429,
+        error: `Too many failed login attempts. Try again in ${blockedMinutes} minute${blockedMinutes === 1 ? '' : 's'}.`,
+      });
+    }
+
+    const config = loadConfig();
+    if (!hasLocalAdmin(config)) return res.redirect(bp(res, '/setup'));
+    const { jellyfinApp, allowJellyfinLogin, candidates } = resolveJellyfinLoginConfig(config, req);
+    if (!allowJellyfinLogin || !jellyfinApp) {
+      return renderLoginPage(req, res, {
+        status: 400,
+        error: 'Jellyfin login is not configured yet. Set the Jellyfin app URL first.',
+      });
+    }
+
+    const identifier = String(req.body?.username || '').trim();
+    const password = String(req.body?.password || '');
+    if (!identifier || !password) {
+      return renderLoginPage(req, res, {
+        status: 400,
+        error: 'Jellyfin username and password are required.',
+      });
+    }
+
+    try {
+      const authResult = await authenticateJellyfinUser({
+        candidates,
+        username: identifier,
+        password,
+        customHeaders: jellyfinApp.customHeaders,
+      });
+      const jellyfinUser = authResult?.user || {};
+      const resolvedUsername = String(jellyfinUser.Name || jellyfinUser.Username || identifier).trim() || 'Jellyfin User';
+      const resolvedEmail = String(jellyfinUser.Email || '').trim();
+      const role = resolveSyncedUserRole({
+        username: resolvedUsername,
+        email: resolvedEmail,
+        name: resolvedUsername,
+      });
+
+      clearLoginFailures(ip);
+      req.session.user = {
+        username: resolvedUsername,
+        email: resolvedEmail || null,
+        avatar: '',
+        avatarFallback: '/icons/user-profile.svg',
+        role,
+        source: 'jellyfin',
+      };
+      req.session.viewRole = null;
+      req.session.authToken = null;
+      req.session.plexServerToken = null;
+      req.session.pinId = null;
+      req.session.jellyfinAccessToken = null;
+      req.session.jellyfinUserId = null;
+
+      const loginIdentifier = resolvedEmail || resolvedUsername || String(jellyfinUser?.Id || '').trim();
+      const nextConfig = updateUserLogins(config, {
+        identifier: loginIdentifier,
+        launcharr: true,
+      });
+      if (nextConfig !== config) saveConfig(nextConfig);
+
+      pushLog({
+        level: 'info',
+        app: 'jellyfin',
+        action: 'login.success',
+        message: 'Jellyfin login successful.',
+        meta: { user: resolvedUsername, role },
+      });
+      return res.redirect(bp(res, consumePostLoginRedirect(req, '/dashboard')));
+    } catch (err) {
+      recordLoginFailure(ip);
+      pushLog({
+        level: 'warn',
+        app: 'jellyfin',
+        action: 'login.failed',
+        message: safeMessage(err) || 'Jellyfin login failed.',
+        meta: { user: identifier },
+      });
+      return renderLoginPage(req, res, {
+        status: Number(err?.status) === 401 ? 401 : 500,
+        error: Number(err?.status) === 401
+          ? 'Invalid Jellyfin username or password.'
+          : (safeMessage(err) || 'Jellyfin login failed.'),
+      });
+    }
   });
 
   app.get('/setup', (req, res) => {

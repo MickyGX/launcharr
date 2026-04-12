@@ -1059,6 +1059,14 @@ html[data-sidebar-invert="1"] .sidebar-collapsed .nav-accordion-panel--category 
   display:grid;
 }
 
+/* Pre-JS sidebar-collapsed: suppress expanded accordion panels before applySidebarState() runs */
+html[data-sidebar-collapsed="1"] .dash-frame:not(.sidebar-collapsed) .nav-accordion-panel{
+  display:none !important;
+}
+html[data-sidebar-collapsed="1"] .dash-frame:not(.sidebar-collapsed) .nav-accordion-item.open > .nav-accordion-panel{
+  display:none !important;
+}
+
 .nav-subitem{
   padding:0 0 0 8px;
   border-radius:0;

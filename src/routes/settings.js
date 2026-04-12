@@ -145,6 +145,7 @@ export function registerSettings(app, ctx) {
     normalizeLaunchMode,
     normalizeLocalRole,
     normalizePlexLastSeen,
+    resolveJellyfinCandidates,
     normalizeSidebarAppButtonAction,
     normalizeSidebarButtonPressActions,
     normalizeStoredAvatarPath,
@@ -184,6 +185,7 @@ export function registerSettings(app, ctx) {
     uniqueList,
     normalizeBaseUrl,
     safeMessage,
+    fetchJellyfinJson,
     // widget bars
     resolveWidgetBars,
     resolveWidgetBarTypes,
@@ -3667,21 +3669,135 @@ app.get('/settings/plex-users', requireSettingsAdmin, async (req, res) => {
   }
 });
 
+app.get('/settings/jellyfin-users', requireSettingsAdmin, async (req, res) => {
+  const config = loadConfig();
+  const jellyfinApp = Array.isArray(config.apps)
+    ? config.apps.find((appItem) => normalizeAppId(appItem?.id) === 'jellyfin')
+    : null;
+  if (!jellyfinApp) return res.status(404).json({ error: 'Jellyfin app is not configured.' });
+
+  const apiKey = String(jellyfinApp.apiKey || '').trim();
+  if (!apiKey) return res.status(401).json({ error: 'Missing Jellyfin API key.' });
+
+  const candidates = resolveJellyfinCandidates(jellyfinApp, req);
+  if (!candidates.length) return res.status(400).json({ error: 'Missing Jellyfin URL.' });
+
+  try {
+    pushLog({
+      level: 'info',
+      app: 'jellyfin',
+      action: 'users',
+      message: 'Fetching Jellyfin users.',
+    });
+
+    const response = await fetchJellyfinJson({
+      candidates,
+      apiKey,
+      path: '/Users',
+      query: {},
+      customHeaders: jellyfinApp.customHeaders,
+    });
+    const users = Array.isArray(response.payload) ? response.payload : [];
+    const admins = loadAdmins();
+    const coAdmins = loadCoAdmins();
+    const ownerKey = admins[0] ? String(admins[0]).toLowerCase() : '';
+    const loginStore = resolveUserLogins(config);
+
+    const payload = users
+      .filter((user) => user && typeof user === 'object')
+      .map((user) => {
+        const name = String(user.Name || user.Username || user.Email || 'Jellyfin User').trim() || 'Jellyfin User';
+        const username = String(user.Name || user.Username || '').trim();
+        const email = String(user.Email || '').trim();
+        const identifierCandidates = [
+          email,
+          username,
+          name,
+          String(user.Id || '').trim(),
+        ].filter(Boolean);
+        const normalizedCandidates = identifierCandidates.map((value) => normalizeUserKey(value)).filter(Boolean);
+        const identifier = identifierCandidates[0] || name;
+        const activityStamp = normalizePlexLastSeen(user.LastActivityDate || user.LastLoginDate || '');
+        const lastLauncharrLogin = normalizedCandidates
+          .map((value) => String(loginStore.launcharr?.[value] || '').trim())
+          .find(Boolean) || '';
+
+        let role = 'user';
+        let locked = false;
+        if (ownerKey && normalizedCandidates.includes(ownerKey)) {
+          role = 'admin';
+          locked = true;
+        } else if (admins.some((admin) => normalizedCandidates.includes(String(admin || '').toLowerCase()))) {
+          role = 'admin';
+        } else if (coAdmins.some((coAdmin) => normalizedCandidates.includes(String(coAdmin || '').toLowerCase()))) {
+          role = 'co-admin';
+        }
+
+        return {
+          id: String(user.Id || identifier).trim() || identifier,
+          name,
+          username,
+          email,
+          identifier,
+          lastJellyfinSeen: activityStamp,
+          lastLauncharrLogin,
+          role,
+          locked,
+        };
+      });
+
+    pushLog({
+      level: 'info',
+      app: 'jellyfin',
+      action: 'users',
+      message: 'Jellyfin users loaded.',
+      meta: { count: payload.length },
+    });
+    return res.json({ users: payload });
+  } catch (err) {
+    pushLog({
+      level: 'error',
+      app: 'jellyfin',
+      action: 'users',
+      message: safeMessage(err) || 'Failed to fetch Jellyfin users.',
+    });
+    return res.status(500).json({ error: safeMessage(err) || 'Failed to fetch Jellyfin users.' });
+  }
+});
+
 app.post('/settings/roles', requireSettingsAdmin, (req, res) => {
   const roles = Array.isArray(req.body?.roles) ? req.body.roles : [];
   const admins = loadAdmins();
   const owner = admins[0] ? String(admins[0]) : '';
   const ownerKey = owner.toLowerCase();
-  const nextAdmins = owner ? [owner] : [];
-  const nextCoAdmins = [];
+  const adminMap = new Map(
+    admins
+      .filter((value) => String(value || '').trim() && String(value || '').trim().toLowerCase() !== ownerKey)
+      .map((value) => [String(value).trim().toLowerCase(), String(value).trim()])
+  );
+  const coAdminMap = new Map(
+    loadCoAdmins()
+      .filter((value) => String(value || '').trim())
+      .map((value) => [String(value).trim().toLowerCase(), String(value).trim()])
+  );
 
   roles.forEach((entry) => {
     const identifier = String(entry?.identifier || '').trim();
     if (!identifier) return;
     const role = String(entry?.role || 'user').toLowerCase();
-    if (ownerKey && identifier.toLowerCase() === ownerKey) return;
-    if (role === 'admin') nextAdmins.push(identifier);
-    if (role === 'co-admin') nextCoAdmins.push(identifier);
+    const normalized = identifier.toLowerCase();
+    if (ownerKey && normalized === ownerKey) return;
+    adminMap.delete(normalized);
+    coAdminMap.delete(normalized);
+    if (role === 'admin') adminMap.set(normalized, identifier);
+    if (role === 'co-admin') coAdminMap.set(normalized, identifier);
+  });
+
+  const nextAdmins = owner ? [owner, ...adminMap.values()] : [...adminMap.values()];
+  const adminKeySet = new Set(nextAdmins.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean));
+  const nextCoAdmins = [...coAdminMap.values()].filter((value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    return normalized && !adminKeySet.has(normalized);
   });
 
   saveAdmins(uniqueList(nextAdmins));
@@ -3820,6 +3936,13 @@ app.post('/apps/:id/settings', requireAdmin, (req, res) => {
       plexMachine: isDisplayOnlyUpdate
         ? appItem.plexMachine || ''
         : (req.body.plexMachine !== undefined ? req.body.plexMachine : (appItem.plexMachine || '')),
+      loginEnabled: (() => {
+        const appSupportsLoginToggle = baseId === 'plex' || baseId === 'jellyfin';
+        if (!appSupportsLoginToggle) return appItem.loginEnabled;
+        if (isDisplayOnlyUpdate) return appItem.loginEnabled;
+        if (!hasOwnBodyField('loginEnabled_present')) return appItem.loginEnabled;
+        return Boolean(req.body?.loginEnabled);
+      })(),
       menu: nextMenu,
       overviewElements,
       tautulliCards,

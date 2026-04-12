@@ -2,6 +2,7 @@ import { describe, it, before, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { readFileSync, writeFileSync } from 'node:fs';
 
 // Set env vars BEFORE importing the app — must happen before any dynamic import.
 const testDir = join(tmpdir(), `launcharr-test-${process.pid}`);
@@ -24,6 +25,7 @@ const {
 const request = supertest(app);
 const TEST_HOST = '127.0.0.1';
 const TEST_ORIGIN = `http://${TEST_HOST}`;
+const originalFetch = globalThis.fetch;
 
 function extractCsrfToken(html) {
   const match = String(html || '').match(/name="_csrf"\s+value="([^"]+)"/i);
@@ -44,6 +46,17 @@ function browserHeaders(path) {
     Origin: TEST_ORIGIN,
     Referer: `${TEST_ORIGIN}${path}`,
   };
+}
+
+function readConfig() {
+  return JSON.parse(readFileSync(process.env.CONFIG_PATH, 'utf8'));
+}
+
+function writeConfig(mutator) {
+  const current = readConfig();
+  const next = typeof mutator === 'function' ? mutator(current) : current;
+  writeFileSync(process.env.CONFIG_PATH, JSON.stringify(next, null, 2));
+  return next;
 }
 
 async function postForm(agent, path, fields, refererPath = path) {
@@ -137,7 +150,10 @@ describe('auth routes', () => {
     assert.equal(res.status, 302);
   });
 
-  afterEach(() => resetAuthRateLimits());
+  afterEach(() => {
+    resetAuthRateLimits();
+    globalThis.fetch = originalFetch;
+  });
 
   it('GET /login returns 200 when an admin exists', async () => {
     const res = await request.get('/login');
@@ -161,6 +177,86 @@ describe('auth routes', () => {
     });
     assert.equal(res.status, 302);
     assert.ok(res.headers.location?.includes('/dashboard'), 'should redirect to /dashboard');
+  });
+
+  it('GET /login renders Jellyfin synced login when Jellyfin is configured', async () => {
+    writeConfig((config) => ({
+      ...config,
+      apps: [
+        ...(Array.isArray(config.apps) ? config.apps.filter((appItem) => appItem?.id !== 'jellyfin') : []),
+        { id: 'jellyfin', name: 'Jellyfin', localUrl: 'http://jellyfin.test:8096', remoteUrl: '', url: '', apiKey: '' },
+      ],
+    }));
+
+    const res = await request.get('/login').set('Host', TEST_HOST);
+    assert.equal(res.status, 200);
+    assert.match(res.text, /Sign in with Jellyfin/i);
+  });
+
+  it('GET /login hides Jellyfin login when explicitly disabled', async () => {
+    writeConfig((config) => ({
+      ...config,
+      apps: [
+        ...(Array.isArray(config.apps) ? config.apps.filter((appItem) => appItem?.id !== 'jellyfin') : []),
+        { id: 'jellyfin', name: 'Jellyfin', localUrl: 'http://jellyfin.test:8096', remoteUrl: '', url: '', apiKey: '', loginEnabled: false },
+      ],
+    }));
+
+    const res = await request.get('/login').set('Host', TEST_HOST);
+    assert.equal(res.status, 200);
+    assert.doesNotMatch(res.text, /Sign in with Jellyfin/i);
+  });
+
+  it('GET /login hides Plex SSO when explicitly disabled', async () => {
+    writeConfig((config) => ({
+      ...config,
+      apps: [
+        ...(Array.isArray(config.apps) ? config.apps.filter((appItem) => appItem?.id !== 'plex') : []),
+        { id: 'plex', name: 'Plex', localUrl: '', remoteUrl: '', url: '', plexToken: '', plexMachine: '', loginEnabled: false },
+      ],
+    }));
+
+    const res = await request.get('/login').set('Host', TEST_HOST);
+    assert.equal(res.status, 200);
+    assert.doesNotMatch(res.text, /Sign in with Plex/i);
+  });
+
+  it('POST /auth/jellyfin with valid credentials redirects to /dashboard', async () => {
+    writeConfig((config) => ({
+      ...config,
+      apps: [
+        ...(Array.isArray(config.apps) ? config.apps.filter((appItem) => appItem?.id !== 'jellyfin') : []),
+        { id: 'jellyfin', name: 'Jellyfin', localUrl: 'http://jellyfin.test:8096', remoteUrl: '', url: '', apiKey: '' },
+      ],
+    }));
+
+    globalThis.fetch = async (input) => {
+      const url = String(input || '');
+      assert.match(url, /Users\/AuthenticateByName$/);
+      return new Response(JSON.stringify({
+        AccessToken: 'jf-token',
+        User: {
+          Id: 'jelly-user-1',
+          Name: 'jellyuser',
+          Email: 'jelly@example.test',
+        },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    const agent = supertest.agent(app);
+    const res = await postForm(agent, '/auth/jellyfin', {
+      username: 'jellyuser',
+      password: 'secret-password',
+    }, '/login');
+    assert.equal(res.status, 302);
+    assert.ok(res.headers.location?.includes('/dashboard'), 'should redirect to /dashboard');
+
+    const follow = await agent.get('/login').set('Host', TEST_HOST);
+    assert.equal(follow.status, 302);
+    assert.ok(follow.headers.location?.includes('/dashboard'), 'logged-in Jellyfin session should redirect away from /login');
   });
 
   it('POST /login rejects a missing CSRF token when origin metadata is absent', async () => {

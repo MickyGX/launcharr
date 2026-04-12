@@ -2100,6 +2100,7 @@
         if (dashNav) dashNav.scrollTop = 0;
         setToggleIcon(!collapsed);
       }
+      delete document.documentElement.dataset.sidebarCollapsed;
     }
 
     function closeMobileNav() {

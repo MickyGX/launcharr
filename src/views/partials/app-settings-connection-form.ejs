@@ -9,6 +9,15 @@
   const renderedInstancePlaceholder = String(instancePlaceholder || 'Instance (e.g. Main)');
   const renderedRequiresApiKey = Boolean(requiresApiKey);
   const renderedAdmins = Array.isArray(admins) ? admins : [];
+  const renderedHasUrl = Boolean(renderedApp.localUrl || renderedApp.remoteUrl || renderedApp.url);
+  const renderedHasPlexSetup = renderedHasUrl || Boolean(renderedApp.plexToken || renderedApp.plexMachine);
+  const renderedHasJellyfinSetup = renderedHasUrl || Boolean(renderedApp.apiKey);
+  const renderedHasLoginToggle = renderedAppBaseId === 'plex' || renderedAppBaseId === 'jellyfin';
+  const renderedLoginEnabled = renderedApp.loginEnabled === true
+    || (renderedApp.loginEnabled !== false && (
+      (renderedAppBaseId === 'plex' && renderedHasPlexSetup)
+      || (renderedAppBaseId === 'jellyfin' && renderedHasJellyfinSetup)
+    ));
   const visibilityRoleOrder = ['guest', 'user', 'co-admin', 'admin'];
   const visibilityRoleLabels = {
     guest: 'Guest',
@@ -75,6 +84,9 @@
     <% if (renderedAppBaseId === 'plex') { %>
       <div class="settings-card-title">App URLs</div>
       <div class="settings-card-sub">Base URLs and credentials for local or remote access.</div>
+    <% } else if (renderedAppBaseId === 'jellyfin') { %>
+      <div class="settings-card-title">App URLs</div>
+      <div class="settings-card-sub">Base URLs for the Jellyfin server and login routing.</div>
     <% } %>
     <label class="field">
       <span>Local URL</span>
@@ -84,6 +96,21 @@
       <span>Remote URL</span>
       <input type="text" name="remoteUrl" value="<%= renderedApp.remoteUrl || '' %>" placeholder="https://app.example.com" />
     </label>
+    <% if (renderedHasLoginToggle) { %>
+      <input type="hidden" name="loginEnabled_present" value="1" />
+      <label class="settings-toggle">
+        <input type="checkbox" name="loginEnabled" <%= renderedLoginEnabled ? 'checked' : '' %> />
+        <span class="settings-toggle-slider" aria-hidden="true"></span>
+        <span class="settings-toggle-text">Show on login screen</span>
+      </label>
+      <div class="plex-settings-note">
+        <% if (renderedAppBaseId === 'plex') { %>
+          Hide Plex SSO from the login page when you are not using it. If Plex has not been configured yet, this defaults to off.
+        <% } else { %>
+          Hide Jellyfin synced login from the login page when you are not using it. If Jellyfin has not been configured yet, this defaults to off.
+        <% } %>
+      </div>
+    <% } %>
   </div>
   <% if (renderedAppBaseId === 'plex') { %>
     <% const adminOwner = renderedAdmins.length ? renderedAdmins[0] : ''; %>

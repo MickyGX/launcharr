@@ -717,10 +717,11 @@ function serializeUserThemePreferences(preferences, fallback = DEFAULT_THEME_SET
 }
 
 function resolveThemePreferenceKey(user) {
-  const source = String(user?.source || '').trim().toLowerCase() === 'plex' ? 'plex' : 'local';
+  const rawSource = String(user?.source || '').trim().toLowerCase();
+  const source = rawSource === 'plex' || rawSource === 'jellyfin' ? rawSource : 'local';
   const username = normalizeUserKey(user?.username || '');
   const email = normalizeUserKey(user?.email || '');
-  const identity = source === 'plex'
+  const identity = source === 'plex' || source === 'jellyfin'
     ? (email || username)
     : (username || email);
   if (!identity) return '';
@@ -1578,6 +1579,7 @@ app.use((req, res, next) => {
 });
 app.use(csrfProtectionMiddleware);
 app.use('/login', createRequestBodySizeGuard(32 * 1024));
+app.use('/auth/jellyfin', createRequestBodySizeGuard(32 * 1024));
 app.use('/setup', createRequestBodySizeGuard(32 * 1024));
 app.use('/logout', createRequestBodySizeGuard(8 * 1024));
 app.use('/switch-view', createRequestBodySizeGuard(8 * 1024));
@@ -1609,6 +1611,20 @@ app.use((req, res, next) => {
       };
       return next();
     }
+  } else if (source === 'plex' || source === 'jellyfin') {
+    req.session.user = {
+      ...sessionUser,
+      role: resolveSyncedUserRole({
+        username: sessionUser.username,
+        email: sessionUser.email,
+        title: sessionUser.username,
+        name: sessionUser.username,
+      }, { allowBootstrapAdmin: false }),
+      avatar: normalizeStoredAvatarPath(sessionUser.avatar || ''),
+      avatarFallback: sessionUser.avatarFallback || '/icons/user-profile.svg',
+      source,
+    };
+    return next();
   }
 
   req.session.user = {
@@ -1715,6 +1731,74 @@ function buildJellyfinImageUrl({ baseUrl, itemId, type, apiKey, tag = '', index 
   return url.toString();
 }
 
+function escapeJellyfinAuthHeaderValue(value) {
+  return String(value || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"');
+}
+
+function buildJellyfinAuthorizationHeader(accessToken = '') {
+  const parts = [
+    `MediaBrowser Client="${escapeJellyfinAuthHeaderValue(PRODUCT)}"`,
+    `Device="${escapeJellyfinAuthHeaderValue(DEVICE_NAME)}"`,
+    `DeviceId="${escapeJellyfinAuthHeaderValue(CLIENT_ID)}"`,
+    `Version="${escapeJellyfinAuthHeaderValue(APP_VERSION || '0.0.0')}"`,
+  ];
+  const token = String(accessToken || '').trim();
+  if (token) parts.push(`Token="${escapeJellyfinAuthHeaderValue(token)}"`);
+  return parts.join(', ');
+}
+
+async function authenticateJellyfinUser({ candidates, username, password, customHeaders = {} }) {
+  let lastError = '';
+  const loginName = String(username || '').trim();
+  const loginPassword = String(password || '');
+  if (!loginName || !loginPassword) throw new Error('Jellyfin username and password are required.');
+
+  for (let index = 0; index < candidates.length; index += 1) {
+    const baseUrl = candidates[index];
+    if (!baseUrl) continue;
+    const authUrl = buildAppApiUrl(baseUrl, '/Users/AuthenticateByName');
+    try {
+      const upstreamRes = await fetch(authUrl.toString(), {
+        method: 'POST',
+        headers: mergeAppHeaders({ customHeaders }, {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'X-Emby-Authorization': buildJellyfinAuthorizationHeader(),
+        }),
+        body: JSON.stringify({
+          Username: loginName,
+          Pw: loginPassword,
+        }),
+      });
+      const text = await upstreamRes.text();
+      if (!upstreamRes.ok) {
+        const bodyMessage = String(text || '').trim();
+        lastError = `Jellyfin authentication failed (${upstreamRes.status}) via ${baseUrl}${bodyMessage ? `: ${bodyMessage.slice(0, 220)}` : ''}`;
+        continue;
+      }
+      const payload = text ? JSON.parse(text) : {};
+      const accessToken = String(payload?.AccessToken || payload?.accessToken || '').trim();
+      const user = payload?.User && typeof payload.User === 'object'
+        ? payload.User
+        : (payload?.user && typeof payload.user === 'object' ? payload.user : null);
+      if (!accessToken || !user) {
+        lastError = `Jellyfin authentication via ${baseUrl} returned an incomplete response.`;
+        continue;
+      }
+      return { baseUrl, accessToken, user, payload };
+    } catch (err) {
+      const reason = safeMessage(err) || 'fetch failed';
+      lastError = `${reason} via ${baseUrl}`;
+    }
+  }
+
+  const authError = new Error(lastError || 'Failed to authenticate with Jellyfin.');
+  authError.status = 401;
+  throw authError;
+}
+
 function buildEmbyImageUrl({ baseUrl, itemId, type, apiKey, tag = '', index = '' }) {
   if (!baseUrl || !itemId || !type) return '';
   const safeType = String(type).trim();
@@ -1763,8 +1847,9 @@ function mapJellyfinKind(typeValue) {
   return 'tv';
 }
 
-async function fetchJellyfinJson({ candidates, apiKey, path, query, customHeaders = {} }) {
+async function fetchJellyfinJson({ candidates, apiKey, accessToken, path, query, customHeaders = {} }) {
   let lastError = '';
+  const authToken = String(accessToken || apiKey || '').trim();
   for (let index = 0; index < candidates.length; index += 1) {
     const baseUrl = candidates[index];
     if (!baseUrl) continue;
@@ -1779,7 +1864,12 @@ async function fetchJellyfinJson({ candidates, apiKey, path, query, customHeader
       const upstreamRes = await fetch(upstreamUrl.toString(), {
         headers: mergeAppHeaders({ customHeaders }, {
           Accept: 'application/json',
-          'X-Emby-Token': apiKey,
+          ...(authToken ? {
+            'X-Emby-Token': authToken,
+            'X-Emby-Authorization': buildJellyfinAuthorizationHeader(authToken),
+          } : {
+            'X-Emby-Authorization': buildJellyfinAuthorizationHeader(),
+          }),
         }),
       });
       const text = await upstreamRes.text();
@@ -8990,21 +9080,21 @@ function normalizeRoles(appItem) {
   return [];
 }
 
-function resolveRole(plexUser) {
-  const identifiers = [
-    plexUser.username,
-    plexUser.email,
-    plexUser.title,
-  ].filter(Boolean);
-
+function resolveAssignedRole(identifiers, options = {}) {
+  const allowBootstrapAdmin = options?.allowBootstrapAdmin !== false;
+  const resolvedIdentifiers = Array.from(new Set(
+    (Array.isArray(identifiers) ? identifiers : [])
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+  ));
   const admins = loadAdmins();
-  if (matches(admins, identifiers)) return 'admin';
+  if (matches(admins, resolvedIdentifiers)) return 'admin';
 
   const coAdmins = loadCoAdmins();
-  if (matches(coAdmins, identifiers)) return 'co-admin';
+  if (matches(coAdmins, resolvedIdentifiers)) return 'co-admin';
 
-  if (admins.length === 0) {
-    const adminKey = identifiers[0];
+  if (allowBootstrapAdmin && admins.length === 0) {
+    const adminKey = resolvedIdentifiers[0];
     if (adminKey) {
       saveAdmins([adminKey]);
       return 'admin';
@@ -9012,6 +9102,21 @@ function resolveRole(plexUser) {
   }
 
   return 'user';
+}
+
+function resolveSyncedUserRole(user, options = {}) {
+  const identifiers = [
+    user?.username,
+    user?.email,
+    user?.title,
+    user?.name,
+    user?.Name,
+  ].filter(Boolean);
+  return resolveAssignedRole(identifiers, options);
+}
+
+function resolveRole(plexUser) {
+  return resolveSyncedUserRole(plexUser);
 }
 
 function matches(list, identifiers) {
@@ -9676,6 +9781,8 @@ async function completePlexLogin(req, authToken) {
   req.session.authToken = authToken;
   req.session.plexServerToken = null;
   req.session.pinId = null;
+  req.session.jellyfinAccessToken = null;
+  req.session.jellyfinUserId = null;
 
   const loginIdentifier = plexUser.email || plexUser.username || plexUser.title || plexUser.id || '';
   let nextConfig = updateUserLogins(config, {
@@ -10398,6 +10505,8 @@ const _routeCtx = {
   exchangePinWithRetry,
   exchangePin,
   completePlexLogin,
+  authenticateJellyfinUser,
+  resolveSyncedUserRole,
   safeMessage,
   // plex
   fetchPlexResources,

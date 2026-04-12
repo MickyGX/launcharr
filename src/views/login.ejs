@@ -131,12 +131,54 @@
             </label>
             <button class="primary-button" type="submit">Sign in</button>
           </form>
-          <div class="login-divider">or sign in with</div>
         <% } %>
-        <a class="plex-button" href="<%= withBasePath('/auth/plex') %>" aria-label="Sign in with Plex">
-          <img src="<%= withBasePath('/icons/plex-login-white.svg') %>" alt="" />
-        </a>
-        <div class="login-sub">Plex SSO required</div>
+        <% if (allowJellyfinLogin) { %>
+          <% if (allowLocalLogin) { %>
+            <div class="login-divider"><span>or sign in with</span></div>
+          <% } %>
+          <form class="login-form login-form--provider" method="post" action="<%= withBasePath('/auth/jellyfin') %>">
+            <input type="hidden" name="_csrf" value="<%= csrfToken || '' %>" />
+            <label class="login-field">
+              <span><%= jellyfinLabel || 'Jellyfin' %> username</span>
+              <input class="login-input" type="text" name="username" autocomplete="username" required />
+            </label>
+            <label class="login-field">
+              <span><%= jellyfinLabel || 'Jellyfin' %> password</span>
+              <input class="login-input" type="password" name="password" autocomplete="current-password" required />
+            </label>
+            <button class="ghost-button login-provider-button" type="submit">
+              <img src="<%= withBasePath('/icons/jellyfin.png') %>" alt="" />
+              <span>Sign in with <%= jellyfinLabel || 'Jellyfin' %></span>
+            </button>
+          </form>
+        <% } %>
+        <% if (allowPlexLogin) { %>
+          <% if (allowLocalLogin || allowJellyfinLogin) { %>
+            <div class="login-divider"><span>or sign in with</span></div>
+          <% } %>
+          <a class="plex-button" href="<%= withBasePath('/auth/plex') %>" aria-label="Sign in with Plex">
+            <img src="<%= withBasePath('/icons/plex-login-white.svg') %>" alt="" />
+          </a>
+        <% } %>
+        <div class="login-sub">
+          <% if (allowPlexLogin && allowJellyfinLogin && allowLocalLogin) { %>
+            Launcharr local login, Jellyfin synced login, or Plex SSO.
+          <% } else if (allowPlexLogin && allowJellyfinLogin) { %>
+            Jellyfin synced login or Plex SSO.
+          <% } else if (allowJellyfinLogin && allowLocalLogin) { %>
+            Launcharr local login or Jellyfin synced login.
+          <% } else if (allowPlexLogin && allowLocalLogin) { %>
+            Local Launcharr login or Plex SSO.
+          <% } else if (allowJellyfinLogin) { %>
+            Jellyfin synced login only.
+          <% } else if (allowPlexLogin) { %>
+            Plex SSO only.
+          <% } else if (allowLocalLogin) { %>
+            Local Launcharr login only.
+          <% } else { %>
+            Sign-in providers are disabled.
+          <% } %>
+        </div>
       </div>
     </div>
   </main>

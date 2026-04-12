@@ -1,11 +1,10 @@
 /* Login */
 .login-body{
-  background:
-    radial-gradient(circle at 12% 12%, rgba(var(--brand-rgb),.18), transparent 42%),
-    radial-gradient(circle at 84% 18%, rgba(54,160,200,.18), transparent 45%),
-    linear-gradient(180deg, #070d13 0%, #0a121b 50%, #0d1620 100%);
-  overflow:hidden;
+  background:none;
+  overflow-x:hidden;
+  overflow-y:auto;
   position:relative;
+  isolation:isolate;
   color:#eaf2fb;
   font-family:"Space Grotesk","Poppins","JetBrains Mono",sans-serif;
 }
@@ -13,13 +12,29 @@
 .login-body::before{
   content:"";
   position:fixed;
-  inset:-20% -10%;
+  top:-55vh;
+  left:-25vw;
+  width:150vw;
+  height:210vh;
   background:
     linear-gradient(115deg, transparent 40%, rgba(var(--brand-rgb),.12) 46%, transparent 52%),
     linear-gradient(115deg, transparent 58%, rgba(var(--brand-rgb),.12) 64%, transparent 70%);
   opacity:.65;
   transform:skewY(-3deg);
   pointer-events:none;
+  z-index:-2;
+}
+
+.login-body::after{
+  content:"";
+  position:fixed;
+  inset:0;
+  background:
+    radial-gradient(circle at 12% 12%, rgba(var(--brand-rgb),.18), transparent 42%),
+    radial-gradient(circle at 84% 18%, rgba(54,160,200,.18), transparent 45%),
+    linear-gradient(180deg, #070d13 0%, #0a121b 50%, #0d1620 100%);
+  pointer-events:none;
+  z-index:-3;
 }
 
 .login-stars{
@@ -32,6 +47,7 @@
   background-position: 0 0, 40px 30px;
   opacity:.14;
   pointer-events:none;
+  z-index:-1;
 }
 
 .login-planet{
@@ -45,6 +61,7 @@
   filter:blur(10px);
   opacity:.7;
   pointer-events:none;
+  z-index:-1;
 }
 
 .login-brand{
@@ -116,6 +133,14 @@
   backdrop-filter: blur(8px);
 }
 
+@media (max-height: 980px){
+  .login-wrap{
+    align-items:flex-start;
+    padding-top:28px;
+    padding-bottom:28px;
+  }
+}
+
 .login-card-title{
   font-weight:600;
   font-size:18px;
@@ -137,6 +162,10 @@
   flex-direction:column;
   gap:12px;
   margin:14px 0 12px;
+}
+
+.login-form--provider{
+  margin-top:0;
 }
 
 .login-field{
@@ -185,12 +214,25 @@
   margin:12px 0 14px;
 }
 
+.login-divider span{
+  display:inline-block;
+  padding:0 4px;
+  white-space:nowrap;
+}
+
 .login-divider::before,
 .login-divider::after{
   content:"";
   flex:1;
   height:1px;
+}
+
+.login-divider::before{
   background:linear-gradient(90deg, transparent, rgba(255,255,255,.2));
+}
+
+.login-divider::after{
+  background:linear-gradient(270deg, transparent, rgba(255,255,255,.2));
 }
 
 .field-with-action .field-action-row{
@@ -245,6 +287,24 @@
 .ghost-button:hover{
   border-color:rgba(var(--brand-rgb),.5);
   box-shadow:inset 0 0 0 1px rgba(var(--brand-rgb),.2);
+}
+
+.login-provider-button{
+  display:flex;
+  align-items:center;
+  width:100%;
+  justify-content:center;
+  gap:10px;
+  padding:10px 14px;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  font-size:11px;
+}
+
+.login-provider-button img{
+  width:22px;
+  height:22px;
+  object-fit:contain;
 }
 
 .login-card .primary-button{
