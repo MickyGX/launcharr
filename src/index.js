@@ -126,7 +126,7 @@ const WIDGET_STAT_TYPES = [
   { typeId: 'bazarr',       name: 'Bazarr',       icon: '/icons/bazarr.png',       metricFields: [{ key: 'episodes', label: 'Episode Subs' }, { key: 'movies', label: 'Movie Subs' }] },
   { typeId: 'autobrr',      name: 'Autobrr',      icon: '/icons/autobrr.png',      metricFields: [{ key: 'filtered', label: 'Filtered Releases' }, { key: 'push_approved', label: 'Approved Pushes' }, { key: 'push_rejected', label: 'Rejected Pushes' }, { key: 'push_error', label: 'Errored Pushes' }] },
   { typeId: 'qbittorrent',  name: 'qBittorrent',  icon: '/icons/qbittorrent.png',  metricFields: [{ key: 'downloading', label: 'Downloading' }, { key: 'seeding', label: 'Seeding' }] },
-  { typeId: 'sabnzbd',      name: 'SABnzbd',      icon: '/icons/sabnzbd.png',      metricFields: [{ key: 'speed', label: 'Speed' }, { key: 'queue', label: 'Queue' }] },
+  { typeId: 'sabnzbd',      name: 'SABnzbd',      icon: '/icons/sabnzbd.png',      metricFields: [{ key: 'queued', label: 'Queued' }, { key: 'speed', label: 'Speed' }, { key: 'sizeleft', label: 'Remaining' }] },
   { typeId: 'nzbget',       name: 'NZBGet',       icon: '/icons/nzbget.svg',       metricFields: [{ key: 'downloading', label: 'Downloading' }, { key: 'queue', label: 'Queued' }, { key: 'speed', label: 'Download Speed' }, { key: 'remaining', label: 'Remaining' }] },
   { typeId: 'transmission', name: 'Transmission', icon: '/icons/transmission.svg', metricFields: [{ key: 'active', label: 'Active' }, { key: 'paused', label: 'Paused' }, { key: 'total', label: 'Total' }, { key: 'downloading', label: 'Downloading' }, { key: 'seeding', label: 'Seeding' }, { key: 'dlspeed', label: 'Download Speed' }, { key: 'upspeed', label: 'Upload Speed' }] },
   { typeId: 'slskd',        name: 'slskd',        icon: '/icons/slskd.png',        metricFields: [{ key: 'state', label: 'State' }, { key: 'speed', label: 'Avg Speed' }, { key: 'files', label: 'Shared Files' }, { key: 'uploads', label: 'Uploads' }] },
@@ -142,6 +142,7 @@ const WIDGET_STAT_TYPES = [
   { typeId: 'pulsarr',          name: 'Pulsarr',          icon: '/icons/pulsarr.svg',          metricFields: [{ key: 'auto_approved', label: 'Auto Approved' }, { key: 'approved', label: 'Approved' }, { key: 'movies', label: 'Movies' }, { key: 'shows', label: 'TV Shows' }] },
   { typeId: 'immich',           name: 'Immich',           icon: '/icons/immich.svg',           metricFields: [{ key: 'photos', label: 'Photos' }, { key: 'videos', label: 'Videos' }, { key: 'users', label: 'Users' }, { key: 'storage', label: 'Storage' }] },
   { typeId: 'portainer',        name: 'Portainer',        icon: '/icons/portainer.svg',        metricFields: [{ key: 'running', label: 'Running' }, { key: 'stopped', label: 'Stopped' }, { key: 'total', label: 'Total' }] },
+  { typeId: 'dockhand',         name: 'Dockhand',         icon: '/icons/dockhand.png',         metricFields: [{ key: 'running', label: 'Running' }, { key: 'stopped', label: 'Stopped' }, { key: 'containers', label: 'Containers' }, { key: 'stacks', label: 'Stacks' }, { key: 'environments', label: 'Environments' }] },
   { typeId: 'glances',          name: 'Glances',          icon: '/icons/glances.svg',          metricFields: [{ key: 'cpu', label: 'CPU' }, { key: 'memory', label: 'Memory' }, { key: 'load', label: 'Load Avg' }] },
   { typeId: 'uptime-kuma',      name: 'Uptime Kuma',      icon: '/icons/uptime-kuma.svg',      metricFields: [{ key: 'up', label: 'Up' }, { key: 'down', label: 'Down' }, { key: 'pending', label: 'Pending' }, { key: 'maintenance', label: 'Maintenance' }] },
   { typeId: 'speedtest-tracker', name: 'Speedtest Tracker', icon: '/icons/speedtest-tracker.png', metricFields: [{ key: 'download', label: 'Download' }, { key: 'upload', label: 'Upload' }, { key: 'ping', label: 'Ping' }] },
@@ -8789,7 +8790,7 @@ function iconPathExists(iconPath) {
 
 function resolvePersistedAppIconPath(appItem) {
   const configuredPath = String(appItem?.icon || '').trim();
-  if (configuredPath && iconPathExists(configuredPath)) return configuredPath;
+  if (configuredPath && configuredPath !== '/icons/app.svg' && iconPathExists(configuredPath)) return configuredPath;
   return getDefaultIconPathForAppId(appItem?.id);
 }
 

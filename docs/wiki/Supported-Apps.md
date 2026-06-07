@@ -8,9 +8,9 @@ Source of truth:
 
 Current built-in catalog totals:
 
-- `48` app definitions.
+- `49` app definitions.
 - `27` with overview modules plus widget stats.
-- `13` with widget stats only.
+- `14` with widget stats only.
 - `8` launch/settings only.
 
 ## Overview Module Matrix
@@ -88,6 +88,7 @@ Current built-in catalog totals:
 | Glances | `glances` | `System` | Widget stats | `http://localhost:61208` |
 | Gluetun | `gluetun` | `System` | Widget stats | `http://localhost:8000` |
 | Guardian | `guardian` | `System` | Widget stats | `http://localhost:3005` |
+| Dockhand | `dockhand` | `System` | Widget stats | `http://localhost:3000` |
 | Portainer | `portainer` | `System` | Widget stats | `http://localhost:9000` |
 | Speedtest Tracker | `speedtest-tracker` | `System` | Widget stats | `http://localhost:8765` |
 | Uptime Kuma | `uptime-kuma` | `System` | Overview + Widget stats | `http://localhost:3001` |

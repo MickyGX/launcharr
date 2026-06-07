@@ -1,4 +1,14 @@
-# Release Notes (v0.1.0 -> v0.2.58)
+# Release Notes (v0.1.0 -> v0.2.59)
+
+## v0.2.59 (2026-06-07)
+
+- [Added]
+- Added built-in Dockhand widget support with a dedicated icon, hidden default app metadata, API token settings, and widget metrics for running/stopped containers, total containers, stacks, and environments.
+- [Fixed]
+- Fixed SABnzbd widget metric selections by aligning the configurable metric keys with the stats payload (`queued`, `speed`, and `sizeleft`).
+- Fixed persisted generic app icons so a saved `/icons/app.svg` value no longer masks the real default icon for built-in apps such as Dockhand.
+- [Changed]
+- Updated the supported-apps documentation totals and matrix for Dockhand.
 
 ## v0.2.58 (2026-04-12)
 

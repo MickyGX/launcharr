@@ -1454,6 +1454,43 @@
     "instanceNamePlaceholder": "..."
   },
   {
+    "id": "dockhand",
+    "name": "Dockhand",
+    "url": "http://localhost:3000",
+    "description": "Docker management",
+    "category": "System",
+    "icon": "/icons/dockhand.png",
+    "roles": [
+      "hidden"
+    ],
+    "apiKey": "",
+    "username": "",
+    "password": "",
+    "menu": {
+      "overview": {
+        "user": false,
+        "admin": false
+      },
+      "launch": {
+        "user": false,
+        "admin": true
+      },
+      "settings": {
+        "user": false,
+        "admin": true
+      }
+    },
+    "order": 2,
+    "favourite": false,
+    "launchMode": "iframe",
+    "localUrl": "http://localhost:3000",
+    "remoteUrl": "",
+    "removed": true,
+    "supportsInstances": true,
+    "maxInstances": 5,
+    "instanceNamePlaceholder": "..."
+  },
+  {
     "id": "glances",
     "name": "Glances",
     "url": "http://localhost:61208",
