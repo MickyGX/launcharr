@@ -1,4 +1,12 @@
-# Release Notes (v0.1.0 -> v0.2.59)
+# Release Notes (v0.1.0 -> v0.2.60)
+
+## v0.2.60 (2026-07-03)
+
+- [Fixed]
+- Fixed ARR calendar direct fallback URL handling so configured app path prefixes such as `/sonarr` or `/radarr` are preserved when Launcharr falls back from the server proxy to a browser-side request.
+- Fixed calendar loading failures that could appear after an ARR proxy miss or upstream error in reverse-proxy subpath deployments.
+- [Changed]
+- Added focused client-side regression coverage for ARR calendar fallback requests to prevent path-prefix stripping from returning.
 
 ## v0.2.59 (2026-06-07)
 

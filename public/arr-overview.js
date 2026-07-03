@@ -338,10 +338,22 @@
       if (!/^https?:\/\//i.test(url)) url = 'http://' + url;
       try {
         const parsed = new URL(url);
-        return parsed.origin;
+        parsed.pathname = String(parsed.pathname || '').replace(/\/+$/, '') || '/';
+        parsed.search = '';
+        parsed.hash = '';
+        return parsed.toString().replace(/\/$/, '');
       } catch (err) {
         return url.replace(/\/+$/, '');
       }
+    }
+
+    function buildArrApiUrl(baseUrl, pathSuffix) {
+      const url = new URL(baseUrl);
+      const suffix = String(pathSuffix || '').trim().replace(/^\/+/, '');
+      const basePath = String(url.pathname || '/').replace(/\/+$/, '');
+      const joined = (basePath + '/' + suffix).replace(/\/{2,}/g, '/');
+      url.pathname = joined.startsWith('/') ? joined : '/' + joined;
+      return url;
     }
 
     function escapeHtml(value) {
@@ -830,7 +842,7 @@
           const base = baseCandidates[baseIndex];
           if (!base) continue;
           try {
-            const direct = new URL('/api/' + version + '/' + pathSuffix, base);
+            const direct = buildArrApiUrl(base, 'api/' + version + '/' + pathSuffix);
             Object.entries(params || {}).forEach(([key, value]) => {
               if (value === undefined || value === null || value === '') return;
               direct.searchParams.set(key, String(value));
