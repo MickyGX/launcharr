@@ -70,6 +70,64 @@ export function extractCuratorrAdminSummaryMetrics(html) {
   };
 }
 
+function pickDockhandObject(source, keys) {
+  if (!source || typeof source !== 'object') return null;
+  for (const key of keys) {
+    const value = source[key];
+    if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+  }
+  return null;
+}
+
+function pickDockhandCount(source, keys) {
+  if (!source || typeof source !== 'object') return 0;
+  for (const key of keys) {
+    const value = source[key];
+    if (Array.isArray(value)) return value.length;
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return Math.max(0, Math.round(parsed));
+  }
+  return 0;
+}
+
+export function extractDockhandArray(payload, keys = []) {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== 'object') return [];
+  for (const key of keys) {
+    if (Array.isArray(payload[key])) return payload[key];
+  }
+  return [];
+}
+
+export function getDockhandEnvironmentId(environment) {
+  if (!environment || typeof environment !== 'object') return null;
+  const rawId = environment.id ?? environment.Id ?? environment.ID ?? environment.environmentId ?? environment.EnvironmentId;
+  const parsed = Number(rawId);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function extractDockhandWidgetMetrics({ dashboard = {}, containers = [], stacks = [], environments = [] } = {}) {
+  const containerStats = pickDockhandObject(dashboard, ['containers', 'containerStats', 'container_stats', 'containerCounts', 'container_counts']);
+  const stackStats = pickDockhandObject(dashboard, ['stacks', 'stackStats', 'stack_stats', 'stackCounts', 'stack_counts']);
+  const environmentStats = pickDockhandObject(dashboard, ['environments', 'environmentStats', 'environment_stats', 'environmentCounts', 'environment_counts']);
+  const running = containers.length
+    ? containers.filter((container) => String(container?.state || container?.State || container?.status || container?.Status || '').toLowerCase().includes('running')).length
+    : pickDockhandCount(containerStats || dashboard, ['running', 'runningContainers', 'running_containers', 'runningCount', 'running_count']);
+  const totalContainers = containers.length || pickDockhandCount(containerStats || dashboard, ['total', 'containers', 'containerCount', 'container_count', 'totalContainers', 'total_containers']);
+  const stopped = totalContainers > 0
+    ? Math.max(0, totalContainers - running)
+    : pickDockhandCount(containerStats || dashboard, ['stopped', 'stoppedContainers', 'stopped_containers', 'exited', 'exitedContainers']);
+  const stackCount = stacks.length || pickDockhandCount(stackStats || dashboard, ['total', 'stacks', 'stackCount', 'stack_count', 'totalStacks', 'total_stacks']);
+  const environmentCount = environments.length || pickDockhandCount(environmentStats || dashboard, ['total', 'environments', 'environmentCount', 'environment_count', 'totalEnvironments', 'total_environments']);
+  return [
+    { key: 'running', label: 'Running', value: running },
+    { key: 'stopped', label: 'Stopped', value: stopped },
+    { key: 'containers', label: 'Containers', value: totalContainers },
+    { key: 'stacks', label: 'Stacks', value: stackCount },
+    { key: 'environments', label: 'Environments', value: environmentCount },
+  ];
+}
+
 export function registerApiSpecialty(app, ctx) {
   const {
     requireUser,
@@ -3928,74 +3986,52 @@ export function registerApiSpecialty(app, ctx) {
       } else if (typeId === 'dockhand') {
         const dockhandHeaders = { Accept: 'application/json' };
         if (apiKey) dockhandHeaders.Authorization = `Bearer ${apiKey}`;
-        const pickObject = (source, keys) => {
-          if (!source || typeof source !== 'object') return null;
-          for (const key of keys) {
-            const value = source[key];
-            if (value && typeof value === 'object' && !Array.isArray(value)) return value;
-          }
-          return null;
-        };
-        const pickCount = (source, keys) => {
-          if (!source || typeof source !== 'object') return 0;
-          for (const key of keys) {
-            const value = source[key];
-            if (Array.isArray(value)) return value.length;
-            const parsed = Number(value);
-            if (Number.isFinite(parsed)) return Math.max(0, Math.round(parsed));
-          }
-          return 0;
-        };
-        const extractArray = (payload, keys) => {
-          if (Array.isArray(payload)) return payload;
-          if (!payload || typeof payload !== 'object') return [];
-          for (const key of keys) {
-            if (Array.isArray(payload[key])) return payload[key];
-          }
-          return [];
+        const buildDockhandUrl = (baseUrl, path, params) => {
+          const url = buildAppApiUrl(baseUrl, path);
+          Object.entries(params || {}).forEach(([key, value]) => {
+            if (value !== null && value !== undefined && value !== '') {
+              url.searchParams.set(key, String(value));
+            }
+          });
+          return url.toString();
         };
 
-        const dashboardResult = await tryAllCandidates(async (baseUrl) =>
-          doFetch(buildAppApiUrl(baseUrl, 'api/dashboard/stats').toString(), dockhandHeaders)
+        const [dashboardResult, environmentsResult] = await Promise.all([
+          tryAllCandidates(async (baseUrl) =>
+            doFetch(buildAppApiUrl(baseUrl, 'api/dashboard/stats').toString(), dockhandHeaders)
+          ),
+          tryAllCandidates(async (baseUrl) =>
+            doFetch(buildAppApiUrl(baseUrl, 'api/environments').toString(), dockhandHeaders)
+          ),
+        ]);
+        const envPayload = environmentsResult?.json;
+        const environments = extractDockhandArray(envPayload, ['environments', 'items', 'data', 'results']);
+        const environmentIds = [...new Set(environments.map(getDockhandEnvironmentId).filter((envId) => envId !== null))];
+        const environmentScopes = environmentIds.length ? environmentIds : [null];
+        const [containerResults, stackResults] = await Promise.all([
+          Promise.all(environmentScopes.map((envId) =>
+            tryAllCandidates(async (baseUrl) =>
+              doFetch(buildDockhandUrl(baseUrl, 'api/containers', envId === null ? { all: true } : { env: envId, all: true }), dockhandHeaders)
+            )
+          )),
+          Promise.all(environmentScopes.map((envId) =>
+            tryAllCandidates(async (baseUrl) =>
+              doFetch(buildDockhandUrl(baseUrl, 'api/stacks', envId === null ? {} : { env: envId }), dockhandHeaders)
+            )
+          )),
+        ]);
+        const containers = containerResults.flatMap((result) =>
+          result?.ok ? extractDockhandArray(result.json, ['containers', 'items', 'data', 'results']) : []
         );
-        const containersResult = await tryAllCandidates(async (baseUrl) =>
-          doFetch(buildAppApiUrl(baseUrl, 'api/containers').toString(), dockhandHeaders)
+        const stacks = stackResults.flatMap((result) =>
+          result?.ok ? extractDockhandArray(result.json, ['stacks', 'items', 'data', 'results']) : []
         );
-        const stacksResult = await tryAllCandidates(async (baseUrl) =>
-          doFetch(buildAppApiUrl(baseUrl, 'api/stacks').toString(), dockhandHeaders)
-        );
-        const environmentsResult = await tryAllCandidates(async (baseUrl) =>
-          doFetch(buildAppApiUrl(baseUrl, 'api/environments').toString(), dockhandHeaders)
-        );
+        const hasResourceResult = containerResults.some((result) => result?.ok) || stackResults.some((result) => result?.ok);
 
-        if (dashboardResult?.ok || containersResult?.ok || stacksResult?.ok || environmentsResult?.ok) {
+        if (dashboardResult?.ok || environmentsResult?.ok || hasResourceResult) {
           status = 'up';
           const dashboard = dashboardResult?.json || {};
-          const containersPayload = containersResult?.json;
-          const containers = extractArray(containersPayload, ['containers', 'items', 'data', 'results']);
-          const stackPayload = stacksResult?.json;
-          const stacks = extractArray(stackPayload, ['stacks', 'items', 'data', 'results']);
-          const envPayload = environmentsResult?.json;
-          const environments = extractArray(envPayload, ['environments', 'items', 'data', 'results']);
-          const containerStats = pickObject(dashboard, ['containers', 'containerStats', 'container_stats', 'containerCounts', 'container_counts']);
-          const stackStats = pickObject(dashboard, ['stacks', 'stackStats', 'stack_stats', 'stackCounts', 'stack_counts']);
-          const environmentStats = pickObject(dashboard, ['environments', 'environmentStats', 'environment_stats', 'environmentCounts', 'environment_counts']);
-          const running = containers.length
-            ? containers.filter((container) => String(container?.state || container?.State || container?.status || container?.Status || '').toLowerCase().includes('running')).length
-            : pickCount(containerStats || dashboard, ['running', 'runningContainers', 'running_containers', 'runningCount', 'running_count']);
-          const totalContainers = containers.length || pickCount(containerStats || dashboard, ['total', 'containers', 'containerCount', 'container_count', 'totalContainers', 'total_containers']);
-          const stopped = totalContainers > 0
-            ? Math.max(0, totalContainers - running)
-            : pickCount(containerStats || dashboard, ['stopped', 'stoppedContainers', 'stopped_containers', 'exited', 'exitedContainers']);
-          const stackCount = stacks.length || pickCount(stackStats || dashboard, ['total', 'stacks', 'stackCount', 'stack_count', 'totalStacks', 'total_stacks']);
-          const environmentCount = environments.length || pickCount(environmentStats || dashboard, ['total', 'environments', 'environmentCount', 'environment_count', 'totalEnvironments', 'total_environments']);
-          metrics = [
-            { key: 'running', label: 'Running', value: running },
-            { key: 'stopped', label: 'Stopped', value: stopped },
-            { key: 'containers', label: 'Containers', value: totalContainers },
-            { key: 'stacks', label: 'Stacks', value: stackCount },
-            { key: 'environments', label: 'Environments', value: environmentCount },
-          ];
+          metrics = extractDockhandWidgetMetrics({ dashboard, containers, stacks, environments });
         } else {
           status = 'down';
         }

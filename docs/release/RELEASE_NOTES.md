@@ -1,4 +1,12 @@
-# Release Notes (v0.1.0 -> v0.2.60)
+# Release Notes (v0.1.0 -> v0.2.61)
+
+## v0.2.61 (2026-08-22)
+
+- [Fixed]
+- Fixed Dockhand widget container and stack metrics by querying each Dockhand environment with the required `env` parameter.
+- Fixed Dockhand widgets showing only environment counts while running/stopped/container/stack values remained at `0`.
+- [Changed]
+- Added focused Dockhand widget metric helper coverage for environment IDs, response shapes, aggregation, and dashboard-stat fallback behavior.
 
 ## v0.2.60 (2026-07-03)
 
