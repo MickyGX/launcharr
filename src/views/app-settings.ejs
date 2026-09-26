@@ -109,11 +109,12 @@
           'profilarr',
           'unraid',
           'slskd',
+          'qbittorrent',
         ]);
         const requiresApiKey = isArrSuite || apiKeyAppBaseIds.has(appBaseId);
         const hasToken = appBaseId === 'plex'
           ? Boolean(app.plexToken)
-          : ((requiresApiKey && appBaseId !== 'maintainerr' && appBaseId !== 'slskd') ? Boolean(app.apiKey) : true);
+          : ((requiresApiKey && appBaseId !== 'maintainerr' && appBaseId !== 'slskd' && appBaseId !== 'qbittorrent') ? Boolean(app.apiKey) : true);
         const statusOk = enabled && hasUrl && hasToken;
         const supportsInstances = multiInstanceBaseIdsList.includes(appBaseId);
         const defaultInstancePlaceholderMap = {

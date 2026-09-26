@@ -184,6 +184,8 @@
           Use the API key from Profilarr Settings -> General.
         <% } else if (renderedAppBaseId === 'slskd') { %>
           Optional: use a slskd API key, or leave blank and use username/password below.
+        <% } else if (renderedAppBaseId === 'qbittorrent') { %>
+          Optional (qBittorrent 5.2+): generate an API key in Options -> WebUI -> API Key, or leave blank and use username/password below.
         <% } else if (renderedAppBaseId === 'unraid') { %>
           Use an API key from Unraid Settings -> Management Access -> API Keys.
         <% } else { %>

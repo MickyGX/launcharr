@@ -3178,14 +3178,16 @@ export function registerApiSpecialty(app, ctx) {
       } else if (typeId === 'qbittorrent') {
         const qbUsername = String(appItem.username || '').trim();
         const qbPassword = String(appItem.password || '').trim();
-        const allowAuth = Boolean(qbUsername || qbPassword);
+        // qBittorrent >= 5.2 API key auth (Bearer) takes precedence over cookie login.
+        const qbBearerHeaders = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
+        const allowAuth = !apiKey && Boolean(qbUsername || qbPassword);
         let found = false;
 
         for (const baseUrl of candidates) {
           let cookieHeader = '';
           let transferResult = await doFetch(
             buildAppApiUrl(baseUrl, 'api/v2/transfer/info').toString(),
-            { Accept: 'application/json' },
+            { Accept: 'application/json', ...qbBearerHeaders },
           ).catch(() => null);
 
           // If direct access failed and credentials exist, authenticate to qBittorrent WebUI.
@@ -3226,7 +3228,7 @@ export function registerApiSpecialty(app, ctx) {
           const info = transferResult.json;
           const dlSpeed = Number(info.dl_info_speed) || 0;
           const upSpeed = Number(info.up_info_speed) || 0;
-          const torrentHeaders = { Accept: 'application/json' };
+          const torrentHeaders = { Accept: 'application/json', ...qbBearerHeaders };
           if (cookieHeader) torrentHeaders.Cookie = cookieHeader;
           const torrentsResult = await doFetch(
             buildAppApiUrl(baseUrl, 'api/v2/torrents/info').toString(),

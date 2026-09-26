@@ -4937,12 +4937,14 @@ async function fetchNzbgetQueue(baseUrl, authHeader, customHeaders = {}) {
   }
 }
 
-async function fetchQbittorrentQueue(baseUrl, username, password, customHeaders = {}) {
+async function fetchQbittorrentQueue(baseUrl, username, password, customHeaders = {}, apiKey = '') {
   const user = String(username || '').trim();
   const pass = String(password || '').trim();
+  const key = String(apiKey || '').trim();
   let cookieHeader = '';
 
-  if (user || pass) {
+  // qBittorrent >= 5.2 supports stateless API key auth via a Bearer header; skip the login round-trip.
+  if (!key && (user || pass)) {
     const loginUrl = buildAppApiUrl(baseUrl, 'api/v2/auth/login');
     const loginPayload = new URLSearchParams({
       username: user,
@@ -4976,7 +4978,8 @@ async function fetchQbittorrentQueue(baseUrl, username, password, customHeaders 
 
   const infoUrl = buildAppApiUrl(baseUrl, 'api/v2/torrents/info');
   const headers = mergeAppHeaders({ customHeaders }, { Accept: 'application/json' });
-  if (cookieHeader) headers.Cookie = cookieHeader;
+  if (key) headers.Authorization = `Bearer ${key}`;
+  else if (cookieHeader) headers.Cookie = cookieHeader;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12000);

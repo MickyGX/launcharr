@@ -2890,11 +2890,12 @@
                 'profilarr',
                 'unraid',
                 'slskd',
+                'qbittorrent',
               ]);
               const appRequiresApiKey = appIsArrSuite || apiKeyAppBaseIds.has(appBaseId);
               const appHasToken = appBaseId === 'plex'
                 ? Boolean(panelAppItem.plexToken)
-                : ((appRequiresApiKey && appBaseId !== 'maintainerr' && appBaseId !== 'slskd') ? Boolean(panelAppItem.apiKey) : true);
+                : ((appRequiresApiKey && appBaseId !== 'maintainerr' && appBaseId !== 'slskd' && appBaseId !== 'qbittorrent') ? Boolean(panelAppItem.apiKey) : true);
               const appStatusOk = appEnabled && appHasUrl && appHasToken;
               const baseInstanceCount = instanceItems.length;
               const maxInstancesForBase = Math.max(2, Number(multiInstanceMaxMap?.[appBaseId]) || 5);

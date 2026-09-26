@@ -1,4 +1,10 @@
-# Release Notes (v0.1.0 -> v0.2.61)
+# Release Notes (v0.1.0 -> v0.2.62)
+
+## v0.2.62 (2026-09-26)
+
+- [Added]
+- Added qBittorrent API key authentication (qBittorrent 5.2+). When an API key is set, Launcharr sends `Authorization: Bearer <key>` and skips the cookie-based username/password login. ([#44](https://github.com/MickyGX/launcharr/issues/44))
+- Added an optional API Key field to qBittorrent app settings; username/password remains available for older qBittorrent versions.
 
 ## v0.2.61 (2026-08-22)
 

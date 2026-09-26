@@ -1392,7 +1392,7 @@ export function registerApiArr(app, ctx) {
         } else if (baseId === 'nzbget') {
           result = await fetchNzbgetQueue(baseUrl, authHeader, appItem.customHeaders);
         } else if (baseId === 'qbittorrent') {
-          result = await fetchQbittorrentQueue(baseUrl, appItem.username || '', appItem.password || '', appItem.customHeaders);
+          result = await fetchQbittorrentQueue(baseUrl, appItem.username || '', appItem.password || '', appItem.customHeaders, apiKey);
         } else if (baseId === 'slskd') {
           result = await fetchSlskdQueue(
             baseUrl,
