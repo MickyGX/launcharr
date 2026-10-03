@@ -28,7 +28,10 @@ const TEST_ORIGIN = `http://${TEST_HOST}`;
 const originalFetch = globalThis.fetch;
 
 function extractCsrfToken(html) {
-  const match = String(html || '').match(/name="_csrf"\s+value="([^"]+)"/i);
+  const text = String(html || '');
+  // Pages without a server-rendered _csrf input still expose the token via the head partial.
+  const match = text.match(/name="_csrf"\s+value="([^"]+)"/i)
+    || text.match(/const csrfToken = '([^']+)'/);
   return match ? match[1] : '';
 }
 
@@ -358,5 +361,108 @@ describe('route guards (unauthenticated)', () => {
     const res = await request.get('/apps/plex');
     assert.equal(res.status, 302);
     assert.ok(res.headers.location?.includes('/login'), 'should redirect to /login');
+  });
+});
+
+describe('local account management', () => {
+  const ADMIN_PASSWORD = 'TestPassword1!';
+  const MEMBER_PASSWORD = 'MemberPassword1!';
+
+  async function loginAgent(username, password) {
+    const agent = supertest.agent(app);
+    const res = await postForm(agent, '/login', { username, password });
+    assert.equal(res.status, 302);
+    assert.ok(res.headers.location?.includes('/dashboard'), `expected ${username} to log in`);
+    return agent;
+  }
+
+  function findUser(username) {
+    const users = Array.isArray(readConfig().users) ? readConfig().users : [];
+    return users.find((entry) => entry?.username === username) || null;
+  }
+
+  afterEach(() => resetAuthRateLimits());
+
+  it('POST /settings/local-users adds a local user', async () => {
+    const admin = await loginAgent('testadmin', ADMIN_PASSWORD);
+    const res = await postForm(admin, '/settings/local-users', {
+      username: 'member',
+      email: 'member@launcharr.test',
+      password: MEMBER_PASSWORD,
+      role: 'user',
+    }, '/user-settings');
+    assert.equal(res.status, 302);
+    assert.match(res.headers.location || '', /localUsersResult=added/);
+    assert.equal(findUser('member')?.role, 'user');
+  });
+
+  it('POST /user-settings/profile rejects a weak password with a visible error', async () => {
+    const member = await loginAgent('member', MEMBER_PASSWORD);
+    const before = findUser('member')?.passwordHash;
+    const res = await postForm(member, '/user-settings/profile', {
+      username: 'member',
+      email: 'member@launcharr.test',
+      newPassword: 'test',
+      confirmPassword: 'test',
+    }, '/user-settings');
+    assert.equal(res.status, 302);
+    assert.match(res.headers.location || '', /profileError=/);
+    assert.equal(findUser('member')?.passwordHash, before);
+  });
+
+  it('POST /user-settings/profile changes the password', async () => {
+    const member = await loginAgent('member', MEMBER_PASSWORD);
+    const nextPassword = 'ChangedPassword2@';
+    const res = await postForm(member, '/user-settings/profile', {
+      username: 'member',
+      email: 'member@launcharr.test',
+      newPassword: nextPassword,
+      confirmPassword: nextPassword,
+    }, '/user-settings');
+    assert.equal(res.status, 302);
+    assert.match(res.headers.location || '', /profileResult=saved/);
+
+    const oldLogin = await postForm(supertest.agent(app), '/login', { username: 'member', password: MEMBER_PASSWORD });
+    assert.equal(oldLogin.status, 401);
+    await loginAgent('member', nextPassword);
+  });
+
+  it('POST /settings/local-users/role updates the role', async () => {
+    const admin = await loginAgent('testadmin', ADMIN_PASSWORD);
+    const res = await postForm(admin, '/settings/local-users/role', { username: 'member', role: 'admin' }, '/user-settings');
+    assert.equal(res.status, 302);
+    assert.match(res.headers.location || '', /localUsersResult=role-saved/);
+    assert.equal(findUser('member')?.role, 'admin');
+  });
+
+  it('POST /settings/local-users/delete removes the user', async () => {
+    const admin = await loginAgent('testadmin', ADMIN_PASSWORD);
+    const res = await postForm(admin, '/settings/local-users/delete', { username: 'member' }, '/user-settings');
+    assert.equal(res.status, 302);
+    assert.match(res.headers.location || '', /localUsersResult=removed/);
+    assert.equal(findUser('member'), null);
+  });
+
+  it('invalidates a local session whose account no longer exists in config', async () => {
+    const tempPassword = 'TempPassword3#';
+    const admin = await loginAgent('testadmin', ADMIN_PASSWORD);
+    await postForm(admin, '/settings/local-users', {
+      username: 'ghost',
+      email: 'ghost@launcharr.test',
+      password: tempPassword,
+      role: 'admin',
+    }, '/user-settings');
+
+    const ghost = await loginAgent('ghost', tempPassword);
+    const authed = await ghost.get('/settings').set('Host', TEST_HOST);
+    assert.equal(authed.status, 200, 'ghost should be authenticated while the account exists');
+
+    // Simulate the config being wiped (deleted container/files) out from under
+    // an active session cookie.
+    writeConfig((config) => ({ ...config, users: (config.users || []).filter((u) => u?.username !== 'ghost') }));
+
+    const afterWipe = await ghost.get('/settings').set('Host', TEST_HOST);
+    assert.equal(afterWipe.status, 302, 'stale session should no longer be authenticated');
+    assert.ok(afterWipe.headers.location?.includes('/login'), 'should redirect to /login');
   });
 });

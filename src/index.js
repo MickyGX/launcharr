@@ -30,11 +30,36 @@ const CLIENT_ID = process.env.PLEX_CLIENT_ID || getOrCreatePlexClientId();
 const PRODUCT = process.env.PLEX_PRODUCT || 'Launcharr';
 const PLATFORM = process.env.PLEX_PLATFORM || 'Web';
 const DEVICE_NAME = process.env.PLEX_DEVICE_NAME || 'Launcharr';
-const SESSION_SECRET = process.env.SESSION_SECRET
-  || (() => {
-    console.warn('[security] SESSION_SECRET is not set — generating a random secret. Sessions will reset on every restart. Set the SESSION_SECRET environment variable for persistent sessions.');
-    return crypto.randomBytes(32).toString('hex');
-  })();
+// Shipped as a placeholder in docker-compose.yml / README. Running with this
+// value leaves session cookies signed by a publicly-known key, so they stay
+// valid across redeploys (even after the config is wiped) and can be forged.
+const PLACEHOLDER_SESSION_SECRETS = new Set([
+  'replace-this-with-a-random-secret',
+  'replace-this-with-your-generated-secret',
+]);
+
+function warnDefaultSessionSecret() {
+  console.warn('');
+  console.warn('  ============================================================');
+  console.warn('  [security] SESSION_SECRET is set to the example placeholder.');
+  console.warn('  Session cookies are signed with a publicly-known key, so they');
+  console.warn('  survive redeploys and can be forged. Generate your own now:');
+  console.warn('      openssl rand -hex 32');
+  console.warn('  then set SESSION_SECRET to the result and restart.');
+  console.warn('  ============================================================');
+  console.warn('');
+}
+
+const SESSION_SECRET = (() => {
+  const configured = String(process.env.SESSION_SECRET || '');
+  if (configured && !PLACEHOLDER_SESSION_SECRETS.has(configured)) return configured;
+  if (configured) {
+    warnDefaultSessionSecret();
+    return configured;
+  }
+  console.warn('[security] SESSION_SECRET is not set — generating a random secret. Sessions will reset on every restart. Set the SESSION_SECRET environment variable for persistent sessions.');
+  return crypto.randomBytes(32).toString('hex');
+})();
 const LOCAL_AUTH_MIN_PASSWORD = 12;
 const TRUST_PROXY_ENABLED = parseEnvFlag(process.env.TRUST_PROXY, false);
 const TRUST_PROXY_HOPS = resolveProxyHopCount(process.env.TRUST_PROXY_HOPS, 1);
@@ -1612,6 +1637,12 @@ app.use((req, res, next) => {
       };
       return next();
     }
+    // The local account referenced by this session no longer exists (e.g. the
+    // config was wiped or the user was deleted). Drop the stale session instead
+    // of trusting its cached username/role, which would otherwise keep an
+    // authenticated admin view alive against an empty config.
+    req.session = null;
+    return next();
   } else if (source === 'plex' || source === 'jellyfin') {
     req.session.user = {
       ...sessionUser,
