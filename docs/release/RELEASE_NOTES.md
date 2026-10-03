@@ -1,4 +1,14 @@
-# Release Notes (v0.1.0 -> v0.2.62)
+# Release Notes (v0.1.0 -> v0.2.63)
+
+## v0.2.63 (2026-10-03)
+
+- [Fixed]
+- Fixed profile saves and local-user add/role/delete returning a server error (`serializeLocalUsers is not defined`); changing a local account password works again. ([#46](https://github.com/MickyGX/launcharr/issues/46))
+- Fixed the profile password fields so a password shorter than 12 characters is rejected in the browser instead of silently submitting. ([#46](https://github.com/MickyGX/launcharr/issues/46))
+- Fixed a `local` session for an account that no longer exists in config (e.g. after deleting the container and files) staying authenticated with its cached username and role. ([#47](https://github.com/MickyGX/launcharr/issues/47))
+- [Security]
+- A `local` session is now invalidated when its account is absent from config, so a deleted local user cannot retain an active session or admin view.
+- Added a prominent startup warning when `SESSION_SECRET` is left at the shipped placeholder, since cookies signed with a publicly known key survive redeploys and can be forged.
 
 ## v0.2.62 (2026-09-26)
 
